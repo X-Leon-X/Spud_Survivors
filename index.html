@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Spud Survivors</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="game-shell">
+      <section class="stage" aria-label="Spud Survivors game">
+        <canvas id="game" width="1280" height="720"></canvas>
+
+        <div class="hud hud-top">
+          <div class="stat">
+            <span class="label">Wave</span>
+            <strong id="waveText">1</strong>
+          </div>
+          <div class="stat">
+            <span class="label">Time</span>
+            <strong id="timeText">35</strong>
+          </div>
+          <div class="stat">
+            <span class="label">Scrap</span>
+            <strong id="scrapText">0</strong>
+          </div>
+          <div class="stat bag-stat">
+            <span class="label">Bag</span>
+            <strong id="bagText">0</strong>
+          </div>
+          <div class="stat wide hp-stat">
+            <span class="label">HP</span>
+            <div class="bar">
+              <span id="hpFill"></span>
+            </div>
+            <strong id="hpText" class="hp-readout">0 / 0</strong>
+          </div>
+        </div>
+
+        <div class="hud hud-bottom">
+          <span>Move: WASD / Arrows</span>
+          <span>Auto-fire targets nearest enemy</span>
+          <span>ESC: pause</span>
+          <span>M: mute</span>
+        </div>
+
+        <div id="message" class="message hidden"></div>
+      </section>
+
+      <aside id="startMenu" class="start-menu" aria-label="Choose character">
+        <div class="shop-heading">
+          <div>
+            <span class="label">Choose Character</span>
+            <h1>Spud Survivors</h1>
+          </div>
+          <div class="wallet">
+            <span>Wave</span>
+            <strong>1</strong>
+          </div>
+        </div>
+        <div id="characterCards" class="character-grid"></div>
+        <section class="class-bonus-panel" aria-label="Weapon class bonuses">
+          <div class="stats-title">Weapon Class Bonuses</div>
+          <div id="classBonusList" class="class-bonus-list"></div>
+        </section>
+      </aside>
+
+      <aside id="shop" class="shop hidden" aria-label="Upgrade shop">
+        <div class="shop-heading">
+          <div>
+            <span class="label">Between waves</span>
+            <h1>Field Market</h1>
+          </div>
+          <div class="wallet-group">
+            <div class="wallet">
+              <span>Scrap</span>
+              <i class="scrap-coin" aria-hidden="true"></i>
+              <strong id="shopScrapText">0</strong>
+            </div>
+            <div class="wallet wallet-muted">
+              <span>Bag</span>
+              <i class="scrap-coin bagged" aria-hidden="true"></i>
+              <strong id="shopBagText">0</strong>
+            </div>
+          </div>
+        </div>
+        <section class="loadout" aria-label="Current loadout">
+          <canvas id="playerPreview" width="220" height="220"></canvas>
+          <div class="loadout-lists">
+            <div>
+              <div class="stats-title">Equipped Weapons</div>
+              <div id="weaponList" class="pill-list"></div>
+            </div>
+            <div>
+              <div class="stats-title">Current Items</div>
+              <div id="itemList" class="pill-list"></div>
+            </div>
+          </div>
+          <aside id="detailPanel" class="detail-panel" aria-label="Hovered item details">
+            <div class="stats-title">Details</div>
+            <h2 id="detailTitle">Hover an item</h2>
+            <div id="detailMeta" class="card-meta"></div>
+            <p id="detailText">Shop offers and owned gear show extra information here.</p>
+            <div id="detailActions" class="detail-actions"></div>
+          </aside>
+        </section>
+        <div id="shopCards" class="shop-grid"></div>
+        <section class="shop-stats" aria-label="Current stats">
+          <div class="stats-title">Current Stats</div>
+          <div id="shopStatList" class="stats-list compact"></div>
+        </section>
+        <div class="shop-actions">
+          <button id="rerollButton" type="button">Reroll - <span id="rerollCostText">3</span></button>
+          <button id="nextWaveButton" type="button">Start Next Wave</button>
+        </div>
+      </aside>
+
+      <aside id="reward" class="reward hidden" aria-label="Wave reward">
+        <div class="shop-heading">
+          <div>
+            <span id="rewardEyebrow" class="label">Reward</span>
+            <h1 id="rewardTitle">Choose Upgrade</h1>
+          </div>
+          <div class="wallet">
+            <span>Luck</span>
+            <strong id="rewardLuckText">0</strong>
+          </div>
+        </div>
+        <p id="rewardText" class="reward-text"></p>
+        <div id="rewardActions" class="reward-actions hidden">
+          <button id="mutationRerollButton" type="button">Reroll Mutation - <span id="mutationRerollCostText">0</span></button>
+        </div>
+        <div id="rewardCards" class="reward-grid"></div>
+      </aside>
+
+      <aside id="pauseMenu" class="pause-menu hidden" aria-label="Pause menu">
+        <div class="pause-panel">
+          <span class="label">Taking a breather</span>
+          <h1>Paused</h1>
+          <div class="pause-buttons">
+            <button id="resumeButton" type="button">Resume</button>
+            <button id="abandonButton" type="button" class="danger">Abandon Run</button>
+          </div>
+          <div class="pause-settings">
+            <div class="stats-title">Settings</div>
+            <label class="setting-row">
+              <span>Volume</span>
+              <input type="range" id="volumeSlider" min="0" max="100" step="5">
+            </label>
+            <label class="setting-row">
+              <span>Mute sounds</span>
+              <input type="checkbox" id="muteToggle">
+            </label>
+            <label class="setting-row">
+              <span>Screen shake</span>
+              <input type="checkbox" id="shakeToggle">
+            </label>
+          </div>
+          <p class="pause-hint">ESC to resume &middot; M to mute anytime</p>
+        </div>
+      </aside>
+
+      <aside id="summary" class="summary hidden" aria-label="Run summary">
+        <div class="shop-heading">
+          <div>
+            <span class="label">Run Over</span>
+            <h1 id="summaryTitle">Spud went down</h1>
+          </div>
+        </div>
+        <div id="summaryStats" class="summary-stats"></div>
+        <section class="summary-damage" aria-label="Damage dealt by source">
+          <div class="stats-title">Damage Dealt</div>
+          <div id="summaryWeapons" class="summary-weapons"></div>
+        </section>
+        <div class="summary-actions">
+          <button id="summaryRestartButton" type="button">New Run</button>
+        </div>
+        <p class="pause-hint">Press R to jump straight to character select</p>
+      </aside>
+    </main>
+
+    <script src="js/01-core.js"></script>
+    <script src="js/00-audio.js"></script>
+    <script src="js/00-fx.js"></script>
+    <script src="js/00-assets.js"></script>
+    <script src="js/02-stats.js"></script>
+    <script src="js/03-data.js"></script>
+    <script src="js/04-flow.js"></script>
+    <script src="js/05-icons.js"></script>
+    <script src="js/06-shop.js"></script>
+    <script src="js/07-combat.js"></script>
+    <script src="js/08-render.js"></script>
+    <script src="js/09-main.js"></script>
+  </body>
+</html>

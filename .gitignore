@@ -1,0 +1,11 @@
+# Dev-only files not needed for the playable web build
+game.js.bak
+art-export/
+tools/
+*.bat
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.github/
