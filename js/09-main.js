@@ -151,12 +151,12 @@ ui.resumeButton.addEventListener("click", () => {
 
 ui.abandonButton.addEventListener("click", () => {
   playSfx("click");
-  showStartMenu();
+  showTitleScreen();
 });
 
 ui.summaryRestartButton.addEventListener("click", () => {
   playSfx("click");
-  showStartMenu();
+  showTitleScreen();
 });
 
 ui.rerollButton.addEventListener("click", () => {
@@ -207,3 +207,5 @@ initSettingsControls();
 renderCharacterSelect();
 updateHud();
 requestAnimationFrame(loop);
+// Title screen boot happens at the end of 09b-title.js (which loads after this file and
+// defines showTitleScreen / initTitleControls).

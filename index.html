@@ -47,7 +47,45 @@
         <div id="message" class="message hidden"></div>
       </section>
 
-      <aside id="startMenu" class="start-menu" aria-label="Choose character">
+      <aside id="titleScreen" class="title-screen" aria-label="Title screen">
+        <div class="title-bg-glow" aria-hidden="true"></div>
+        <div class="title-inner">
+          <div class="title-logo">
+            <h1 class="title-word">SPUD</h1>
+            <h1 class="title-word title-word-accent">SURVIVORS</h1>
+            <span class="title-tag">A one-potato last stand</span>
+          </div>
+          <canvas id="titleStage" width="360" height="300" aria-hidden="true"></canvas>
+          <nav class="title-menu">
+            <button id="titlePlayButton" type="button" class="title-btn title-btn-primary">Play</button>
+            <button id="titleOptionsButton" type="button" class="title-btn">Options</button>
+            <button id="titleQuitButton" type="button" class="title-btn title-btn-quiet">Quit</button>
+          </nav>
+        </div>
+        <p class="title-footer">Move WASD &middot; Auto-fire &middot; Survive the swarm</p>
+
+        <div id="titleOptions" class="title-options hidden">
+          <div class="title-options-panel">
+            <span class="label">Options</span>
+            <h2>Settings</h2>
+            <label class="setting-row">
+              <span>Volume</span>
+              <input type="range" id="titleVolumeSlider" min="0" max="100" step="5">
+            </label>
+            <label class="setting-row">
+              <span>Mute sounds</span>
+              <input type="checkbox" id="titleMuteToggle">
+            </label>
+            <label class="setting-row">
+              <span>Screen shake</span>
+              <input type="checkbox" id="titleShakeToggle">
+            </label>
+            <button id="titleOptionsBack" type="button" class="title-btn title-btn-primary">Back</button>
+          </div>
+        </div>
+      </aside>
+
+      <aside id="startMenu" class="start-menu hidden" aria-label="Choose character">
         <div class="shop-heading">
           <div>
             <span class="label">Choose Character</span>
@@ -191,5 +229,6 @@
     <script src="js/07-combat.js"></script>
     <script src="js/08-render.js"></script>
     <script src="js/09-main.js"></script>
+    <script src="js/09b-title.js"></script>
   </body>
 </html>

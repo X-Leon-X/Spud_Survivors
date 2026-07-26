@@ -99,7 +99,8 @@ const SFX_MIN_INTERVAL = {
   coin: 0.045,
   swing: 0.05,
   zap: 0.08,
-  tree: 0.08
+  tree: 0.08,
+  hover: 0.06
 };
 
 function playSfx(name) {
@@ -183,6 +184,15 @@ function playSfx(name) {
       break;
     case "click":
       tone({ freq: 820, type: "sine", dur: 0.035, vol: 0.04 });
+      break;
+    case "hover":
+      // Soft, quick blip when the pointer lands on a title button.
+      tone({ freq: 620, endFreq: 760, type: "sine", dur: 0.05, vol: 0.028 });
+      break;
+    case "whoosh":
+      // Rising sweep + airy noise when starting a run from the title.
+      tone({ freq: 240, endFreq: 880, type: "triangle", dur: 0.22, vol: 0.07 });
+      noiseHit({ dur: 0.2, vol: 0.04, filterFreq: 1800, filterType: "bandpass" });
       break;
     default:
       break;
