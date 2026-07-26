@@ -2268,3 +2268,58 @@ button:active:not(:disabled) {
   .title-word { -webkit-text-stroke: 3px #111722; }
   #titleStage { width: 62vw; }
 }
+
+/* ---- Intro cinematic: dark screen with white presenter cards before the menu ---- */
+.intro-cinematic {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+}
+.intro-cinematic.hidden { display: none; }
+
+.intro-line {
+  margin: 0;
+  padding: 0 8%;
+  max-width: 90%;
+  text-align: center;
+  color: #fff;
+  font-weight: 800;
+  font-size: clamp(20px, 3.6vw, 46px);
+  line-height: 1.25;
+  letter-spacing: 0.5px;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+/* Fade in / hold / fade out. */
+.intro-line.intro-fade-in { animation: introFadeIn 0.7s ease forwards; }
+.intro-line.intro-fade-out { opacity: 1; animation: introFadeOut 0.6s ease forwards; }
+/* Snap on (for the "ripoff" reveal that precedes the boom + drop). */
+.intro-line.intro-pop { opacity: 1; animation: introPop 0.28s cubic-bezier(0.2, 1.4, 0.4, 1) forwards; }
+/* Fall off the bottom of the screen. */
+.intro-line.intro-drop { opacity: 1; animation: introDrop 0.7s cubic-bezier(0.5, 0, 0.75, 0) forwards; }
+
+@keyframes introFadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes introFadeOut { from { opacity: 1; } to { opacity: 0; } }
+@keyframes introPop { 0% { opacity: 0; transform: scale(0.82); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes introDrop {
+  0% { transform: translateY(0) rotate(0); opacity: 1; }
+  100% { transform: translateY(140%) rotate(12deg); opacity: 0; }
+}
+
+.intro-skip {
+  position: absolute;
+  bottom: 14px;
+  right: 18px;
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 12px;
+  letter-spacing: 0.6px;
+  pointer-events: none;
+}

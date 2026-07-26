@@ -418,6 +418,12 @@ function enemyWeight(type) {
   if (type.behavior === "fireball") {
     return Math.min(5, type.weight + Math.floor(Math.max(0, state.wave - type.minWave) / 3));
   }
+  // Shooter enemies (Spitter) don't multiply as the run scales — their ranged pressure
+  // gets oppressive in a crowd, so keep their share flat and slightly reduced instead of
+  // letting it grow with the wave bonus.
+  if (type.behavior === "shoot") {
+    return Math.max(1, type.weight - 1);
+  }
   if (type.size === "large") {
     return Math.max(1, type.weight + Math.floor(waveBonus * 0.35));
   }

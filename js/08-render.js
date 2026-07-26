@@ -284,7 +284,7 @@ function drawArenaWeapon(player) {
       // smaller than the code-sprite so detailed art reads cleanly and doesn't crowd
       // the player when several weapons orbit at once. The per-weapon angle correction
       // levels its display-pose barrel to the aim direction.
-      const size = 60;
+      const size = 52;
       ctx.imageSmoothingEnabled = true;
       ctx.save();
       ctx.rotate(arenaWeaponAngle(weapon.name));
@@ -1691,13 +1691,8 @@ function drawEnemyDeath(corpse) {
 // Cosmetic per-behavior decorations are skipped for PNG enemies (the sprite already
 // conveys identity), but gameplay signals are always drawn.
 function drawEnemyStateOverlays(enemy) {
-  if (enemy.behavior === "orbit") {
-    ctx.strokeStyle = "rgba(255, 247, 231, 0.7)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, enemy.radius * 1.35, enemy.radius * 0.42, 0.35, 0, Math.PI * 2);
-    ctx.stroke();
-  } else if (enemy.behavior === "buffer") {
+  // Orbiter's PNG art already includes its orbital ring, so we don't draw one here.
+  if (enemy.behavior === "buffer") {
     ctx.strokeStyle = "rgba(255, 126, 182, 0.5)";
     ctx.lineWidth = 3;
     ctx.beginPath();

@@ -205,6 +205,73 @@ function quitToFarewell() {
   });
 }
 
+// ---- Intro cinematic ----------------------------------------------------------------
+// A short presenter gag that plays every launch (skippable) before the title menu:
+//   1. "Leon & Company present"                         (fade in / hold / fade out)
+//   2. "Brotato ripoff"                                 (pop in + vine-boom SFX)
+//   3. it falls off screen, replaced by
+//      "I mean, Spud Survivors, a totally original game" (fade in / hold)
+//   4. fade the whole overlay out into the normal title menu.
+const VINE_BOOM_SRC = "assets/audio/vine_boom.mp3";
+
+function playIntroThenTitle() {
+  const overlay = document.getElementById("introCinematic");
+  const line = document.getElementById("introLine");
+  if (!overlay || !line) { showTitleScreen(); return; }
+
+  let timers = [];
+  let finished = false;
+  const at = (ms, fn) => timers.push(setTimeout(fn, ms));
+  const setLine = (text, cls) => {
+    line.textContent = text;
+    line.className = "intro-line " + cls;
+  };
+
+  function finish() {
+    if (finished) return;
+    finished = true;
+    timers.forEach(clearTimeout);
+    overlay.removeEventListener("pointerdown", finish);
+    window.removeEventListener("keydown", onKey);
+    // Fade the overlay out, then hand off to the real title screen.
+    overlay.style.transition = "opacity 0.4s ease";
+    overlay.style.opacity = "0";
+    setTimeout(() => {
+      overlay.classList.add("hidden");
+      overlay.style.transition = "";
+      overlay.style.opacity = "";
+      showTitleScreen();
+    }, 400);
+  }
+  const onKey = () => finish();
+
+  overlay.classList.remove("hidden");
+  overlay.style.opacity = "1";
+  overlay.addEventListener("pointerdown", finish);
+  window.addEventListener("keydown", onKey);
+  // ensureAudio needs a user gesture on some browsers; try, and the boom will play if allowed.
+  ensureAudio();
+
+  // Card 1: "Leon & Company present"
+  setLine("Leon & Company present", "intro-fade-in");
+  at(1900, () => setLine("Leon & Company present", "intro-fade-out"));
+
+  // Card 2: "Brotato ripoff" + vine boom
+  at(2700, () => {
+    setLine("Brotato ripoff", "intro-pop");
+    playClip(VINE_BOOM_SRC, { gain: 0.9 }).then((ok) => { if (!ok) synthVineBoom(); });
+  });
+
+  // Card 2 drops off the screen
+  at(4100, () => setLine("Brotato ripoff", "intro-drop"));
+
+  // Card 3: the "correction"
+  at(4850, () => setLine("I mean, Spud Survivors, a totally original game", "intro-fade-in"));
+
+  // Hold, then hand off to the menu.
+  at(7700, finish);
+}
+
 // Boot: this file loads last, so showTitleScreen/initTitleControls are defined by now.
 initTitleControls();
-showTitleScreen();
+playIntroThenTitle();

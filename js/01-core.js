@@ -87,8 +87,8 @@ const MAX_ENEMIES = 320;
 const BASE_WEAPON_SLOTS = 6;
 const MAX_WEAPON_RANK = 5;
 const DRUMMER_BUFF_RADIUS = 260;
-const DRUMMER_SPEED_MULTIPLIER = 1.25;
-const DRUMMER_DAMAGE_MULTIPLIER = 1.1;
+const DRUMMER_SPEED_MULTIPLIER = 1.4;
+const DRUMMER_DAMAGE_MULTIPLIER = 1.25;
 
 const enemyTypes = [
   { name: "Nibbler", behavior: "chase", size: "small", color: "#f1766e", hp: 9, speed: 106, radius: 16, damage: 6, scrap: 1, minWave: 1, weight: 8 },
@@ -98,7 +98,7 @@ const enemyTypes = [
   { name: "Ember Glob", behavior: "fireball", size: "medium", color: "#e56f45", hp: 16, speed: 52, radius: 17, damage: 5, scrap: 2, minWave: 5, weight: 1 },
   { name: "Spitter", behavior: "shoot", size: "medium", color: "#66c7d8", hp: 20, speed: 58, radius: 18, damage: 10, scrap: 2, minWave: 5, weight: 3 },
   { name: "Orbiter", behavior: "orbit", size: "small", color: "#f2d35f", hp: 11, speed: 162, radius: 14, damage: 6, scrap: 1, minWave: 6, weight: 3 },
-  { name: "Drummer", behavior: "buffer", size: "large", color: "#ff7eb6", hp: 58, speed: 36, radius: 30, damage: 18, scrap: 5, minWave: 7, weight: 1 }
+  { name: "Drummer", behavior: "buffer", size: "large", color: "#ff7eb6", hp: 95, speed: 36, radius: 30, damage: 18, scrap: 5, minWave: 7, weight: 1 }
 ];
 
 const rarities = {

@@ -90,6 +90,62 @@ function noiseHit({ dur = 0.15, vol = 0.1, filterFreq = 900, filterType = "lowpa
   source.stop(start + dur + 0.02);
 }
 
+// One-shot playback of a bundled audio file (e.g. the intro vine-boom). Prefers the WebAudio
+// path (decode once, cache the buffer, route through masterGain so mute/volume apply). That
+// path uses fetch(), which browsers BLOCK on file:// — so when it fails (e.g. the game is
+// opened by double-clicking index.html rather than served over http), it falls back to an
+// HTMLAudioElement, which is not subject to the file:// fetch restriction. Returns true if a
+// clip was triggered, false if unavailable (caller can then use a synth fallback). `gain`
+// scales the clip's loudness relative to the file.
+const clipBufferCache = new Map();
+async function playClip(src, { gain = 1 } = {}) {
+  ensureAudio();
+  if (gameSettings.muted) return false;
+
+  // Preferred: WebAudio (respects masterGain / mute automatically).
+  if (audioCtx) {
+    try {
+      let buffer = clipBufferCache.get(src);
+      if (!buffer) {
+        const res = await fetch(src);
+        if (!res.ok) throw new Error(`clip ${src} -> ${res.status}`);
+        const arr = await res.arrayBuffer();
+        buffer = await audioCtx.decodeAudioData(arr);
+        clipBufferCache.set(src, buffer);
+      }
+      const source = audioCtx.createBufferSource();
+      source.buffer = buffer;
+      const g = audioCtx.createGain();
+      g.gain.value = gain;
+      source.connect(g);
+      g.connect(masterGain);
+      source.start();
+      return true;
+    } catch {
+      // fall through to the HTMLAudioElement path (handles file:// fetch blocks)
+    }
+  }
+
+  // Fallback: <audio> element. Works on file://. Volume mirrors the master mix manually.
+  try {
+    const el = new Audio(src);
+    el.volume = Math.min(1, Math.max(0, gameSettings.volume * 0.55 * gain));
+    const p = el.play();
+    if (p && typeof p.then === "function") await p;
+    return true;
+  } catch {
+    return false; // truly unavailable: caller can fall back to a synth sound
+  }
+}
+
+// A synthesized "vine boom" style hit — a deep, snappy bass thud with a bright transient.
+// Used as the intro's fallback if the mp3 clip isn't present.
+function synthVineBoom() {
+  tone({ freq: 150, endFreq: 42, type: "sine", dur: 0.5, vol: 0.32 });
+  tone({ freq: 90, endFreq: 30, type: "triangle", dur: 0.55, vol: 0.24 });
+  noiseHit({ dur: 0.12, vol: 0.1, filterFreq: 1200 });
+}
+
 const SFX_MIN_INTERVAL = {
   shoot: 0.035,
   flame: 0.09,
