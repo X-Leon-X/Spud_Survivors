@@ -386,6 +386,7 @@ function hideReward() {
 
 function renderCharacterSelect() {
   ui.characterCards.innerHTML = "";
+  characterPortraits.length = 0;   // old portrait canvases are gone; drop stale refs
   for (const character of characters) {
     const card = document.createElement("article");
     card.className = "character-card";

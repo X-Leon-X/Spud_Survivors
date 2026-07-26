@@ -311,22 +311,25 @@ function enemySpawnInterval() {
   const elapsedRatio = state.waveDuration
     ? clamp((state.waveDuration - state.waveTime) / state.waveDuration, 0, 1)
     : 0;
-  const wavePressure = Math.pow(1.13, wave - 1) * (1 + Math.max(0, wave - 6) * 0.035 + Math.max(0, wave - 13) * 0.045);
-  const lateWavePush = 1 + elapsedRatio * Math.min(0.34, wave * 0.016);
-  return Math.max(0.18, 1.48 / Math.min(9.5, wavePressure * lateWavePush));
+  // Steeper spawn-rate ramp (1.13 -> 1.19 base) so the arena fills up sooner each wave.
+  const wavePressure = Math.pow(1.19, wave - 1) * (1 + Math.max(0, wave - 6) * 0.04 + Math.max(0, wave - 13) * 0.045);
+  const lateWavePush = 1 + elapsedRatio * Math.min(0.4, wave * 0.02);
+  return Math.max(0.16, 1.48 / Math.min(10.5, wavePressure * lateWavePush));
 }
 
 function enemySpawnBatchSize() {
   const wave = Math.max(1, state.wave);
-  const growth = Math.floor(Math.pow(Math.max(0, wave - 3), 1.17) / 4.3);
+  // Bigger early batches (kicks in from wave 2 instead of 3, steeper exponent).
+  const growth = Math.floor(Math.pow(Math.max(0, wave - 1), 1.22) / 3.4);
   const midBonus = Math.floor(Math.max(0, wave - 8) / 4);
   const lateBonus = Math.floor(Math.max(0, wave - 13) / 3);
-  return Math.min(13, 1 + growth + midBonus + lateBonus);
+  return Math.min(14, 1 + growth + midBonus + lateBonus);
 }
 
 function enemyActiveCap() {
   const wave = Math.max(1, state.wave);
-  const curve = 24 + wave * 9.6 + Math.pow(Math.max(0, wave - 4), 1.4) * 2.6 + Math.max(0, wave - 10) * 5.1;
+  // Higher concurrent-enemy cap earlier, so the screen gets crowded sooner.
+  const curve = 28 + wave * 12 + Math.pow(Math.max(0, wave - 3), 1.45) * 2.8 + Math.max(0, wave - 10) * 5.1;
   return Math.min(MAX_ENEMIES, Math.round(curve));
 }
 
@@ -429,10 +432,12 @@ function enemyScaling() {
   const growth = wave - 1;
   const midGame = Math.max(0, wave - 6);
   const lateGame = Math.max(0, wave - 12);
+  // Faster ramp: enemies gain HP/damage/speed noticeably sooner so early waves stop
+  // feeling like a warm-up. Per-wave growth roughly doubled in the early band.
   return {
-    hp: 1 + growth * 0.045 + midGame * 0.055 + lateGame * 0.085,
-    damage: 1 + growth * 0.018 + midGame * 0.018 + lateGame * 0.03,
-    speed: 1 + Math.min(0.12, growth * 0.0035)
+    hp: 1 + growth * 0.085 + midGame * 0.06 + lateGame * 0.085,
+    damage: 1 + growth * 0.032 + midGame * 0.022 + lateGame * 0.03,
+    speed: 1 + Math.min(0.18, growth * 0.006)
   };
 }
 

@@ -1054,25 +1054,56 @@ function drawPlayerPreview() {
   pctx.restore();
 }
 
+// Live registry of character-select portraits so the main loop can animate them (idle
+// bob + breathing) while the select screen is open. Cleared when leaving the screen.
+const characterPortraits = [];
+
 function drawCharacterPortrait(portraitCanvas, character) {
+  portraitCanvas._character = character;
+  if (!characterPortraits.includes(portraitCanvas)) characterPortraits.push(portraitCanvas);
+  paintCharacterPortrait(portraitCanvas, performance.now());
+}
+
+function paintCharacterPortrait(portraitCanvas, now) {
+  const character = portraitCanvas._character;
+  if (!character) return;
   const pctx = portraitCanvas.getContext("2d");
   const cx = portraitCanvas.width / 2;
   const cy = portraitCanvas.height / 2 + 16;
+  const t = now / 1000;
+
   pctx.clearRect(0, 0, portraitCanvas.width, portraitCanvas.height);
   const bg = pctx.createLinearGradient(0, 0, portraitCanvas.width, portraitCanvas.height);
   bg.addColorStop(0, "#31475c");
   bg.addColorStop(1, "#182333");
   pctx.fillStyle = bg;
   pctx.fillRect(0, 0, portraitCanvas.width, portraitCanvas.height);
+
+  // Idle animation: gentle bob, breathing squash, and a faint lean unique per character.
+  const seed = (character.id ?? "x").charCodeAt(0);
+  const bob = Math.sin(t * 1.7 + seed) * 4;
+  const breathe = 1 + Math.sin(t * 1.4 + seed) * 0.05;
+  const lean = Math.sin(t * 1.05 + seed) * 0.04;
+
+  // Shadow shrinks a touch as the potato lifts, so the bob reads as a hop.
   pctx.fillStyle = "rgba(0, 0, 0, 0.25)";
   pctx.beginPath();
-  pctx.ellipse(cx, cy + 44, 48, 13, 0, 0, Math.PI * 2);
+  pctx.ellipse(cx, cy + 44, 48 - bob * 0.6, 13, 0, 0, Math.PI * 2);
   pctx.fill();
+
   pctx.save();
-  pctx.translate(cx, cy);
-  pctx.scale(1.75 * (character.scale ?? 1), 1.75 * (character.scale ?? 1));
+  pctx.translate(cx, cy + bob);
+  pctx.rotate(lean);
+  const s = 1.75 * (character.scale ?? 1);
+  pctx.scale(s * breathe, s * (2 - breathe));
   drawSpudBody(pctx, character);
   pctx.restore();
+}
+
+function renderCharacterPortraits(now) {
+  // Skip when the select screen isn't showing (keeps the loop cheap elsewhere).
+  if (!ui.startMenu || ui.startMenu.classList.contains("hidden")) return;
+  for (const canvas of characterPortraits) paintCharacterPortrait(canvas, now);
 }
 
 function drawPreviewGear(pctx) {

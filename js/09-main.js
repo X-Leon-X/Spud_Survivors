@@ -14,6 +14,8 @@ function loop(now) {
   if (animatedIcons.size > 0) {
     renderAnimatedIcons(now);
   }
+  // Idle-animate the character-select portraits (no-op unless that screen is open).
+  renderCharacterPortraits(now);
   requestAnimationFrame(loop);
 }
 
