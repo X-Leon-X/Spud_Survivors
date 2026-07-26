@@ -896,6 +896,61 @@ function drawWeaponSpriteShape(targetCtx, weapon) {
   targetCtx.restore();
 }
 
+// Open, blinking eyes painted over the PNG character's baked sleepy slits. The eye position
+// is tuned per character (their sprites frame the face slightly differently). Draws a white
+// eye-white, dark pupil with a highlight, and a quick periodic blink (a flat lid line).
+const CHARACTER_EYES = {
+  sprout: { x: 6.5, y: -7.5, spread: 8.5, r: 3.3 },
+  chunk:  { x: 6.5, y: -5.5, spread: 9.0, r: 3.5 },
+  zip:    { x: 6.5, y: -7.5, spread: 8.0, r: 3.2 }
+};
+
+function drawSpudEyes(g, character) {
+  const cfg = CHARACTER_EYES[character?.id] ?? CHARACTER_EYES.sprout;
+  const time = performance.now();
+  // Blink ~ every 3.2s for a brief moment; a slow gaze drift keeps them lively.
+  const blinkPhase = (time % 3200) / 3200;
+  const blinking = blinkPhase > 0.955;
+  const gaze = Math.sin(time / 1400) * 0.7;      // pupils drift left/right a touch
+
+  const lx = cfg.x - cfg.spread;
+  const rx = cfg.x + cfg.spread;
+
+  g.save();
+  for (const ex of [lx, rx]) {
+    if (blinking) {
+      // closed lid: a short dark line
+      g.strokeStyle = "#20160f";
+      g.lineWidth = 2.2;
+      g.lineCap = "round";
+      g.beginPath();
+      g.moveTo(ex - cfg.r, cfg.y);
+      g.lineTo(ex + cfg.r, cfg.y);
+      g.stroke();
+      continue;
+    }
+    // eye white
+    g.fillStyle = "#fdfdf7";
+    g.strokeStyle = "#20160f";
+    g.lineWidth = 1.4;
+    g.beginPath();
+    g.ellipse(ex, cfg.y, cfg.r + 0.6, cfg.r + 1.2, 0, 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
+    // pupil
+    g.fillStyle = "#20160f";
+    g.beginPath();
+    g.arc(ex + gaze, cfg.y + 0.6, cfg.r * 0.62, 0, Math.PI * 2);
+    g.fill();
+    // highlight
+    g.fillStyle = "rgba(255,255,255,0.9)";
+    g.beginPath();
+    g.arc(ex + gaze - 0.9, cfg.y - 0.6, cfg.r * 0.24, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.restore();
+}
+
 function drawSpudBody(targetCtx, character, hurt = false) {
   // Redesigned PNG character art, when available: draw it centered in the same local space
   // the code body uses (roughly a 64-wide sprite around origin, feet near y=+30). The
@@ -907,6 +962,10 @@ function drawSpudBody(targetCtx, character, hurt = false) {
     const dx = -size / 2, dy = -size / 2 - 6;
     targetCtx.imageSmoothingEnabled = true;
     targetCtx.drawImage(art, dx, dy, size, size);
+    // The character PNGs are drawn with sleepy, half-closed eyes. Paint OPEN eyes on top so
+    // the potato looks awake and alive, blinking occasionally. Positioned over the sprite's
+    // baked eye slits (found by eye at roughly y=-7, x=+/-7 in this local space).
+    if (!hurt) drawSpudEyes(targetCtx, character);
     if (hurt) {
       // Re-stamp the sprite as a red silhouette (using its own alpha) for the hit flash,
       // like the enemy flash — no clipping side effects on the rest of the scene.
