@@ -248,7 +248,7 @@ const upgrades = [
   },
   {
     id: "armor",
-    name: "Gilded Bulwark",
+    name: "Gilded Chestplate",
     badge: "A",
     description: "+3 Armor.",
     baseCost: 31,
@@ -532,8 +532,8 @@ const upgradeProfiles = {
     stats: ["+5% Crit Chance"]
   },
   armor: {
-    lore: "A dented helmet made from the least rusty scraps.",
-    properties: "Reduces damage taken from enemy contact and enemy projectiles. Armor has diminishing returns, but each point is still valuable when enemies hit often.",
+    lore: "A solid gilded chestplate, polished and ready for a fight.",
+    properties: "Reduces damage taken from enemy contact and enemy projectiles. Reliable, well-rounded protection that keeps you standing when the swarm closes in.",
     stats: ["+3 Armor"]
   },
   dodge: {
