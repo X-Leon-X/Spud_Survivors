@@ -34,6 +34,40 @@ function spawnRing(x, y, color, maxRadius, life = 0.3) {
   });
 }
 
+// Muzzle flash: a short-lived oriented burst at the gun barrel when it fires. Drawn as a
+// bright star/cone pointing along the shot so shooting reads with a snappy pop of light,
+// plus a couple of spark streaks. `angle` is the shot direction (radians).
+function spawnMuzzleFlash(x, y, angle, color = "#ffe6a0", size = 1) {
+  state.particles.push({
+    type: "muzzle",
+    x,
+    y,
+    vx: 0,
+    vy: 0,
+    angle,
+    color,
+    size,
+    life: 0.09,
+    maxLife: 0.09
+  });
+  // a few forward spark streaks for extra energy
+  for (let i = 0; i < 3; i += 1) {
+    const spread = (Math.sin(x * 0.7 + i * 2.3) * 0.5) * 0.5;   // deterministic jitter
+    const spd = 120 + i * 40;
+    state.particles.push({
+      type: "spark",
+      x,
+      y,
+      vx: Math.cos(angle + spread) * spd,
+      vy: Math.sin(angle + spread) * spd,
+      color,
+      radius: 2.2 - i * 0.4,
+      life: 0.14,
+      maxLife: 0.14
+    });
+  }
+}
+
 // Death pop: keeps the enemy's sprite on screen for a moment so it can squash,
 // spin slightly, and fade instead of vanishing on the frame it dies.
 function spawnEnemyDeath(enemy) {

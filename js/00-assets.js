@@ -66,6 +66,11 @@ const ART_SOURCES = {
 
   "mutation:eye": "assets/mutations/steady_eye.png",
 
+  // Player characters - drawn as the player body in-arena and in the select/preview.
+  "character:sprout": "assets/characters/sprout.png",
+  "character:chunk": "assets/characters/chunk.png",
+  "character:zip": "assets/characters/zip.png",
+
   // Environment objects drawn in the arena.
   "env:crate": "assets/environment/crate.png",
   "env:crate_broken": "assets/environment/crate_broken.png",
@@ -106,6 +111,10 @@ const ENEMY_NO_FLIP = new Set(["Bruiser"]);
 
 function enemyArt(name) {
   return artFor(`enemy:${name}`);
+}
+
+function characterArt(character) {
+  return character && character.id ? artFor(`character:${character.id}`) : null;
 }
 
 function crateArt(broken) {

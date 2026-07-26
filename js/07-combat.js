@@ -443,6 +443,8 @@ function fireEquippedWeapons(dt) {
   for (let index = 0; index < count; index += 1) {
     const weapon = state.weapons[index];
     weapon.fireCooldown = Math.max(0, (weapon.fireCooldown ?? 0) - dt);
+    // Recoil springs back to 0 quickly (a snappy kick, not a slow drift).
+    if (weapon.recoil > 0) weapon.recoil = Math.max(0, weapon.recoil - dt * 55);
     if (weapon.fireCooldown > 0) {
       continue;
     }
@@ -476,7 +478,15 @@ function fireWeaponFromSlot(weapon, slot, target) {
   const baseAngle = Math.atan2(target.y - slot.y, target.x - slot.x);
   const muzzle = getWeaponMuzzleWorld(weapon, slot, baseAngle, scale);
   const angle = Math.atan2(target.y - muzzle.y, target.x - muzzle.x);
-  burst(muzzle.x, muzzle.y, profile.impactColor ?? "#fff0a8", 3);
+  // Snappy muzzle flash + recoil kick so shooting reads with punch. Flamethrower/heavy
+  // guns get a bigger flash; the recoil shoves the weapon sprite back along its aim.
+  const heavy = weapon.name === "Grenade Launcher" || weapon.name === "Scrap Revolver";
+  const flashColor = weapon.name === "Twig Wand" ? "#bfe6ff"
+    : weapon.name === "Tin Dragon Flamethrower" ? "#ffb04a"
+    : profile.impactColor ?? "#ffe6a0";
+  spawnMuzzleFlash(muzzle.x, muzzle.y, angle, flashColor, heavy ? 1.5 : 1);
+  weapon.recoil = heavy ? 7 : 4.5;          // px kickback, decays in updateWeapons
+  weapon.recoilAngle = angle;
   playSfx(
     weapon.name === "Tin Dragon Flamethrower"
       ? "flame"

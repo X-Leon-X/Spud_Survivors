@@ -276,6 +276,8 @@ function drawArenaWeapon(player) {
     ctx.globalAlpha = overlapEnemy ? 0.54 : 0.94;
     ctx.translate(slot.x, slot.y);
     ctx.rotate(angle);
+    // Recoil kick: shove the weapon back along its aim (local -x) right after firing.
+    if (weapon.recoil > 0) ctx.translate(-weapon.recoil, 0);
     ctx.scale(scale * breathe, scale * breathe);
     if (arenaArt) {
       // Tile-less weapon PNG: draw it centered, sized to the sprite footprint. Kept
@@ -895,6 +897,28 @@ function drawWeaponSpriteShape(targetCtx, weapon) {
 }
 
 function drawSpudBody(targetCtx, character, hurt = false) {
+  // Redesigned PNG character art, when available: draw it centered in the same local space
+  // the code body uses (roughly a 64-wide sprite around origin, feet near y=+30). The
+  // caller already applied bob/lean/squash, so this stays a plain centered draw plus a
+  // red hurt flash re-stamp using the sprite's own alpha.
+  const art = characterArt(character);
+  if (art) {
+    const size = 88;
+    const dx = -size / 2, dy = -size / 2 - 6;
+    targetCtx.imageSmoothingEnabled = true;
+    targetCtx.drawImage(art, dx, dy, size, size);
+    if (hurt) {
+      // Re-stamp the sprite as a red silhouette (using its own alpha) for the hit flash,
+      // like the enemy flash — no clipping side effects on the rest of the scene.
+      targetCtx.save();
+      targetCtx.globalCompositeOperation = "lighter";
+      targetCtx.globalAlpha = 0.5;
+      targetCtx.drawImage(art, dx, dy, size, size);
+      targetCtx.restore();
+    }
+    return;
+  }
+
   const time = performance.now();
   const leafWiggle = Math.sin(time / 520) * 0.16;
   const blink = Math.sin(time / 1150) > 0.965;
@@ -2417,6 +2441,50 @@ function drawParticle(particle) {
     ctx.lineWidth = 3 * (1 - progress) + 1;
     ctx.beginPath();
     ctx.arc(particle.x, particle.y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+  if (particle.type === "muzzle") {
+    // Oriented flash: a bright four-point star + glow cone at the barrel, fading fast.
+    const t = clamp(particle.life / (particle.maxLife ?? 0.09), 0, 1);   // 1 -> 0
+    const s = (particle.size ?? 1) * (0.7 + t * 0.5);
+    ctx.translate(particle.x, particle.y);
+    ctx.rotate(particle.angle ?? 0);
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = t;
+    // soft glow
+    const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, 22 * s);
+    glow.addColorStop(0, particle.color);
+    glow.addColorStop(0.4, "rgba(255,190,90,0.5)");
+    glow.addColorStop(1, "rgba(255,150,60,0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(0, 0, 22 * s, 0, Math.PI * 2);
+    ctx.fill();
+    // forward star flare
+    ctx.fillStyle = "#fff7e0";
+    ctx.beginPath();
+    const long = 26 * s, shortR = 6 * s;
+    ctx.moveTo(long, 0);
+    ctx.lineTo(shortR * 0.6, shortR);
+    ctx.lineTo(-shortR, 0);
+    ctx.lineTo(shortR * 0.6, -shortR);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+  if (particle.type === "spark") {
+    const t = clamp(particle.life / (particle.maxLife ?? 0.14), 0, 1);
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = t;
+    ctx.strokeStyle = particle.color;
+    ctx.lineWidth = (particle.radius ?? 2) * t;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(particle.x, particle.y);
+    ctx.lineTo(particle.x - particle.vx * 0.02, particle.y - particle.vy * 0.02);
     ctx.stroke();
     ctx.restore();
     return;
