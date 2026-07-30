@@ -214,6 +214,24 @@ function quitToFarewell() {
 //   4. fade the whole overlay out into the normal title menu.
 const VINE_BOOM_SRC = "assets/audio/vine_boom.mp3";
 
+// Plays the vine boom (real clip, else synth fallback) at most once. If audio is still
+// locked by the browser's autoplay policy (no user gesture yet), it doesn't just get lost:
+// it's armed to fire on the first unlock instead (see onAudioUnlocked in 00-audio.js).
+let vineBoomPlayed = false;
+function playBoomOrArm() {
+  if (vineBoomPlayed || gameSettings.muted) return;
+  const attempt = () => {
+    if (vineBoomPlayed) return;
+    vineBoomPlayed = true;
+    playClip(VINE_BOOM_SRC, { gain: 0.9 }).then((ok) => { if (!ok) synthVineBoom(); });
+  };
+  if (audioCtx && audioCtx.state !== "suspended") {
+    attempt();
+  } else {
+    onAudioUnlocked(attempt);
+  }
+}
+
 function playIntroThenTitle() {
   const overlay = document.getElementById("introCinematic");
   const line = document.getElementById("introLine");
@@ -259,7 +277,7 @@ function playIntroThenTitle() {
   // Card 2: "Brotato ripoff" + vine boom
   at(2700, () => {
     setLine("Brotato ripoff", "intro-pop");
-    playClip(VINE_BOOM_SRC, { gain: 0.9 }).then((ok) => { if (!ok) synthVineBoom(); });
+    playBoomOrArm();
   });
 
   // Card 2 drops off the screen

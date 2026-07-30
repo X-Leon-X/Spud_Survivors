@@ -902,10 +902,23 @@ function drawWeaponSpriteShape(targetCtx, weapon) {
 // a soft skin-tone radial-gradient patch masks out the baked slit underneath so only our drawn
 // eye shows — the gradient fades to transparent at the rim so there's no visible patch seam
 // against the shaded potato face.
+//
+// All anchor + mask numbers below are MEASURED, not guessed: a Node/sharp script scanned each
+// 512x512 source PNG for the two dark (luminance<90), opaque (alpha>180), horizontal-slit-shaped
+// pixel clusters in the upper-middle face region (baked eye slits), took their centroids and
+// bounding boxes in source px, then converted to this function's local sprite space via
+// localX = (sx/512)*88 - 44, localY = (sy/512)*88 - 50 (matching drawSpudBody's
+// drawImage(art, -44, -50, 88, 88) placement). maskHalfW/maskHalfH are the measured slit
+// half-width/half-height (converted to local scale) plus a +1.5 local px safety margin.
+//
+// Measured source-px slit centroids/bboxes (from BrotatoStandalonePrototype/assets/characters):
+//   sprout: L centroid=(212.5,263.1) bbox 35x12 | R centroid=(296.9,263.0) bbox 37x12
+//   chunk:  L centroid=(205.8,249.8) bbox 46x15 | R centroid=(298.7,249.6) bbox 44x15
+//   zip:    L centroid=(209.6,246.3) bbox 42x13 | R centroid=(299.9,246.3) bbox 44x13
 const CHARACTER_EYES = {
-  sprout: { x: 6.5, y: -7.5, spread: 8.5, r: 3.3 },
-  chunk:  { x: 6.5, y: -9.5, spread: 9.1, r: 3.5 },
-  zip:    { x: 6.5, y: -10.2, spread: 8.9, r: 3.2 }
+  sprout: { x: -0.22, y: -4.79, spread: 7.26, r: 3.3, maskHalfW: 4.68, maskHalfH: 2.53 },
+  chunk:  { x: -0.64, y: -7.08, spread: 7.98, r: 3.5, maskHalfW: 5.45, maskHalfH: 2.79 },
+  zip:    { x: -0.21, y: -7.67, spread: 7.76, r: 3.2, maskHalfW: 5.28, maskHalfH: 2.62 }
 };
 
 function drawSpudEyes(g, character) {
@@ -921,16 +934,19 @@ function drawSpudEyes(g, character) {
 
   g.save();
   for (const ex of [lx, rx]) {
-    // Cover the PNG's baked slit-eye underneath so only our drawn eye shows. Soft radial
-    // gradient fades to transparent at the rim -> no visible patch seam on the shaded face.
-    const maskR = cfg.r + 4.5;
-    const mask = g.createRadialGradient(ex, cfg.y, 0, ex, cfg.y, maskR);
+    // Cover the PNG's baked slit-eye underneath so only our drawn eye shows. Sized directly
+    // from the MEASURED slit bounding box (+ safety margin) so it reliably covers the slit
+    // regardless of the drawn eyeball's own radius. Soft radial gradient fades to transparent
+    // at the rim -> no visible patch seam on the shaded face.
+    const maskRx = cfg.maskHalfW;
+    const maskRy = cfg.maskHalfH;
+    const mask = g.createRadialGradient(ex, cfg.y, 0, ex, cfg.y, Math.max(maskRx, maskRy));
     mask.addColorStop(0, "rgba(224,196,150,0.98)");
     mask.addColorStop(0.7, "rgba(224,196,150,0.92)");
     mask.addColorStop(1, "rgba(224,196,150,0)");
     g.fillStyle = mask;
     g.beginPath();
-    g.ellipse(ex, cfg.y, maskR + 2.5, maskR, 0, 0, Math.PI * 2);
+    g.ellipse(ex, cfg.y, maskRx, maskRy, 0, 0, Math.PI * 2);
     g.fill();
 
     if (blinking) {

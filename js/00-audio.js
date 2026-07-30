@@ -53,6 +53,35 @@ function applyAudioSettings() {
   }
 }
 
+// Browsers block audio (WebAudio + <audio>.play()) until the page has seen a real user
+// gesture. The intro cinematic starts automatically on load, so anything it schedules
+// before the user clicks/presses a key/touches the page can get silently blocked. This
+// listens once for the first gesture anywhere, unlocks audio, then runs any callbacks
+// that were queued up waiting for that unlock (see onAudioUnlocked below).
+let audioUnlocked = false;
+const audioUnlockCallbacks = [];
+
+function unlockAudioNow() {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+  ensureAudio();
+  window.removeEventListener("pointerdown", unlockAudioNow);
+  window.removeEventListener("keydown", unlockAudioNow);
+  window.removeEventListener("touchstart", unlockAudioNow);
+  const callbacks = audioUnlockCallbacks.splice(0, audioUnlockCallbacks.length);
+  callbacks.forEach((fn) => fn());
+}
+window.addEventListener("pointerdown", unlockAudioNow, { once: true });
+window.addEventListener("keydown", unlockAudioNow, { once: true });
+window.addEventListener("touchstart", unlockAudioNow, { once: true });
+
+// Run `fn` once audio has been unlocked by a user gesture - immediately if it already
+// has been, otherwise queued until unlockAudioNow fires.
+function onAudioUnlocked(fn) {
+  if (audioUnlocked) fn();
+  else audioUnlockCallbacks.push(fn);
+}
+
 function tone({ freq = 440, endFreq = null, type = "sine", dur = 0.1, vol = 0.12, delay = 0 }) {
   if (!audioCtx) return;
   const start = audioCtx.currentTime + delay;
