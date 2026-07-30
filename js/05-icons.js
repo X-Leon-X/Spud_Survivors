@@ -25,7 +25,10 @@ function drawItemIcon(iconCanvas, data = {}, kind = "item") {
 function hasArtSource(data) {
   if (!data) return false;
   if (data.weaponName) return artSourceUsable(`weapon:${data.weaponName}`) || artSourceUsable(`item:${data.id}`);
-  if (data.part) return artSourceUsable(`mutation:${String(data.part).toLowerCase()}`);
+  if (data.part) {
+    const nameKey = data.name ? `mutation:${String(data.name).toLowerCase()}` : null;
+    return (nameKey && artSourceUsable(nameKey)) || artSourceUsable(`mutation:${String(data.part).toLowerCase()}`);
+  }
   if (data.id) return artSourceUsable(`item:${data.id}`) || (data.name && artSourceUsable(`weapon:${data.name}`));
   if (data.name) return artSourceUsable(`weapon:${data.name}`);
   return false;

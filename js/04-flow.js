@@ -485,11 +485,12 @@ function rollBodyUpgrades() {
     used.add(upgrade.key);
     const amount = upgrade.amounts[tier - 1];
     const sign = amount > 0 ? "+" : "";
+    const description = `${upgrade.part}: ${sign}${amount}${upgrade.suffix ?? ""} ${statDefs.find((stat) => stat.key === upgrade.key)?.name ?? upgrade.key}`;
     choices.push({
       ...upgrade,
       tier,
       amount,
-      description: `${upgrade.part}: ${sign}${amount}${upgrade.suffix ?? ""} ${statDefs.find((stat) => stat.key === upgrade.key)?.name ?? upgrade.key}`
+      description: `${description}${upgrade.note ? `\n${upgrade.note}` : ""}`
     });
   }
   return choices;
@@ -616,7 +617,7 @@ function rewardCard(title, description, tier, buttonText, badgeText = tier, artK
   card.innerHTML = `
     ${rewardArtHtml(artKind, badgeText, tier, artData)}
     <h2>${title}</h2>
-    <p>${description}</p>
+    <p>${String(description).replace(/\n/g, "<br>")}</p>
     <div class="price">
       <strong>${rewardLabel}</strong>
       <button type="button">${buttonText}</button>

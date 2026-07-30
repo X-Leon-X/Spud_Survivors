@@ -113,10 +113,10 @@ const bodyUpgrades = [
   { key: "maxHp", name: "Reinforced Heart", part: "Heart", amounts: [3, 6, 10, 16, 26] },
   { key: "hpRegen", name: "Steady Heartbeat", part: "Heart", amounts: [1, 2, 3, 5, 8] },
   { key: "lifeSteal", name: "Hungry Veins", part: "Veins", amounts: [1, 2, 4, 6, 10], suffix: "%" },
-  { key: "damagePercent", name: "Knotted Muscles", part: "Muscles", amounts: [4, 8, 12, 18, 28], suffix: "%" },
+  { key: "damagePercent", name: "Buff Arms", part: "Muscles", amounts: [4, 8, 12, 18, 28], suffix: "%" },
   { key: "meleeDamage", name: "Heavy Hands", part: "Hands", amounts: [1, 2, 3, 5, 8] },
   { key: "rangedDamage", name: "Steady Eye", part: "Eye", amounts: [1, 2, 3, 5, 8] },
-  { key: "elementalDamage", name: "Hot Nerves", part: "Nerves", amounts: [1, 2, 3, 5, 8] },
+  { key: "elementalDamage", name: "Charged Nerves", part: "Nerves", amounts: [1, 2, 3, 5, 8] },
   { key: "attackSpeed", name: "Twitch Tendons", part: "Tendons", amounts: [5, 9, 14, 20, 32], suffix: "%" },
   { key: "critChance", name: "Sharp Instinct", part: "Brain", amounts: [2, 4, 7, 10, 16], suffix: "%" },
   { key: "engineering", name: "Tool Sense", part: "Fingers", amounts: [1, 2, 4, 6, 10] },
@@ -124,7 +124,7 @@ const bodyUpgrades = [
   { key: "armor", name: "Thicker Skin", part: "Skin", amounts: [1, 2, 4, 6, 10] },
   { key: "dodge", name: "Loose Ankles", part: "Ankles", amounts: [2, 3, 5, 8, 12], suffix: "%" },
   { key: "speed", name: "Quicker Legs", part: "Legs", amounts: [3, 6, 10, 15, 23], suffix: "%" },
-  { key: "luck", name: "Lucky Mole", part: "Mole", amounts: [3, 6, 10, 15, 24] },
+  { key: "luck", name: "Lucky Mole", part: "Mole", amounts: [3, 6, 10, 15, 24], note: "I know it is supposed to be a skin mole, but I thought this looked better." },
   { key: "harvesting", name: "Greener Thumb", part: "Thumb", amounts: [3, 6, 10, 15, 24] }
 ];
 

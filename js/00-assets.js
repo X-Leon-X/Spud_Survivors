@@ -65,6 +65,21 @@ const ART_SOURCES = {
   "weapon:Grenade Launcher": "assets/items/grenade_launcher.png",
 
   "mutation:eye": "assets/mutations/steady_eye.png",
+  "mutation:reinforced heart": "assets/mutations/heart_reinforced.png",
+  "mutation:steady heartbeat": "assets/mutations/heart_steady.png",
+  "mutation:veins": "assets/mutations/veins.png",
+  "mutation:muscles": "assets/mutations/muscles.png",
+  "mutation:hands": "assets/mutations/hands.png",
+  "mutation:nerves": "assets/mutations/nerves.png",
+  "mutation:tendons": "assets/mutations/tendons.png",
+  "mutation:brain": "assets/mutations/brain.png",
+  "mutation:fingers": "assets/mutations/fingers.png",
+  "mutation:arms": "assets/mutations/arms.png",
+  "mutation:skin": "assets/mutations/skin.png",
+  "mutation:ankles": "assets/mutations/ankles.png",
+  "mutation:legs": "assets/mutations/legs.png",
+  "mutation:mole": "assets/mutations/mole.png",
+  "mutation:thumb": "assets/mutations/thumb.png",
 
   // Player characters - drawn as the player body in-arena and in the select/preview.
   "character:sprout": "assets/characters/sprout.png",
@@ -205,7 +220,8 @@ function itemArt(data = {}) {
     return artFor(`weapon:${data.weaponName}`) ?? artFor(`item:${data.id}`);
   }
   if (data.part) {
-    return artFor(`mutation:${String(data.part).toLowerCase()}`);
+    const byName = data.name ? artFor(`mutation:${String(data.name).toLowerCase()}`) : null;
+    return byName ?? artFor(`mutation:${String(data.part).toLowerCase()}`);
   }
   if (data.id) {
     return artFor(`item:${data.id}`) ?? (data.name ? artFor(`weapon:${data.name}`) : null);
@@ -225,7 +241,10 @@ function fullCard(key) {
 function itemArtIsFullCard(data = {}) {
   if (!data) return false;
   if (data.weaponName) return fullCard(`weapon:${data.weaponName}`) || fullCard(`item:${data.id}`);
-  if (data.part) return fullCard(`mutation:${String(data.part).toLowerCase()}`);
+  if (data.part) {
+    const nameKey = data.name ? `mutation:${String(data.name).toLowerCase()}` : null;
+    return (nameKey && fullCard(nameKey)) || fullCard(`mutation:${String(data.part).toLowerCase()}`);
+  }
   if (data.id) return fullCard(`item:${data.id}`) || (data.name && fullCard(`weapon:${data.name}`));
   if (data.name) return fullCard(`weapon:${data.name}`);
   return false;

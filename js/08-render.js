@@ -896,9 +896,12 @@ function drawWeaponSpriteShape(targetCtx, weapon) {
   targetCtx.restore();
 }
 
-// Open, blinking eyes painted over the PNG character's baked sleepy slits. The eye position
-// is tuned per character (their sprites frame the face slightly differently). Draws a white
-// eye-white, dark pupil with a highlight, and a quick periodic blink (a flat lid line).
+// Animated sleepy slit-eyes painted over the PNG character's baked-in sleepy slits. The eye
+// position is tuned per character (their sprites frame the face slightly differently). Rather
+// than replacing the sleepy look with big cartoon eyes (which left the baked slits visible
+// underneath, i.e. four eyes), this masks each baked slit with a soft skin-tone patch and then
+// redraws a single calm, gently-arched slit on top in the same minimal style — animated with a
+// periodic blink (quick flatten) and a subtle idle bob/gaze so the face still reads as alive.
 const CHARACTER_EYES = {
   sprout: { x: 6.5, y: -7.5, spread: 8.5, r: 3.3 },
   chunk:  { x: 6.5, y: -5.5, spread: 9.0, r: 3.5 },
@@ -908,45 +911,57 @@ const CHARACTER_EYES = {
 function drawSpudEyes(g, character) {
   const cfg = CHARACTER_EYES[character?.id] ?? CHARACTER_EYES.sprout;
   const time = performance.now();
-  // Blink ~ every 3.2s for a brief moment; a slow gaze drift keeps them lively.
-  const blinkPhase = (time % 3200) / 3200;
-  const blinking = blinkPhase > 0.955;
-  const gaze = Math.sin(time / 1400) * 0.7;      // pupils drift left/right a touch
 
-  const lx = cfg.x - cfg.spread;
-  const rx = cfg.x + cfg.spread;
+  // Blink: every ~3.2s (within the 2.8-3.6s range) the slit briefly flattens to a
+  // straight line for ~120ms, then returns to its normal gentle arch.
+  const blinkPeriod = 3200;
+  const blinkPhase = time % blinkPeriod;
+  const blinking = blinkPhase < 120;
+
+  // Idle life: a very subtle breathing on the arch depth, plus a tiny shared
+  // horizontal "look" drift and a faint vertical bob. All kept sub-pixel-ish
+  // so it reads as gentle life, not googly animation.
+  const archBreath = Math.sin(time / 1600) * 0.4;        // arch depth eases +/-0.4px
+  const lookDrift = Math.sin(time / 2600) * 1.0;         // both slits shift together
+  const bob = Math.sin(time / 1900) * 0.5;               // slight vertical bob
+
+  const lx = cfg.x - cfg.spread + lookDrift;
+  const rx = cfg.x + cfg.spread + lookDrift;
+  const ey = cfg.y + bob;
+  const halfLen = cfg.r;
+  // Arch depth: how much the slit curves downward in the middle (sleepy "‿" shape). A
+  // quadratic curve only reaches ~half its control offset, so the control point is pulled
+  // well below the endpoints to read as a clear, soft sleepy curve rather than a flat bar.
+  const arch = blinking ? 0 : Math.max(2.4, halfLen * 1.15 + archBreath);
 
   g.save();
   for (const ex of [lx, rx]) {
-    if (blinking) {
-      // closed lid: a short dark line
-      g.strokeStyle = "#20160f";
-      g.lineWidth = 2.2;
-      g.lineCap = "round";
-      g.beginPath();
-      g.moveTo(ex - cfg.r, cfg.y);
-      g.lineTo(ex + cfg.r, cfg.y);
-      g.stroke();
-      continue;
-    }
-    // eye white
-    g.fillStyle = "#fdfdf7";
+    // Soft-edged skin-tone patch to mask the PNG's baked-in slit underneath before
+    // redrawing our own. A flat fill always shows as a visible pale bag against the
+    // shaded face, so instead fade a radial gradient to fully transparent at the rim —
+    // the center covers the baked slit while the edge dissolves into the face with no
+    // seam. Sized generously (especially horizontally) so the baked slit's outer
+    // corners are fully covered and don't leak as dark specks past the new eye.
+    const maskRx = halfLen * 2.0 + 2.2;
+    const maskRy = halfLen * 1.5 + 1.8;
+    const maskGrad = g.createRadialGradient(ex, ey, 0, ex, ey, Math.max(maskRx, maskRy));
+    maskGrad.addColorStop(0, "rgba(214,176,132,0.95)");
+    maskGrad.addColorStop(0.6, "rgba(214,176,132,0.7)");
+    maskGrad.addColorStop(1, "rgba(214,176,132,0)");
+    g.fillStyle = maskGrad;
+    g.beginPath();
+    g.ellipse(ex, ey, maskRx, maskRy, 0, 0, Math.PI * 2);
+    g.fill();
+
+    // The sleepy slit itself: a short, gently-curved dark line (calm "‿" arch),
+    // or a flat line during a blink.
     g.strokeStyle = "#20160f";
-    g.lineWidth = 1.4;
+    g.lineWidth = 1.9;
+    g.lineCap = "round";
     g.beginPath();
-    g.ellipse(ex, cfg.y, cfg.r + 0.6, cfg.r + 1.2, 0, 0, Math.PI * 2);
-    g.fill();
+    g.moveTo(ex - halfLen, ey - arch * 0.15);
+    g.quadraticCurveTo(ex, ey + arch, ex + halfLen, ey - arch * 0.15);
     g.stroke();
-    // pupil
-    g.fillStyle = "#20160f";
-    g.beginPath();
-    g.arc(ex + gaze, cfg.y + 0.6, cfg.r * 0.62, 0, Math.PI * 2);
-    g.fill();
-    // highlight
-    g.fillStyle = "rgba(255,255,255,0.9)";
-    g.beginPath();
-    g.arc(ex + gaze - 0.9, cfg.y - 0.6, cfg.r * 0.24, 0, Math.PI * 2);
-    g.fill();
   }
   g.restore();
 }
