@@ -292,4 +292,23 @@ function playIntroThenTitle() {
 
 // Boot: this file loads last, so showTitleScreen/initTitleControls are defined by now.
 initTitleControls();
-playIntroThenTitle();
+
+// Show a "click to start" gate before the intro cinematic. Browsers block audio until a
+// real user gesture, so the intro's 2700ms vine-boom would otherwise get silently blocked
+// on first load. Clicking the gate button unlocks audio synchronously inside the gesture,
+// then starts the intro - so the boom plays exactly on cue.
+(function bootStartGate() {
+  const gate = document.getElementById("startGate");
+  const button = document.getElementById("startGateButton");
+  if (!gate || !button) {
+    // Fallback: no gate present, old behavior.
+    playIntroThenTitle();
+    return;
+  }
+  button.addEventListener("click", () => {
+    ensureAudio();
+    if (typeof unlockAudioNow === "function") unlockAudioNow();
+    gate.classList.add("hidden");
+    playIntroThenTitle();
+  });
+})();

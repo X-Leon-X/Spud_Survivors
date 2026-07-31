@@ -2269,6 +2269,74 @@ button:active:not(:disabled) {
   #titleStage { width: 62vw; }
 }
 
+/* ---- Start gate: click-to-start overlay that unlocks audio before the intro plays ---- */
+.start-gate {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(120% 90% at 50% 18%, #2a3a2f 0%, #1a2622 42%, #0e1512 100%);
+}
+.start-gate.hidden { display: none; }
+
+.start-gate-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+  padding: 0 24px;
+}
+
+.start-gate-title {
+  margin: 0 0 6px;
+  font-weight: 1000;
+  font-size: clamp(32px, 7vw, 64px);
+  letter-spacing: 3px;
+  color: var(--gold);
+  -webkit-text-stroke: 4px #111722;
+  paint-order: stroke fill;
+  text-transform: uppercase;
+  filter: drop-shadow(0 6px 0 rgba(0, 0, 0, 0.35));
+  animation: titleBob 3.2s ease-in-out infinite;
+}
+
+.start-gate-btn {
+  font: inherit;
+  font-weight: 900;
+  font-size: 20px;
+  letter-spacing: 1px;
+  color: #3a2708;
+  background: linear-gradient(180deg, #ffd873 0%, #f2b73f 100%);
+  border: 3px solid #111722;
+  border-radius: 10px;
+  box-shadow: 0 5px 0 rgba(17, 23, 34, 0.55);
+  padding: 14px 26px;
+  cursor: pointer;
+  transition: transform 90ms ease, box-shadow 90ms ease, background 120ms ease;
+}
+.start-gate-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 7px 0 rgba(17, 23, 34, 0.55);
+  background: linear-gradient(180deg, #ffe08a 0%, #f7c250 100%);
+}
+.start-gate-btn:active {
+  transform: translateY(3px);
+  box-shadow: 0 2px 0 rgba(17, 23, 34, 0.55);
+}
+
+.start-gate-hint {
+  margin: 0;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: rgba(255, 247, 231, 0.5);
+  text-transform: uppercase;
+}
+
 /* ---- Intro cinematic: dark screen with white presenter cards before the menu ---- */
 .intro-cinematic {
   position: absolute;
