@@ -177,15 +177,21 @@ function fireSlimeShotFromElement(el) {
     playSfx("shoot");
     return;
   }
-  // Nearest slime, so the shot visibly picks a sensible target instead of firing across
-  // the whole screen past three closer ones.
+  // Nearest slime that nothing is already flying at. Without the targeted check, spamming
+  // the O just dumps every bullet into the same slime -- one shot each is the point.
+  const claimed = new Set(slimeShots.map((sh) => sh.target));
   let target = null;
   let best = Infinity;
   for (const s of titleSlimes) {
+    if (claimed.has(s)) continue;
     const d = (s.x - at.x) ** 2 + (s.y - at.y) ** 2;
     if (d < best) { best = d; target = s; }
   }
-  if (!target) return;
+  // Every slime already has a bullet inbound: fire a dry click rather than double up.
+  if (!target) {
+    playSfx("shoot");
+    return;
+  }
   const t = performance.now() / 1000;
   slimeShots.push({
     x0: at.x, y0: at.y,

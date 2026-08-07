@@ -21,7 +21,8 @@ const CHANGELOG = [
       "Fixed the character descriptions. Zip is a fast, lucky scavenger, not a heavy hitter.",
       "Zip leans further into what it is actually good at: more speed, more luck.",
       "Title screen revamp: the little blobs crowding the potato are gone.",
-      "Slimes now have the run of the whole screen, and there is room for a LOT of them."
+      "Slimes now have the run of the whole screen, and there is room for a LOT of them.",
+      "Rapid clicking now spreads shots across different targets instead of stacking them."
     ]
   },
   {
