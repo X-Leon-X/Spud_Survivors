@@ -885,6 +885,8 @@ function updateHud() {
   ui.scrap.textContent = state.scrap;
   ui.bag.textContent = state.unusedScrap + state.pendingBagScrap;
   ui.bag.closest(".stat").classList.toggle("hidden", state.mode === "playing" || state.mode === "menu");
+  // The compendium button keeps the bag chip's visibility rule so it stays out of combat.
+  ui.compendiumButton?.classList.toggle("hidden", state.mode === "playing" || state.mode === "menu");
   ui.hpFill.style.width = `${clamp(state.player.hp / state.player.maxHp, 0, 1) * 100}%`;
   ui.hpText.textContent = `${Math.max(0, Math.round(state.player.hp))} / ${Math.round(state.player.maxHp)}`;
   if (state.mode === "shop") {
@@ -898,7 +900,18 @@ function renderStatSheets() {
   const derivedRows = [
     ["Avg Weapon DPS", calculateAverageWeaponDps().toFixed(1), "derived"],
     ["Damage Taken", `${Math.round(armorDamageMultiplier(effectiveStat("armor")) * 100)}%`, "derived"],
-    ["Weapon Classes", formatWeaponClassBonuses() || "None", "derived"]
+    ["Weapon Classes", formatWeaponClassBonuses() || "None", "derived"],
+    ["Move Speed", `${Math.round(state.player.speed)} px/s`, "derived"],
+    ["Attacks/sec", state.player.fireRate.toFixed(2), "derived"],
+    ["Projectiles/Shot", state.player.projectiles, "derived"],
+    ["Weapon Slots", `${state.weapons.length}/${maxWeaponSlots()}`, "derived"],
+    ["Effective Dodge", `${Math.round(Math.min(60, effectiveStat("dodge")))}%`, "derived"],
+    ["Shot Speed", `${Math.round(state.player.shotSpeed)} px/s`, "derived"],
+    ["Zap Cooldown", `${engineeringZapCooldown(effectiveStat("engineering")).toFixed(2)}s`, "derived"],
+    ["Shop Discount", `${Math.round(state.shopDiscount * 100)}%`, "derived"],
+    ["Recycle Rate", `${Math.round(state.recycleRate * 100)}%`, "derived"],
+    ["HP Regen Delay", (() => { const d = hpRegenHealDelay(effectiveStat("hpRegen")); return d === Infinity ? "—" : `${d.toFixed(2)}s`; })(), "derived"],
+    ["Dmg Taken (Run)", Math.round(Object.values(state.runStats.damageTakenBySource ?? {}).reduce((a, b) => a + b, 0)), "derived"]
   ].map(([name, value, className]) => `<div class="stat-row ${className}"><span class="stat-name">${name}</span><span class="stat-value">${value}</span></div>`);
 
   const statRows = statDefs.map((stat) => {
@@ -910,7 +923,15 @@ function renderStatSheets() {
     const bonusText = bonus ? ` <small>class +${bonus}</small>` : "";
     return `<div class="stat-row"><span class="stat-name">${stat.name}</span><span class="stat-value">${value}${ownedText}${bonusText}</span></div>`;
   });
-  const html = [...derivedRows, ...statRows].join("");
+
+  const runStatsHeading = `<div class="stats-title" style="grid-column: 1 / -1; margin-top: 8px;">Run Stats</div>`;
+  const runStatsRows = [
+    ["Kills", state.runStats.kills, "derived"],
+    ["Time Played", formatDuration(state.runStats.timePlayed), "derived"],
+    ["Scrap Earned", state.runStats.scrapEarned, "derived"]
+  ].map(([name, value, className]) => `<div class="stat-row ${className}"><span class="stat-name">${name}</span><span class="stat-value">${value}</span></div>`);
+
+  const html = [...derivedRows, ...statRows, runStatsHeading, ...runStatsRows].join("");
   ui.shopStatList.innerHTML = html;
 }
 
@@ -1102,8 +1123,14 @@ function paintCharacterPortrait(portraitCanvas, now) {
 
 function renderCharacterPortraits(now) {
   // Skip when the select screen isn't showing (keeps the loop cheap elsewhere).
-  if (!ui.startMenu || ui.startMenu.classList.contains("hidden")) return;
-  for (const canvas of characterPortraits) paintCharacterPortrait(canvas, now);
+  if (ui.startMenu && !ui.startMenu.classList.contains("hidden")) {
+    for (const canvas of characterPortraits) paintCharacterPortrait(canvas, now);
+  }
+  // Keep the Field Market loadout preview animating (blink, etc.) while the shop is open,
+  // instead of freezing on whatever frame was current when the shop last refreshed.
+  if (ui.shop && !ui.shop.classList.contains("hidden")) {
+    drawPlayerPreview();
+  }
 }
 
 function drawPreviewGear(pctx) {
@@ -1112,49 +1139,43 @@ function drawPreviewGear(pctx) {
 
   const primaryWeapon = getPrimaryWeapon();
   if (primaryWeapon) {
+    const arenaArt = weaponArenaArt(primaryWeapon.name);
     pctx.save();
     pctx.translate(34, -8);
     pctx.rotate(-0.14);
-    pctx.scale(0.78, 0.78);
-    drawWeaponSpriteShape(pctx, primaryWeapon);
+    if (arenaArt) {
+      // Real weapon PNG, matching the in-arena rendering path (js/08-render.js) instead
+      // of the outdated code-drawn shape. Same aspect-correct fit as the arena so the
+      // preview doesn't squash wide weapons into a square.
+      const boxSize = 38;
+      pctx.rotate(arenaWeaponAngle(primaryWeapon.name));
+      drawWeaponArtFitted(pctx, primaryWeapon.name, arenaArt, boxSize);
+    } else {
+      pctx.scale(0.78, 0.78);
+      drawWeaponSpriteShape(pctx, primaryWeapon);
+    }
     pctx.restore();
   }
 
-  if (effectiveStat("armor") > 0) {
-    pctx.fillStyle = "#9aa7b8";
-    pctx.beginPath();
-    pctx.arc(0, -12, 22, Math.PI, Math.PI * 2);
-    pctx.lineTo(20, -10);
-    pctx.lineTo(-20, -10);
-    pctx.closePath();
-    pctx.fill();
-    pctx.stroke();
-  }
+  // Small row of stat indicator dots below the character, kept clear of the head/face
+  // so nothing overlaps the eyes (the old armor "helmet" arc used to sit right over them).
+  const pips = [];
+  if (effectiveStat("armor") > 0) pips.push("#9aa7b8");
+  if (effectiveStat("luck") > 0) pips.push("#f2c45f");
+  if (effectiveStat("engineering") > 0) pips.push("#66c7d8");
+  if (effectiveStat("elementalDamage") > 0) pips.push("#ff9c5b");
 
-  if (effectiveStat("luck") > 0) {
-    pctx.fillStyle = "#f2c45f";
-    pctx.beginPath();
-    pctx.arc(-21, 6, 6, 0, Math.PI * 2);
-    pctx.fill();
-    pctx.stroke();
-  }
-
-  if (effectiveStat("engineering") > 0) {
-    pctx.fillStyle = "#66c7d8";
-    pctx.beginPath();
-    pctx.arc(21, 14, 6, 0, Math.PI * 2);
-    pctx.fill();
-    pctx.stroke();
-  }
-
-  if (effectiveStat("elementalDamage") > 0) {
-    pctx.fillStyle = "#ff9c5b";
-    pctx.beginPath();
-    pctx.moveTo(-25, -2);
-    pctx.lineTo(-18, -18);
-    pctx.lineTo(-12, -2);
-    pctx.closePath();
-    pctx.fill();
-    pctx.stroke();
+  if (pips.length) {
+    const spacing = 14;
+    const startX = -((pips.length - 1) * spacing) / 2;
+    pctx.save();
+    for (let i = 0; i < pips.length; i++) {
+      pctx.fillStyle = pips[i];
+      pctx.beginPath();
+      pctx.arc(startX + i * spacing, 34, 5, 0, Math.PI * 2);
+      pctx.fill();
+      pctx.stroke();
+    }
+    pctx.restore();
   }
 }

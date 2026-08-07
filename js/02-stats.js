@@ -87,7 +87,10 @@ function baseUpgradeEffects(id) {
     case "elemental":
       return { stats: { elementalDamage: 2 } };
     case "pet_alien":
-      return { stats: { maxHp: 12, luck: 8, speed: -6 } };
+      // extraEnemies is a genuine downside, but it pairs with the luck bonus: more bodies
+      // per wave means more scrap and more drops, so the alien is a greed pick rather than
+      // a pure stat stick.
+      return { stats: { maxHp: 12, luck: 8, speed: -6 }, extraEnemies: 1 };
     case "glass_charm":
       return { stats: { damagePercent: 18, maxHp: -8, armor: -2 } };
     case "slot_machine":
@@ -111,6 +114,7 @@ function upgradeEffectsFor(id, tier = 1) {
     recycleRateBonus: 0,
     treeOneShot: Boolean(base.treeOneShot),
     extraWeaponSlots: 0,
+    extraEnemies: 0,
     heal: 0
   };
   for (const [key, value] of Object.entries(base.stats ?? {})) {
@@ -120,6 +124,7 @@ function upgradeEffectsFor(id, tier = 1) {
   if (base.shopDiscount) effects.shopDiscount = base.shopDiscount * ownedTierMultiplier(effectLevel);
   if (base.recycleRateBonus) effects.recycleRateBonus = base.recycleRateBonus * ownedTierMultiplier(effectLevel);
   if (base.extraWeaponSlots) effects.extraWeaponSlots = scaleOwnedAmount(base.extraWeaponSlots, effectLevel);
+  if (base.extraEnemies) effects.extraEnemies = scaleOwnedAmount(base.extraEnemies, effectLevel);
   if (base.heal) effects.heal = scaleOwnedAmount(base.heal, effectLevel);
   return effects;
 }
@@ -132,6 +137,7 @@ function combineOwnedEffects(target, effects) {
   target.shopDiscount += effects.shopDiscount ?? 0;
   target.recycleRateBonus += effects.recycleRateBonus ?? 0;
   target.extraWeaponSlots += effects.extraWeaponSlots ?? 0;
+  target.extraEnemies += effects.extraEnemies ?? 0;
   target.treeOneShot = target.treeOneShot || Boolean(effects.treeOneShot);
 }
 
@@ -142,7 +148,8 @@ function calculateOwnedUpgradeEffects() {
     shopDiscount: 0,
     recycleRateBonus: 0,
     treeOneShot: false,
-    extraWeaponSlots: 0
+    extraWeaponSlots: 0,
+    extraEnemies: 0
   };
 
   for (const item of state.items ?? []) {
@@ -229,7 +236,10 @@ function hpRegenHealDelay(regen) {
   return 1 / healsPerSecond;
 }
 
-function damagePlayer(rawDamage, sourceX, sourceY) {
+// `sourceName` is only used for the run-summary breakdown. It is recorded after the dodge
+// early-return and after armor is applied, so the logged figure is the HP actually lost
+// rather than the raw incoming number, and dodged hits never appear at all.
+function damagePlayer(rawDamage, sourceX, sourceY, sourceName) {
   const player = state.player;
   if (player.damageCooldown > 0) {
     return false;
@@ -254,6 +264,7 @@ function damagePlayer(rawDamage, sourceX, sourceY) {
 
   const damage = Math.max(1, Math.ceil(rawDamage * armorDamageMultiplier(effectiveStat("armor"))));
   player.hp -= damage;
+  trackDamageTaken(sourceName, damage);
   player.damageCooldown = 0.32;
   player.hurtTimer = 0.16;
   addFloater(player.x, player.y - player.radius - 8, `-${damage}`, { color: "#ff8fa3", size: 17 });
@@ -267,4 +278,37 @@ function damagePlayer(rawDamage, sourceX, sourceY) {
     player.y = clamp(player.y + Math.sin(push) * 18, player.radius + 8, H - player.radius - 8);
   }
   return true;
+}
+
+// Ember Glob burn: a small, discrete DoT (3 ticks ~1s apart) applied only on a real hit.
+// Deliberately bypasses damagePlayer — that has a 0.32s hit-cooldown and would both block
+// burn ticks during normal i-frames and steal i-frames from a real follow-up hit. Reapplying
+// while already burning refreshes the ticks rather than stacking them indefinitely.
+function applyPlayerBurn(ticks, tickDamage, sourceName) {
+  const player = state.player;
+  player.burnTicksLeft = ticks;
+  player.burnTickTimer = 1;
+  player.burnTickDamage = tickDamage;
+  player.burnSourceName = sourceName;
+}
+
+function tickPlayerBurn(dt) {
+  const player = state.player;
+  if (!player.burnTicksLeft || player.burnTicksLeft <= 0) {
+    return;
+  }
+  player.burnTickTimer -= dt;
+  if (player.burnTickTimer > 0) {
+    return;
+  }
+  player.burnTickTimer += 1;
+  player.burnTicksLeft -= 1;
+  // Logged to damageTakenBySource, NOT trackDamage(): damageBySource is the player's
+  // damage-DEALT breakdown, so recording harm they receive there would inflate their own
+  // "Burn" total with damage done to them.
+  const damage = Math.max(1, Math.ceil(player.burnTickDamage * armorDamageMultiplier(effectiveStat("armor"))));
+  player.hp -= damage;
+  trackDamageTaken(player.burnSourceName ? `${player.burnSourceName} (Burn)` : "Burn", damage);
+  addFloater(player.x, player.y - player.radius - 8, `-${damage}`, { color: "#ff9c5b", size: 15 });
+  burst(player.x, player.y, "#ff9c5b", 4);
 }

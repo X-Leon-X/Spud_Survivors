@@ -1,0 +1,148 @@
+"use strict";
+
+// changelog.js - the version number and patch notes shown on the title screen.
+//
+// HOW TO UPDATE (do this on EVERY commit):
+//   1. Bump GAME_VERSION below.
+//   2. Add a new entry at the TOP of CHANGELOG with the same version string.
+// The title screen reads GAME_VERSION straight from the first changelog entry's version,
+// so the badge and the notes can never disagree.
+//
+// Versioning: 0.MINOR.PATCH while pre-1.0.
+//   PATCH - fixes, tuning, art swaps.
+//   MINOR - new systems, content or screens.
+
+const CHANGELOG = [
+  {
+    version: "0.9.0",
+    date: "2026-08-06",
+    title: "Balance, stats & the send-off",
+    notes: [
+      "Enemy health now compounds every wave, so late runs stop being a walkover.",
+      "Bruiser is the toughest enemy again, with the highest health AND the highest damage.",
+      "Drummer shrunk so the Bruiser reads as the heavyweight.",
+      "New Damage Taken breakdown on the run summary, plus 11 more stats in the shop.",
+      "Fortune cookie: a rare 1% drop from any enemy (its effect is still a secret).",
+      "Death and Quit now get a bong and a gravestone. You even leave a headstone behind.",
+      "Title screen: enemies roam it, and the potato pulses when clicked.",
+      "Added a very secret easter egg...",
+      "Actually, make that two secret easter eggs...",
+      "Slimes now drift across the whole title screen instead of hugging the potato.",
+      "Every shop price rebuilt so stronger gear actually costs more.",
+      "Weapon sprites no longer squashed, so they keep their real proportions.",
+      "Bigger arena, gentler knockback, and far fewer Darters.",
+      "New items and enemies are on the way. Their art is still being drawn."
+    ]
+  },
+  {
+    version: "0.8.0",
+    date: "2026-07-31",
+    title: "Click to start",
+    notes: [
+      "Added a click-to-start gate so the intro's audio is never swallowed by the browser.",
+      "The vine boom now lands exactly on cue."
+    ]
+  },
+  {
+    version: "0.7.1",
+    date: "2026-07-30",
+    title: "Eyes, properly this time",
+    notes: [
+      "Measured every character's eye position from the source art instead of guessing.",
+      "Fixed the recurring four-eyes bug for good.",
+      "Vine boom autoplay fixed."
+    ]
+  },
+  {
+    version: "0.7.0",
+    date: "2026-07-29",
+    title: "Mutations & expressions",
+    notes: [
+      "Full mutation art set, so all 14 body parts have real art.",
+      "Animated slit-eyes, then restored the open cartoon eyes that cover them."
+    ]
+  },
+  {
+    version: "0.6.0",
+    date: "2026-07-26",
+    title: "Lights, camera, potato",
+    notes: [
+      "Added the intro cinematic and the vine boom.",
+      "Brotato-inspired title screen.",
+      "Animated character-select portraits and open animated player eyes.",
+      "Faster difficulty ramp, enemy tuning, and defringed weapon cutouts.",
+      "Gilded Bulwark renamed to Gilded Chestplate."
+    ]
+  },
+  {
+    version: "0.5.0",
+    date: "2026-07-25",
+    title: "The great art swap",
+    notes: [
+      "Wired up the final 8 item cutouts.",
+      "Real player sprites plus muzzle-flash shooting effects.",
+      "Better crop quality, with area-averaged 512px art across the board."
+    ]
+  },
+  {
+    version: "0.1.0",
+    date: "2026-07-24",
+    title: "First playable",
+    notes: [
+      "Spud Survivors exists! A playable web build with simple placeholder art and mechanics."
+    ]
+  }
+];
+
+// Single source of truth: the badge and the notes always match.
+const GAME_VERSION = CHANGELOG[0].version;
+
+// Escapes note text so a stray < or & in a patch note can't break the panel markup.
+function escapeChangelogText(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function renderChangelog() {
+  const list = document.getElementById("changelogList");
+  if (!list) return;
+  list.innerHTML = CHANGELOG.map((entry, index) => {
+    const notes = entry.notes.map((note) => `<li>${escapeChangelogText(note)}</li>`).join("");
+    return `
+      <div class="changelog-entry${index === 0 ? " latest" : ""}">
+        <div class="changelog-head">
+          <span class="changelog-version">v${escapeChangelogText(entry.version)}</span>
+          <span class="changelog-title">${escapeChangelogText(entry.title)}</span>
+          <span class="changelog-date">${escapeChangelogText(entry.date)}</span>
+        </div>
+        <ul>${notes}</ul>
+      </div>
+    `;
+  }).join("");
+}
+
+function initChangelogControls() {
+  const button = document.getElementById("titleVersionButton");
+  const panel = document.getElementById("titleChangelog");
+  const back = document.getElementById("changelogBack");
+  if (!button || !panel) return;
+
+  button.textContent = `v${GAME_VERSION}`;
+  renderChangelog();
+
+  button.addEventListener("click", () => {
+    playSfx("click");
+    panel.classList.remove("hidden");
+  });
+  button.addEventListener("pointerenter", () => playSfx("hover"));
+  back?.addEventListener("click", () => {
+    playSfx("click");
+    panel.classList.add("hidden");
+  });
+  // Clicking the dimmed backdrop closes it too, matching how the options overlay feels.
+  panel.addEventListener("click", (event) => {
+    if (event.target === panel) panel.classList.add("hidden");
+  });
+}

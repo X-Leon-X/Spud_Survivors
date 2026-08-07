@@ -14,7 +14,8 @@ function loop(now) {
   if (animatedIcons.size > 0) {
     renderAnimatedIcons(now);
   }
-  // Idle-animate the character-select portraits (no-op unless that screen is open).
+  // Idle-animate the character-select portraits and the Field Market loadout preview
+  // (each is a no-op unless its screen is open).
   renderCharacterPortraits(now);
   requestAnimationFrame(loop);
 }
@@ -84,6 +85,23 @@ function showSummary() {
         `)
         .join("")
     : `<p class="summary-empty">No damage dealt. A pacifist potato is a brave potato.</p>`;
+
+  const takenSources = Object.entries(stats.damageTakenBySource ?? {})
+    .map(([name, amount]) => [name, Math.round(amount)])
+    .filter(([, amount]) => amount > 0)
+    .sort((a, b) => b[1] - a[1]);
+  const maxTaken = takenSources.length ? takenSources[0][1] : 1;
+  ui.summaryDamageTaken.innerHTML = takenSources.length
+    ? takenSources
+        .map(([name, amount]) => `
+          <div class="summary-weapon-row">
+            <span class="summary-weapon-name">${name}</span>
+            <span class="summary-weapon-bar taken"><i style="width:${Math.max(3, Math.round((amount / maxTaken) * 100))}%"></i></span>
+            <span class="summary-weapon-value">${amount.toLocaleString()}</span>
+          </div>
+        `)
+        .join("")
+    : `<p class="summary-empty">Untouched. Flawless run.</p>`;
 }
 
 function hideSummary() {
@@ -203,6 +221,23 @@ ui.nextWaveButton.addEventListener("click", () => {
   playSfx("click");
   startWave();
 });
+
+// Placeholder only: the monster compendium isn't built yet, so clicking flashes a
+// "coming soon" toast rather than opening anything.
+const compendiumButton = ui.compendiumButton;
+if (compendiumButton) {
+  compendiumButton.addEventListener("click", () => {
+    playSfx("click");
+    compendiumButton.classList.remove("compendium-toast-show");
+    // force reflow so re-adding the class restarts the animation if clicked again quickly
+    void compendiumButton.offsetWidth;
+    compendiumButton.classList.add("compendium-toast-show");
+    clearTimeout(compendiumButton._toastTimer);
+    compendiumButton._toastTimer = setTimeout(() => {
+      compendiumButton.classList.remove("compendium-toast-show");
+    }, 1600);
+  });
+}
 
 state = freshState();
 initSettingsControls();

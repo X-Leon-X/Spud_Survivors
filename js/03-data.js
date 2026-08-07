@@ -8,7 +8,7 @@ const upgrades = [
     name: "Spark Peashooter",
     badge: "W",
     description: "A basic ranged weapon with steady auto-fire.",
-    baseCost: 26,
+    baseCost: 24,
     tier: 1,
     loadoutType: "weapon",
     weaponName: "Spark Peashooter",
@@ -21,7 +21,7 @@ const upgrades = [
     name: "Twig Wand",
     badge: "W",
     description: "Elemental weapon that adds burn pressure.",
-    baseCost: 28,
+    baseCost: 22,
     tier: 1,
     loadoutType: "weapon",
     weaponName: "Twig Wand",
@@ -34,7 +34,7 @@ const upgrades = [
     name: "Stub Club",
     badge: "W",
     description: "Melee weapon that supports close-range damage.",
-    baseCost: 26,
+    baseCost: 25,
     tier: 1,
     loadoutType: "weapon",
     weaponName: "Stub Club",
@@ -47,7 +47,7 @@ const upgrades = [
     name: "Rusty Pistol",
     badge: "W",
     description: "A practical ranged weapon with quick metal shots.",
-    baseCost: 32,
+    baseCost: 28,
     tier: 1,
     loadoutType: "weapon",
     weaponName: "Rusty Pistol",
@@ -60,7 +60,7 @@ const upgrades = [
     name: "Slingshot",
     badge: "W",
     description: "A garden slingshot that fires heavy stones.",
-    baseCost: 31,
+    baseCost: 26,
     tier: 1,
     loadoutType: "weapon",
     weaponName: "Slingshot",
@@ -74,7 +74,7 @@ const upgrades = [
     name: "Scrap Revolver",
     badge: "W",
     description: "A chunky six-shooter with high crit pressure.",
-    baseCost: 52,
+    baseCost: 46,
     tier: 2,
     loadoutType: "weapon",
     weaponName: "Scrap Revolver",
@@ -88,7 +88,10 @@ const upgrades = [
     name: "Tin Dragon Flamethrower",
     badge: "W",
     description: "A legendary close-range burner.",
-    baseCost: 160,
+    // Strongest weapon in the game and priced accordingly: raw single-target DPS badly
+    // understates it, because it fires two projectiles that each pierce up to 8 targets,
+    // so its real crowd output dwarfs every other legendary.
+    baseCost: 150,
     tier: 5,
     loadoutType: "weapon",
     weaponName: "Tin Dragon Flamethrower",
@@ -102,7 +105,9 @@ const upgrades = [
     name: "Grenade Launcher",
     badge: "W",
     description: "A slow mid-game explosive weapon that becomes terrifying at high ranks.",
-    baseCost: 145,
+    // Cheap for a rare on purpose: its single-target DPS is the worst in the game until
+    // high ranks, so the cost buys the explosion radius and late-rank payoff, not damage now.
+    baseCost: 40,
     tier: 3,
     minWave: 6,
     loadoutType: "weapon",
@@ -116,7 +121,7 @@ const upgrades = [
     name: "Bigger Sparks",
     badge: "D",
     description: "+8% Damage.",
-    baseCost: 31,
+    baseCost: 26,
     tier: 1,
     loadoutType: "item",
     apply: () => {
@@ -128,7 +133,7 @@ const upgrades = [
     name: "Fresh Sneakers",
     badge: "S",
     description: "+8% Speed.",
-    baseCost: 28,
+    baseCost: 20,
     tier: 1,
     loadoutType: "item",
     apply: () => {
@@ -140,7 +145,7 @@ const upgrades = [
     name: "Fidget Trigger",
     badge: "R",
     description: "+12% Attack Speed.",
-    baseCost: 31,
+    baseCost: 34,
     tier: 2,
     loadoutType: "item",
     apply: () => {
@@ -152,7 +157,7 @@ const upgrades = [
     name: "Lunchbox Heart",
     badge: "H",
     description: "+10 Max HP and heal 18.",
-    baseCost: 32,
+    baseCost: 28,
     tier: 2,
     loadoutType: "item",
     apply: () => {
@@ -165,7 +170,7 @@ const upgrades = [
     name: "Pocket Magnet",
     badge: "M",
     description: "+40 Pickup Range.",
-    baseCost: 22,
+    baseCost: 16,
     tier: 1,
     loadoutType: "item",
     apply: () => {
@@ -177,7 +182,7 @@ const upgrades = [
     name: "Forked Barrel",
     badge: "F",
     description: "+1 projectile, -5% Damage. Legendary-only.",
-    baseCost: 255,
+    baseCost: 130,
     tier: 5,
     minWave: 13,
     loadoutType: "item",
@@ -191,7 +196,7 @@ const upgrades = [
     name: "Long Straw",
     badge: "L",
     description: "+55 Range.",
-    baseCost: 26,
+    baseCost: 17,
     tier: 1,
     loadoutType: "item",
     apply: () => {
@@ -203,7 +208,7 @@ const upgrades = [
     name: "Bent Nail",
     badge: "N",
     description: "+2 Ranged Damage.",
-    baseCost: 30,
+    baseCost: 22,
     tier: 1,
     loadoutType: "item",
     apply: () => {
@@ -215,7 +220,7 @@ const upgrades = [
     name: "Bandage Sprout",
     badge: "B",
     description: "+2 HP Regen.",
-    baseCost: 28,
+    baseCost: 18,
     tier: 1,
     loadoutType: "item",
     apply: () => {
@@ -227,7 +232,7 @@ const upgrades = [
     name: "Vampiric Straw",
     badge: "V",
     description: "+3% Life Steal.",
-    baseCost: 32,
+    baseCost: 30,
     tier: 3,
     loadoutType: "item",
     apply: () => {
@@ -239,7 +244,7 @@ const upgrades = [
     name: "Sharpened Tooth",
     badge: "C",
     description: "+5% Crit Chance.",
-    baseCost: 30,
+    baseCost: 24,
     tier: 2,
     loadoutType: "item",
     apply: () => {
@@ -251,7 +256,7 @@ const upgrades = [
     name: "Gilded Chestplate",
     badge: "A",
     description: "+3 Armor.",
-    baseCost: 31,
+    baseCost: 24,
     tier: 2,
     loadoutType: "item",
     apply: () => {
@@ -263,7 +268,7 @@ const upgrades = [
     name: "Nimble Socks",
     badge: "E",
     description: "+4% Dodge.",
-    baseCost: 68,
+    baseCost: 34,
     tier: 3,
     loadoutType: "item",
     apply: () => {
@@ -275,7 +280,7 @@ const upgrades = [
     name: "Lucky Button",
     badge: "K",
     description: "+10 Luck.",
-    baseCost: 33,
+    baseCost: 24,
     tier: 2,
     loadoutType: "item",
     apply: () => {
@@ -287,7 +292,7 @@ const upgrades = [
     name: "Compost Kit",
     badge: "G",
     description: "+6 Harvesting.",
-    baseCost: 35,
+    baseCost: 20,
     tier: 1,
     loadoutType: "item",
     apply: () => {
@@ -299,7 +304,7 @@ const upgrades = [
     name: "Coupon Leaf",
     badge: "$",
     description: "-6% shop prices. Stacks softly with Luck.",
-    baseCost: 45,
+    baseCost: 26,
     tier: 2,
     loadoutType: "item",
     apply: () => {
@@ -311,7 +316,7 @@ const upgrades = [
     name: "Recycling Clamp",
     badge: "R",
     description: "+12% crate recycle value.",
-    baseCost: 31,
+    baseCost: 20,
     tier: 2,
     loadoutType: "item",
     apply: () => {
@@ -323,7 +328,7 @@ const upgrades = [
     name: "Garden Shears",
     badge: "T",
     description: "Trees break in one hit. Crate items skew rarer.",
-    baseCost: 35,
+    baseCost: 30,
     tier: 2,
     loadoutType: "item",
     apply: () => {
@@ -337,7 +342,7 @@ const upgrades = [
     name: "Toolbox Charm",
     badge: "T",
     description: "+3 Engineering. Zaps nearby enemies.",
-    baseCost: 35,
+    baseCost: 26,
     tier: 2,
     loadoutType: "item",
     apply: () => {
@@ -349,7 +354,7 @@ const upgrades = [
     name: "Training Gloves",
     badge: "P",
     description: "+2 Melee Damage. Improves point-blank melee damage.",
-    baseCost: 27,
+    baseCost: 21,
     tier: 1,
     loadoutType: "item",
     apply: () => {
@@ -361,7 +366,7 @@ const upgrades = [
     name: "Static Seed",
     badge: "Z",
     description: "+2 Elemental Damage. Shots burn targets.",
-    baseCost: 30,
+    baseCost: 24,
     tier: 2,
     loadoutType: "item",
     apply: () => {
@@ -372,8 +377,8 @@ const upgrades = [
     id: "pet_alien",
     name: "Pet Alien",
     badge: "A",
-    description: "+12 Max HP, +8 Luck, -6% Speed.",
-    baseCost: 58,
+    description: "+12 Max HP, +8 Luck, -6% Speed, +1 enemy per wave.",
+    baseCost: 34,
     tier: 3,
     loadoutType: "item",
     apply: () => {
@@ -387,7 +392,7 @@ const upgrades = [
     name: "Glass Charm",
     badge: "G",
     description: "+18% Damage, -8 Max HP, -2 Armor.",
-    baseCost: 62,
+    baseCost: 42,
     tier: 3,
     loadoutType: "item",
     apply: () => {
@@ -401,7 +406,7 @@ const upgrades = [
     name: "Slot Machine",
     badge: "$",
     description: "Unique. Spin for one random buff and one random downside. I know you want it.",
-    baseCost: 230,
+    baseCost: 90,
     tier: UNIQUE_TIER,
     unique: true,
     loadoutType: "item",
@@ -412,7 +417,7 @@ const upgrades = [
     name: "Extra Arm",
     badge: "V",
     description: "+1 weapon slot. Legendary-only.",
-    baseCost: 260,
+    baseCost: 140,
     tier: 5,
     loadoutType: "item",
     apply: () => {
@@ -425,7 +430,7 @@ const upgrades = [
     name: "Royal Whetstone",
     badge: "V",
     description: "A legendary damage item for expensive late shops.",
-    baseCost: 185,
+    baseCost: 125,
     tier: 5,
     loadoutType: "item",
     apply: () => {
@@ -582,9 +587,9 @@ const upgradeProfiles = {
     stats: ["+2 Elemental Damage"]
   },
   pet_alien: {
-    lore: "A bright little alien in a jar backpack, blinking like it already knows your build.",
-    properties: "Gives survivability and better luck at the cost of movement speed. Strong if you can handle slower dodging.",
-    stats: ["+12 Max HP", "+8 Luck", "-6% Speed"]
+    lore: "A bright little alien perched on your head, or eating your backpack. Possibly both.",
+    properties: "Gives survivability and better luck at the cost of movement speed, and its noise pulls an extra enemy into every wave. The luck and the bigger crowd both mean more scrap, so it pays for itself if you can handle slower dodging.",
+    stats: ["+12 Max HP", "+8 Luck", "-6% Speed", "+1 enemy per wave"]
   },
   glass_charm: {
     lore: "A shiny charm made from cracked glass and a very bad idea.",

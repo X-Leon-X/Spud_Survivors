@@ -9,7 +9,7 @@
   <body>
     <main class="game-shell">
       <section class="stage" aria-label="Spud Survivors game">
-        <canvas id="game" width="1280" height="720"></canvas>
+        <canvas id="game" width="1440" height="810"></canvas>
 
         <div class="hud hud-top">
           <div class="stat">
@@ -37,6 +37,11 @@
           </div>
         </div>
 
+        <button id="compendiumButton" class="compendium-button" type="button" title="Monster Compendium (work in progress)" aria-label="Monster Compendium (work in progress)">
+          <img src="assets/ui/compendium.png" alt="" class="compendium-icon">
+          <span class="compendium-wip-badge">WIP</span>
+        </button>
+
         <div class="hud hud-bottom">
           <span>Move: WASD / Arrows</span>
           <span>Auto-fire targets nearest enemy</span>
@@ -49,10 +54,11 @@
 
       <aside id="titleScreen" class="title-screen" aria-label="Title screen">
         <div class="title-bg-glow" aria-hidden="true"></div>
+        <canvas id="titleSlimeLayer" class="title-slime-layer" width="1280" height="720" aria-hidden="true"></canvas>
         <div class="title-inner">
           <div class="title-logo">
             <h1 class="title-word">SPUD</h1>
-            <h1 class="title-word title-word-accent">SURVIVORS</h1>
+            <h1 class="title-word title-word-accent">SURVIV<span id="titleO" class="title-o">O</span>RS</h1>
             <span class="title-tag">A one-potato last stand</span>
           </div>
           <canvas id="titleStage" width="360" height="300" aria-hidden="true"></canvas>
@@ -62,7 +68,18 @@
             <button id="titleQuitButton" type="button" class="title-btn title-btn-quiet">Quit</button>
           </nav>
         </div>
-        <p class="title-footer">Move WASD &middot; Auto-fire &middot; Survive the swarm</p>
+        <p class="title-footer">M<span id="footerO" class="footer-o">o</span>ve WASD &middot; Auto-fire &middot; Survive the swarm</p>
+
+        <button id="titleVersionButton" type="button" class="title-version" title="View update log" aria-label="View update log"></button>
+
+        <div id="titleChangelog" class="title-changelog hidden">
+          <div class="title-changelog-panel">
+            <span class="label">Update Log</span>
+            <h2>What&rsquo;s New</h2>
+            <div id="changelogList" class="changelog-list"></div>
+            <button id="changelogBack" type="button" class="title-btn title-btn-primary">Back</button>
+          </div>
+        </div>
 
         <div id="titleOptions" class="title-options hidden">
           <div class="title-options-panel">
@@ -223,6 +240,10 @@
           <div class="stats-title">Damage Dealt</div>
           <div id="summaryWeapons" class="summary-weapons"></div>
         </section>
+        <section class="summary-damage" aria-label="Damage taken by source">
+          <div class="stats-title">Damage Taken</div>
+          <div id="summaryDamageTaken" class="summary-weapons"></div>
+        </section>
         <div class="summary-actions">
           <button id="summaryRestartButton" type="button">New Run</button>
         </div>
@@ -232,6 +253,8 @@
 
     <script src="js/01-core.js"></script>
     <script src="js/00-audio.js"></script>
+    <script src="js/00-changelog.js"></script>
+    <script src="js/00-gravestone.js"></script>
     <script src="js/00-fx.js"></script>
     <script src="js/00-assets.js"></script>
     <script src="js/02-stats.js"></script>
@@ -243,5 +266,6 @@
     <script src="js/08-render.js"></script>
     <script src="js/09-main.js"></script>
     <script src="js/09b-title.js"></script>
+    <script src="js/09c-title-slimes.js"></script>
   </body>
 </html>

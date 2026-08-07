@@ -26,6 +26,7 @@ const ui = {
   startMenu: document.getElementById("startMenu"),
   characterCards: document.getElementById("characterCards"),
   classBonusList: document.getElementById("classBonusList"),
+  compendiumButton: document.getElementById("compendiumButton"),
   shop: document.getElementById("shop"),
   shopCards: document.getElementById("shopCards"),
   shopScrap: document.getElementById("shopScrapText"),
@@ -60,6 +61,7 @@ const ui = {
   summaryTitle: document.getElementById("summaryTitle"),
   summaryStats: document.getElementById("summaryStats"),
   summaryWeapons: document.getElementById("summaryWeapons"),
+  summaryDamageTaken: document.getElementById("summaryDamageTaken"),
   summaryRestartButton: document.getElementById("summaryRestartButton")
 };
 
@@ -93,12 +95,12 @@ const DRUMMER_DAMAGE_MULTIPLIER = 1.25;
 const enemyTypes = [
   { name: "Nibbler", behavior: "chase", size: "small", color: "#f1766e", hp: 9, speed: 106, radius: 16, damage: 6, scrap: 1, minWave: 1, weight: 8 },
   { name: "Skitter", behavior: "chase", size: "small", color: "#88d27a", hp: 6, speed: 158, radius: 12, damage: 4, scrap: 1, minWave: 2, weight: 6 },
-  { name: "Bruiser", behavior: "chase", size: "large", color: "#b28cf2", hp: 42, speed: 45, radius: 28, damage: 20, scrap: 4, minWave: 3, weight: 2 },
-  { name: "Darter", behavior: "charge", size: "medium", color: "#ff9c5b", hp: 57, speed: 68, radius: 18, damage: 15, scrap: 2, minWave: 4, weight: 3 },
+  { name: "Bruiser", behavior: "chase", size: "large", color: "#b28cf2", hp: 110, speed: 34, radius: 28, damage: 14, scrap: 4, minWave: 3, weight: 2 },
+  { name: "Darter", behavior: "charge", size: "medium", color: "#ff9c5b", hp: 40, speed: 68, radius: 18, damage: 10, scrap: 2, minWave: 4, weight: 1 },
   { name: "Ember Glob", behavior: "fireball", size: "medium", color: "#e56f45", hp: 16, speed: 52, radius: 17, damage: 5, scrap: 2, minWave: 5, weight: 1 },
-  { name: "Spitter", behavior: "shoot", size: "medium", color: "#66c7d8", hp: 20, speed: 58, radius: 18, damage: 10, scrap: 2, minWave: 5, weight: 3 },
+  { name: "Spitter", behavior: "shoot", size: "medium", color: "#66c7d8", hp: 20, speed: 58, radius: 18, damage: 8, scrap: 2, minWave: 5, weight: 3 },
   { name: "Orbiter", behavior: "orbit", size: "small", color: "#f2d35f", hp: 11, speed: 162, radius: 14, damage: 6, scrap: 1, minWave: 6, weight: 3 },
-  { name: "Drummer", behavior: "buffer", size: "large", color: "#ff7eb6", hp: 95, speed: 36, radius: 30, damage: 18, scrap: 5, minWave: 7, weight: 1 }
+  { name: "Drummer", behavior: "buffer", size: "large", color: "#ff7eb6", hp: 98, speed: 36, radius: 30, damage: 10, scrap: 5, minWave: 7, weight: 1 }
 ];
 
 const rarities = {
@@ -187,24 +189,24 @@ const characters = [
   {
     id: "chunk",
     name: "Chunk",
-    role: "Big and stubborn",
-    description: "+22 Max HP, +4 Armor, -12% Speed, -8% Attack Speed.",
+    role: "Slow armored heavy hitter",
+    description: "+30 Max HP, +7 Armor, +15% Damage, -18% Speed, -14% Attack Speed.",
     body: "#e3b071",
     leaf: "#74d3a4",
     accent: "#b28cf2",
     scale: 1.18,
-    stats: { maxHp: 22, armor: 4, speed: -12, attackSpeed: -8 }
+    stats: { maxHp: 30, armor: 7, damagePercent: 15, speed: -18, attackSpeed: -14 }
   },
   {
     id: "zip",
     name: "Zip",
-    role: "Fast scavenger",
-    description: "+14% Speed, +12 Luck, -12 Max HP, -6% Damage.",
+    role: "Glass-cannon skirmisher",
+    description: "+22% Speed, +18 Luck, +6% Attack Speed, -20 Max HP, -8% Damage.",
     body: "#f4c7a3",
     leaf: "#f2d35f",
     accent: "#ff9c5b",
     scale: 0.9,
-    stats: { speed: 14, luck: 12, maxHp: -12, damagePercent: -6 }
+    stats: { speed: 22, luck: 18, attackSpeed: 6, maxHp: -20, damagePercent: -8 }
   }
 ];
 

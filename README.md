@@ -1,6 +1,8 @@
 # Spud Survivors (Brotato-Style Standalone Prototype)
 
-Open `index.html` in a browser to play, or double-click `PLAY_GAME.bat`.
+**Play at: https://x-leon-x.github.io/Spud_Survivors/**
+
+To run it locally instead, open `index.html` in a browser or double-click `PLAY_GAME.bat`.
 
 ## Controls
 

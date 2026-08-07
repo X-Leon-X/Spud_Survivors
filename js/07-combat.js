@@ -2,6 +2,11 @@
 
 // combat.js - simulation update loop: enemies, weapons, pickups
 
+// Shared with js/08-render.js (loads after this file): how long a Darter telegraphs
+// before lunging. Single source of truth so the sim timer and the render-side warning
+// strobe/stretch can never drift out of sync with each other.
+const DARTER_WINDUP = 0.78;
+
 function update(dt) {
   decayFx(dt);
   if (state.mode === "bagging") {
@@ -12,6 +17,12 @@ function update(dt) {
   }
 
   if (state.mode !== "playing") {
+    // Keep the death headstone's rise animating after the run ends — everything else in
+    // update() is gated off, so this needs its own tick.
+    if (state.mode === "gameover") {
+      state.graveTimer = (state.graveTimer ?? 0) + dt;
+      updateParticles(dt);
+    }
     return;
   }
 
@@ -23,6 +34,7 @@ function update(dt) {
   state.player.damageCooldown -= dt;
   state.player.lifeStealCooldown -= dt;
   state.player.hurtTimer = Math.max(0, state.player.hurtTimer - dt);
+  tickPlayerBurn(dt);
   regeneratePlayer(dt);
 
   movePlayer(dt);
@@ -39,6 +51,7 @@ function update(dt) {
   updateCoins(dt);
   updateCrateSpawns(dt);
   updateCrates(dt);
+  updateFortuneCookies(dt);
   updateParticles(dt);
 
   if (state.player.hp <= 0) {
@@ -47,7 +60,10 @@ function update(dt) {
     addShake(12);
     burst(state.player.x, state.player.y, "#ff8fa3", 26);
     spawnRing(state.player.x, state.player.y, "#ff8fa3", 90, 0.5);
-    showSummary();
+    // Bong + gravestone first, then the summary — showing the stats immediately would
+    // step on the death beat.
+    const fallen = state.character?.name ?? "Spud";
+    playGravestone(fallen + " — wave " + state.wave, showSummary);
   } else if (state.waveTime <= 0) {
     endWave();
   }
@@ -298,11 +314,65 @@ function spawnWaveEnemies() {
   state.spawnTimer = pressure;
   const count = enemySpawnBatchSize();
   const activeCap = enemyActiveCap();
-  for (let i = 0; i < count; i += 1) {
+  let spawned = 0;
+  while (spawned < count) {
     if (state.enemies.length >= activeCap) {
       break;
     }
-    spawnEnemy();
+    // Darters are meant to feel like a pack, not scattered loners. When one is rolled,
+    // pull 1-2 more copies from this same spawn call and drop the whole cluster on one
+    // shared edge instead of independently re-rolling chooseEnemyType() per member (which
+    // would scatter them across edges). Each clustered member still consumes one slot from
+    // the wave's spawn batch, so a Darter roll never inflates total enemy count/difficulty
+    // beyond what the batch size already budgeted.
+    const template = chooseEnemyType();
+    if (template.name === "Darter") {
+      const remaining = count - spawned;
+      const clusterSize = Math.min(remaining, 2 + Math.floor(Math.random() * 2)); // 2-3
+      spawnCluster(template, clusterSize, activeCap);
+      spawned += clusterSize;
+    } else {
+      spawnEnemy(template);
+      spawned += 1;
+    }
+  }
+}
+
+// Spawns `size` copies of `template` together on one randomly chosen screen edge, offset
+// along that edge so they don't perfectly overlap. Stops early if the active enemy cap
+// is hit mid-cluster.
+function spawnCluster(template, size, activeCap) {
+  const side = Math.floor(Math.random() * 4);
+  const margin = 42;
+  const spacing = 34;
+  // Pick the cluster's centre far enough from the corners that every member's offset still
+  // fits on the edge. Clamping each member individually instead would collapse the whole
+  // pack onto one point whenever the centre landed near a corner.
+  const span = (size - 1) * spacing;
+  const vertical = side === 0 || side === 1;
+  const limit = vertical ? H : W;
+  const centre = rand(Math.min(span / 2, limit / 2), Math.max(limit - span / 2, limit / 2));
+  for (let i = 0; i < size; i += 1) {
+    if (state.enemies.length >= activeCap) {
+      break;
+    }
+    const along = centre + (i - (size - 1) / 2) * spacing;
+    let x;
+    let y;
+    if (side === 0) {
+      x = -margin;
+      y = along;
+    } else if (side === 1) {
+      x = W + margin;
+      y = along;
+    } else if (side === 2) {
+      x = along;
+      y = -margin;
+    } else {
+      x = along;
+      y = H + margin;
+    }
+    spawnEnemy(template, { x, y });
   }
 }
 
@@ -323,7 +393,10 @@ function enemySpawnBatchSize() {
   const growth = Math.floor(Math.pow(Math.max(0, wave - 1), 1.22) / 3.4);
   const midBonus = Math.floor(Math.max(0, wave - 8) / 4);
   const lateBonus = Math.floor(Math.max(0, wave - 13) / 3);
-  return Math.min(14, 1 + growth + midBonus + lateBonus);
+  // Pet Alien (and anything else granting extraEnemies) thickens every wave slightly. The
+  // cap still applies, so it makes waves arrive denser rather than uncapping the arena.
+  const owned = calculateOwnedUpgradeEffects().extraEnemies ?? 0;
+  return Math.min(14, 1 + growth + midBonus + lateBonus + owned);
 }
 
 function enemyActiveCap() {
@@ -333,14 +406,22 @@ function enemyActiveCap() {
   return Math.min(MAX_ENEMIES, Math.round(curve));
 }
 
-function spawnEnemy() {
-  const template = chooseEnemyType();
+function spawnEnemy(presetTemplate, presetPos) {
+  const template = presetTemplate || chooseEnemyType();
 
-  const side = Math.floor(Math.random() * 4);
-  const margin = 42;
-  const x = side === 0 ? -margin : side === 1 ? W + margin : rand(0, W);
-  const y = side === 2 ? -margin : side === 3 ? H + margin : rand(0, H);
+  let x;
+  let y;
+  if (presetPos) {
+    x = presetPos.x;
+    y = presetPos.y;
+  } else {
+    const side = Math.floor(Math.random() * 4);
+    const margin = 42;
+    x = side === 0 ? -margin : side === 1 ? W + margin : rand(0, W);
+    y = side === 2 ? -margin : side === 3 ? H + margin : rand(0, H);
+  }
   const scaling = enemyScaling();
+  const sizeHp = sizeHpMultiplier(template.size, state.wave);
 
   state.enemies.push({
     name: template.name,
@@ -350,8 +431,8 @@ function spawnEnemy() {
     y,
     vx: 0,
     vy: 0,
-    hp: Math.round(template.hp * scaling.hp),
-    maxHp: Math.round(template.hp * scaling.hp),
+    hp: Math.round(template.hp * scaling.hp * sizeHp),
+    maxHp: Math.round(template.hp * scaling.hp * sizeHp),
     speed: template.speed * scaling.speed,
     radius: template.radius,
     damage: Math.round(template.damage * scaling.damage),
@@ -438,19 +519,65 @@ function enemyScaling() {
   const growth = wave - 1;
   const midGame = Math.max(0, wave - 6);
   const lateGame = Math.max(0, wave - 12);
-  // Faster ramp: enemies gain HP/damage/speed noticeably sooner so early waves stop
-  // feeling like a warm-up. Per-wave growth roughly doubled in the early band.
+  // Player DPS compounds MULTIPLICATIVELY (tier baseDamage x tier scaling multiplier x
+  // damagePercent / cooldown x 6 slots) and roughly 36x's from wave 5 to wave 15. A linear
+  // HP curve can never keep pace with that, so HP now compounds geometrically per wave
+  // instead: ~20.5% growth per wave, tapered off after wave ~23 with a light linear tail
+  // so the late game stays a bullet-sponge grind rather than a literal unkillable wall.
+  // Approx multiplier: w1 1x, w5 2.1x, w10 5.4x, w15 13.6x, w20 34.6x, w25 61x, w30 63x.
+  const hpCompoundGrowth = Math.min(growth, 22);
+  const hpLateTail = Math.max(0, growth - 22) * 0.35;
+  const hp = Math.pow(1.205, hpCompoundGrowth) + hpLateTail;
+  // Damage deliberately stays shallow and roughly unchanged from before: the goal is to
+  // overwhelm the player with numbers and chip damage, not to let any single hit spike, so
+  // relative damage between enemy types matters far more here than the absolute scalar.
   return {
-    hp: 1 + growth * 0.085 + midGame * 0.06 + lateGame * 0.085,
-    damage: 1 + growth * 0.032 + midGame * 0.022 + lateGame * 0.03,
+    hp,
+    damage: 1 + growth * 0.03 + midGame * 0.02 + lateGame * 0.028,
     speed: 1 + Math.min(0.18, growth * 0.006)
   };
+}
+
+// Large enemies (Bruiser, Drummer) are meant to feel like they absorb noticeably more
+// punishment than the swarm around them, and that gap should widen as the run goes on --
+// otherwise a flat multiplier keeps them proportionally tanky but they still melt in
+// absolute terms once player DPS has compounded for 15+ waves. Medium enemies get a
+// smaller version of the same treatment; small enemies are the baseline swarm and get none.
+function sizeHpMultiplier(size, wave) {
+  const growth = Math.max(0, wave - 1);
+  if (size === "large") {
+    return 1 + Math.min(2.2, growth * 0.09);
+  }
+  if (size === "medium") {
+    return 1 + Math.min(0.9, growth * 0.035);
+  }
+  return 1;
+}
+
+// Weapons aim from their own orbiting slot position (see getWeaponSlotPosition), not the
+// player centre. If each slot independently decided "no enemy in my range, fall back to a
+// crate", a slot that has orbited to the far side of the player could lose its enemy just
+// outside that slot's range while a crate underfoot stays well inside it — so one weapon
+// peels off to hit the crate for a beat while every other weapon keeps firing on enemies.
+// The fix: decide ONCE per frame, from the player's position, whether the fight is still
+// "on" at all. Only when nothing is engaged does any slot consider destructibles; otherwise
+// a slot with no enemy in reach simply holds fire instead of shooting the crate.
+function destructiblesTargetable(player, weapons, count) {
+  let maxRange = 0;
+  for (let index = 0; index < count; index += 1) {
+    maxRange = Math.max(maxRange, weaponRange(weapons[index]));
+  }
+  // +48 covers the weapon orbit radius (slots sit ~36-45px out) so an enemy just past a
+  // slot's own range, but still near the player, still counts as "engaged".
+  const reach = maxRange + 48;
+  return !findNearestEnemyFrom(player.x, player.y, reach);
 }
 
 function fireEquippedWeapons(dt) {
   const player = state.player;
   const now = performance.now();
   const count = Math.min(maxWeaponSlots(), state.weapons.length);
+  const allowDestructibles = destructiblesTargetable(player, state.weapons, count);
   for (let index = 0; index < count; index += 1) {
     const weapon = state.weapons[index];
     weapon.fireCooldown = Math.max(0, (weapon.fireCooldown ?? 0) - dt);
@@ -462,7 +589,9 @@ function fireEquippedWeapons(dt) {
 
     const slot = getWeaponSlotPosition(player, index, count, now);
     const range = weaponRange(weapon);
-    const target = findNearestEnemyFrom(slot.x, slot.y, range) ?? findNearestDestructibleFrom(slot.x, slot.y, range);
+    const target = allowDestructibles
+      ? findNearestEnemyFrom(slot.x, slot.y, range) ?? findNearestDestructibleFrom(slot.x, slot.y, range)
+      : findNearestEnemyFrom(slot.x, slot.y, range);
     if (!target) {
       continue;
     }
@@ -479,6 +608,15 @@ function fireWeaponAttack(weapon, slot, target) {
     return;
   }
   fireWeaponFromSlot(weapon, slot, target);
+}
+
+// fireEquippedWeapons (owned by another agent) doesn't pass the weapon's slot index down,
+// so recover it here by identity lookup. This lets the swing track the SAME slot every
+// frame (see weaponSwingOrigin) without touching that function's signature.
+function resolveWeaponSlotIndex(weapon) {
+  const count = Math.min(maxWeaponSlots(), state.weapons.length);
+  const index = state.weapons.indexOf(weapon);
+  return { index: index >= 0 ? index : 0, count };
 }
 
 function fireWeaponFromSlot(weapon, slot, target) {
@@ -547,10 +685,17 @@ function fireSwingWeapon(weapon, slot, target) {
   const crit = Math.random() * 100 < weaponCritChance(weapon);
   const damage = weaponShotDamage(weapon) * (crit ? weaponCritMultiplier(weapon) : 1);
   const maxHits = 1 + weaponPierce(weapon);
+  const { index: weaponIndex, count: slotCount } = resolveWeaponSlotIndex(weapon);
 
   state.swings.push({
+    // Origin is re-resolved every frame from the player's CURRENT position via
+    // weaponIndex/slotCount (see weaponSwingOrigin), so the club stays anchored to its
+    // orbiting slot instead of detaching mid-swing if the player moves. x/y below are
+    // only a same-frame fallback for anything reading them before the first update tick.
     x: slot.x,
     y: slot.y,
+    weaponIndex,
+    slotCount,
     angle,
     arc,
     range,
@@ -747,7 +892,9 @@ function applyBulletHit(bullet, enemy, enemyIndex) {
   }
 
   const angle = Math.atan2(bullet.vy, bullet.vx);
-  const push = (bullet.knockback ?? 0) * 12;
+  // Single tuning point for ALL weapon knockback (profiles feed their per-weapon numbers
+  // through here), kept low so hits stagger enemies instead of punting them off-screen.
+  const push = (bullet.knockback ?? 0) * 4.5;
   enemy.knockX = (enemy.knockX ?? 0) + Math.cos(angle) * push;
   enemy.knockY = (enemy.knockY ?? 0) + Math.sin(angle) * push;
 
@@ -984,21 +1131,41 @@ function processWeaponSwingHits(swing) {
   }
 }
 
+// Re-anchors a swing's origin to its owning slot's CURRENT position every frame (instead
+// of the position frozen at spawn), so a fast orbit or player movement mid-swing can't drag
+// the club away from the body. Falls back to the frozen x/y if the slot can no longer be
+// resolved (e.g. the weapon was unequipped mid-swing). The aimed angle is NOT touched here —
+// direction stays locked at spawn; only the pivot point tracks the player.
+function weaponSwingOrigin(swing) {
+  if (swing.slotCount > 0) {
+    const slot = getWeaponSlotPosition(state.player, swing.weaponIndex, swing.slotCount);
+    return slot;
+  }
+  return swing;
+}
+
 function weaponSwingGeometry(swing) {
+  const origin = weaponSwingOrigin(swing);
   const progress = clamp(1 - swing.life / swing.maxLife, 0, 1);
   const start = swing.startAngle ?? swing.angle - swing.arc / 2;
   const end = swing.endAngle ?? swing.angle + swing.arc / 2;
-  const sweepProgress = clamp(progress / 0.72, 0, 1);
-  // A short anticipation: the first ~14% of the swing winds slightly PAST the start angle
-  // (a back-swing) before the main forward sweep, giving the club weight and follow-through
-  // instead of a stiff, instant arc.
-  const windup = progress < 0.14 ? -Math.sin(progress / 0.14 * Math.PI) * (end - start) * 0.12 : 0;
+  // One clean weighty arc: a readable windup, a fast committed sweep, a gentle recovery.
+  // Windup (0-20%) and recovery (82-100%) are separated from the sweep by a plateau-free
+  // easing curve so the reach extension (below) can ramp WITH the sweep instead of
+  // fighting it — the old timing extended reach during the back-swing, which read as
+  // "stab and rotate at once" instead of one motion.
+  const windupEnd = 0.2;
+  const sweepEnd = 0.82;
+  const sweepProgress = clamp((progress - windupEnd) / (sweepEnd - windupEnd), 0, 1);
+  const windup = progress < windupEnd
+    ? -Math.sin(progress / windupEnd * Math.PI * 0.5) * (end - start) * 0.16
+    : 0;
   const current = start + windup + (end - start) * easeOutCubic(sweepProgress);
-  const extension = progress < 0.18
-    ? easeOutCubic(progress / 0.18)
-    : progress < 0.72
-      ? 1
-      : 1 - easeOutCubic((progress - 0.72) / 0.28) * 0.62;
+  const extension = progress < windupEnd
+    ? 0.25 + easeOutCubic(progress / windupEnd) * 0.15
+    : progress < sweepEnd
+      ? 0.4 + easeOutCubic((progress - windupEnd) / (sweepEnd - windupEnd)) * 0.6
+      : 1 - easeOutCubic((progress - sweepEnd) / (1 - sweepEnd)) * 0.55;
   const reach = swing.range * extension;
   const weaponLength = meleeWeaponVisualLength(swing.weaponName, swing.tier ?? 1);
   const activeLength = Math.min(weaponLength, Math.max(16, reach));
@@ -1013,10 +1180,12 @@ function weaponSwingGeometry(swing) {
     gripPush,
     activeLength,
     weaponLength,
-    innerX: swing.x + Math.cos(current) * inner,
-    innerY: swing.y + Math.sin(current) * inner,
-    headX: swing.x + Math.cos(current) * head,
-    headY: swing.y + Math.sin(current) * head
+    x: origin.x,
+    y: origin.y,
+    innerX: origin.x + Math.cos(current) * inner,
+    innerY: origin.y + Math.sin(current) * inner,
+    headX: origin.x + Math.cos(current) * head,
+    headY: origin.y + Math.sin(current) * head
   };
 }
 
@@ -1098,7 +1267,7 @@ function updateEnemies(dt) {
     const overlap = playerHitRadius() + enemy.radius;
     if (distSq(player, enemy) < overlap * overlap) {
       if (enemy.contactCooldown <= 0) {
-        damagePlayer(enemyContactDamage(enemy), enemy.x, enemy.y);
+        damagePlayer(enemyContactDamage(enemy), enemy.x, enemy.y, enemy.name);
         enemy.contactCooldown = 0.48;
       }
     }
@@ -1135,7 +1304,7 @@ function updateEnemyBehavior(enemy, dt) {
     }
 
     if (enemy.actionCooldown <= 0 && distance < 380) {
-      enemy.windupTimer = 0.52;
+      enemy.windupTimer = DARTER_WINDUP;
       enemy.lungeAngle = angle;
       burst(enemy.x, enemy.y, "#ffd15f", 5);
       enemy.vx = 0;
@@ -1170,7 +1339,9 @@ function updateEnemyBehavior(enemy, dt) {
     enemy.vy = Math.sin(direction) * moveSpeed;
     if (enemy.actionCooldown <= 0 && distance < 590) {
       shootEnemyFireball(enemy, angle);
-      enemy.actionCooldown = Math.max(1.35, 2.85 - state.wave * 0.035);
+      // Ember Globs should feel like a slow, telegraphed threat rather than chip damage
+      // spam — much longer cooldown than Spitters so the big hit reads as "rare but scary".
+      enemy.actionCooldown = Math.max(2.0, 3.8 - state.wave * 0.035);
       enemy.fireAnim = 0.32;
       enemy.fireAngle = angle;
     }
@@ -1218,22 +1389,32 @@ function shootEnemyProjectile(enemy, angle) {
     vy: Math.sin(angle) * 235,
     radius: 7,
     damage: Math.max(1, Math.round(enemyContactDamage(enemy) * 0.8)),
-    life: 2.8
+    life: 2.8,
+    sourceName: enemy.name
   });
   burst(enemy.x, enemy.y, "#66c7d8", 4);
 }
 
 function shootEnemyFireball(enemy, angle) {
+  // Fireballs should hit harder than a Spitter shot (~8) despite Ember Glob's lower base
+  // damage stat (5) — a 2.6x multiplier lands a direct hit around 13, clearly the biggest
+  // single ranged hit in the game, matching how dangerous the projectile looks.
+  // Speed dropped from 132 -> 100 so it's dodgeable at range; life raised from 4.4 -> 5.8
+  // to keep the same ~580 travel distance (132*4.4 ~= 100*5.8) despite the slower speed.
+  const fireballSpeed = 100;
   state.enemyBullets.push({
     kind: "fireball",
     x: enemy.x + Math.cos(angle) * (enemy.radius + 10),
     y: enemy.y + Math.sin(angle) * (enemy.radius + 10),
-    vx: Math.cos(angle) * 132,
-    vy: Math.sin(angle) * 132,
-    radius: 10,
-    damage: Math.max(1, Math.round(enemyContactDamage(enemy) * 0.8)),
-    life: 4.4,
-    spin: rand(0, Math.PI * 2)
+    vx: Math.cos(angle) * fireballSpeed,
+    vy: Math.sin(angle) * fireballSpeed,
+    radius: 12,
+    damage: Math.max(1, Math.round(enemyContactDamage(enemy) * 2.6)),
+    life: 5.8,
+    spin: rand(0, Math.PI * 2),
+    burnTicks: 3,
+    burnTickDamage: 3,
+    sourceName: enemy.name
   });
   burst(enemy.x, enemy.y, "#ff9c5b", 7);
 }
@@ -1247,22 +1428,29 @@ function updateEnemyBullets(dt) {
     bullet.life -= dt;
     if (bullet.kind === "fireball") {
       bullet.spin += dt * 5;
-      if (Math.random() < 0.28) {
+      // Denser, hotter trail than before (0.4 -> 0.6 spawn chance, brighter colour mix,
+      // slightly larger embers) so the fireball reads as visibly more dangerous than the
+      // Spitter's plain glob at a glance, matching its ~3x higher damage.
+      if (Math.random() < 0.6) {
         state.particles.push({
           x: bullet.x - bullet.vx * 0.035 + rand(-4, 4),
           y: bullet.y - bullet.vy * 0.035 + rand(-4, 4),
-          vx: rand(-18, 18),
-          vy: rand(-18, 18),
-          color: Math.random() < 0.5 ? "#ff9c5b" : "#5f3828",
-          radius: rand(2, 4),
-          life: rand(0.12, 0.26)
+          vx: rand(-22, 22),
+          vy: rand(-22, 22),
+          color: Math.random() < 0.6 ? "#fff2a8" : "#ff6a3d",
+          radius: rand(2.5, 6),
+          life: rand(0.14, 0.34)
         });
       }
     }
 
     const radius = bullet.radius + playerHitRadius();
     if (distSq(bullet, player) <= radius * radius) {
-      damagePlayer(bullet.damage, bullet.x, bullet.y);
+      // Only apply the burn if the hit actually lands — damagePlayer returns false on
+      // dodge/i-frames, and a "hit" that didn't connect shouldn't still set you on fire.
+      if (damagePlayer(bullet.damage, bullet.x, bullet.y, bullet.sourceName) && bullet.burnTicks) {
+        applyPlayerBurn(bullet.burnTicks, bullet.burnTickDamage, bullet.sourceName);
+      }
       burst(bullet.x, bullet.y, bullet.kind === "fireball" ? "#ff9c5b" : "#66c7d8", bullet.kind === "fireball" ? 8 : 5);
       state.enemyBullets.splice(i, 1);
     } else if (bullet.life <= 0 || bullet.x < -60 || bullet.x > W + 60 || bullet.y < -60 || bullet.y > H + 60) {
@@ -1518,7 +1706,45 @@ function killEnemy(index) {
     radius: 8,
     value
   });
+  // Fortune cookie: a flat 1% drop from ANY enemy, deliberately NOT luck-scaled so the
+  // rate stays predictable. PLACEHOLDER — collecting it currently grants nothing; the
+  // effect is still undecided, so this only wires up the drop, art and pickup.
+  if (Math.random() < 0.01) {
+    state.fortuneCookies.push({
+      x: enemy.x,
+      y: enemy.y,
+      radius: 14,
+      bob: Math.random() * Math.PI * 2,
+      life: 0
+    });
+  }
   burst(enemy.x, enemy.y, enemy.color, 10);
+}
+
+// Magnet-collected like a coin. Kept in its own array rather than reusing state.coins so
+// the cookie can grow a real effect later without entangling it with the scrap economy.
+function updateFortuneCookies(dt) {
+  const player = state.player;
+  for (let i = state.fortuneCookies.length - 1; i >= 0; i -= 1) {
+    const cookie = state.fortuneCookies[i];
+    cookie.bob += dt * 2.4;
+    cookie.life += dt;
+    const dx = player.x - cookie.x;
+    const dy = player.y - cookie.y;
+    const distance = Math.hypot(dx, dy) || 1;
+    if (distance < player.pickupRange) {
+      const pull = (1 - distance / player.pickupRange) * 470;
+      cookie.x += (dx / distance) * pull * dt;
+      cookie.y += (dy / distance) * pull * dt;
+    }
+    if (distance < player.radius + cookie.radius) {
+      playSfx("coin");
+      burst(cookie.x, cookie.y, "#ffd873", 14);
+      addFloater(cookie.x, cookie.y - 16, "Fortune Cookie!", { color: "#ffd873", size: 19, life: 1.5 });
+      addFloater(cookie.x, cookie.y + 2, "(coming soon)", { color: "#bfe6b0", size: 13, life: 1.5 });
+      state.fortuneCookies.splice(i, 1);
+    }
+  }
 }
 
 function burst(x, y, color, count) {

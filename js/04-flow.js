@@ -18,6 +18,7 @@ function freshState() {
     waveTime: 35,
     spawnTimer: 0,
     waveKills: 0,
+    graveTimer: 0,
     scrap: 0,
     unusedScrap: 0,
     pendingBagScrap: 0,
@@ -60,6 +61,10 @@ function freshState() {
       projectiles: 1,
       hurtTimer: 0,
       damageCooldown: 0,
+      burnTicksLeft: 0,
+      burnTickTimer: 0,
+      burnTickDamage: 0,
+      burnSourceName: null,
       lifeStealCooldown: 0,
       regenTimer: 0,
       stats: { ...BASE_PLAYER_STATS }
@@ -69,6 +74,7 @@ function freshState() {
     trees: [],
     crates: [],
     crateDrops: [],
+    fortuneCookies: [],
     bulbs: [],
     bullets: [],
     swings: [],
@@ -159,10 +165,16 @@ function endWave() {
   state.trees.length = 0;
   state.crates.length = 0;
   state.crateDrops.length = 0;
+  state.fortuneCookies.length = 0;
   state.bulbs.length = 0;
   state.bullets.length = 0;
   state.swings.length = 0;
   state.enemyBullets.length = 0;
+  // Don't let a burn started in the final seconds of a wave keep ticking through
+  // bagging/shop and into the next wave — it's tied to enemies that no longer exist.
+  state.player.burnTicksLeft = 0;
+  state.player.burnTickTimer = 0;
+  state.player.burnSourceName = null;
   const looseScrap = state.coins.reduce((sum, coin) => sum + coin.value, 0);
   if (looseScrap > 0) {
     startBagCollection(looseScrap);

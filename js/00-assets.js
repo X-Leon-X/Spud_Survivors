@@ -38,6 +38,7 @@ const ART_SOURCES = {
   "item:slot_machine": "assets/items/slot_machine.png",
   "item:speed": "assets/items/speed.png",
   "item:split": "assets/items/split.png",
+  "item:fortune_cookie": "assets/items/fortune_cookie.png",
 
   // Weapon shop-card icons, keyed by upgrade id (underscore filenames).
   "item:flamethrower": "assets/items/flamethrower.png",
@@ -99,7 +100,11 @@ const ART_SOURCES = {
   "enemy:Ember Glob": "assets/enemies/ember-glob.png",
   "enemy:Spitter": "assets/enemies/spitter.png",
   "enemy:Orbiter": "assets/enemies/orbiter.png",
-  "enemy:Drummer": "assets/enemies/drummer.png"
+  "enemy:Drummer": "assets/enemies/drummer.png",
+
+  // UI chrome icons (buttons, placeholders).
+  "ui:compendium": "assets/ui/compendium.png",
+  "ui:gravestone": "assets/ui/gravestone.png"
 };
 
 // Per-enemy art tuning. `scale` multiplies the drawn size relative to the enemy's
@@ -116,13 +121,26 @@ const ENEMY_ART_CONFIG = {
   Skitter: { scale: 2.05, yOffset: -0.05 },       // legs overhang the body
   Darter: { scale: 2.0, yOffset: -0.06 },
   Orbiter: { scale: 2.0, yOffset: -0.05 },         // orbital ring overhangs
-  Drummer: { scale: 2.1, yOffset: -0.08 }          // drums flank the body
+  // Drummer sits on a bigger collision radius than the Bruiser (30 vs 28), so at the old
+  // 2.1 scale it drew ~15% larger and read as the biggest thing on screen. The Bruiser is
+  // meant to be the visual heavyweight, so the Drummer is scaled down under it here. Purely
+  // cosmetic — scale never touches the hitbox.
+  Drummer: { scale: 1.62, yOffset: -0.06 }         // drums flank the body
 };
 
 // Enemies whose art faces the camera head-on and is left/right symmetric. These must NOT be
 // horizontally flipped to "face" the player — mirroring a front-facing sprite is a no-op that
 // only causes a jarring snap when the player crosses to the other side.
 const ENEMY_NO_FLIP = new Set(["Bruiser"]);
+
+// The facing flip in drawEnemyArtBody assumes each sprite is drawn facing RIGHT. The Darter
+// art is drawn facing LEFT (its fins trail right), so the flip ran backwards and it turned
+// away from the player. List any left-facing art here instead of hand-patching the renderer.
+const ENEMY_ART_FACES_LEFT = new Set(["Darter"]);
+
+function enemyArtFacingSign(name) {
+  return ENEMY_ART_FACES_LEFT.has(name) ? -1 : 1;
+}
 
 function enemyArt(name) {
   return artFor(`enemy:${name}`);
@@ -252,6 +270,52 @@ function itemArtIsFullCard(data = {}) {
 
 function weaponArenaArt(name) {
   return ART_ARENA_WEAPON.has(`weapon:${name}`) ? artFor(`weapon:${name}`) : null;
+}
+
+// Normalised alpha bounding box (0..1 fractions of the PNG canvas) of each weapon's actual
+// content, measured by hand so the arena/preview/title renderers can crop out the
+// transparent padding instead of stretching it into a square. Without this, wide sprites
+// (flamethrower, spark weapon) get squashed vertically ~1.5-1.8x to fill a square box.
+const WEAPON_ARENA_FIT = {
+  "weapon:Spark Peashooter": { x: 16 / 256, y: 53 / 256, w: 225 / 256, h: 147 / 256 },
+  "weapon:Twig Wand": { x: 16 / 256, y: 26 / 256, w: 225 / 256, h: 203 / 256 },
+  "weapon:Stub Club": { x: 56 / 512, y: 30 / 512, w: 399 / 512, h: 451 / 512 },
+  "weapon:Rusty Pistol": { x: 16 / 256, y: 37 / 256, w: 224 / 256, h: 182 / 256 },
+  "weapon:Slingshot": { x: 70 / 512, y: 27 / 512, w: 372 / 512, h: 458 / 512 },
+  "weapon:Scrap Revolver": { x: 16 / 256, y: 34 / 256, w: 224 / 256, h: 187 / 256 },
+  "weapon:Tin Dragon Flamethrower": { x: 15 / 256, y: 67 / 256, w: 225 / 256, h: 122 / 256 },
+  "weapon:Grenade Launcher": { x: 30 / 512, y: 61 / 512, w: 451 / 512, h: 390 / 512 }
+};
+
+// Default to the full canvas for any weapon key without a measured bbox, so an
+// unmeasured/new PNG still draws (uncropped) instead of throwing.
+function weaponArenaFit(name) {
+  return WEAPON_ARENA_FIT[`weapon:${name}`] ?? { x: 0, y: 0, w: 1, h: 1 };
+}
+
+// Shared aspect-correct weapon draw used by the arena, the Field Market loadout preview,
+// and the title screen, so all three crop/scale identically instead of drifting out of
+// sync. `boxSize` is the longest edge of the destination box (a CONTAIN fit): the content
+// bbox is cropped from the source first, then scaled so its longer side equals boxSize and
+// its shorter side follows the true aspect ratio, centered at the current origin. Draws
+// with whatever transform (translate/rotate/scale) is already active on ctx.
+// `anchorX` shifts the pivot along the weapon's own length as a fraction of the drawn
+// width: 0 centres it (the orbiting/preview case), while a negative value swings the
+// pivot toward the grip end so a melee swing rotates around the handle rather than the
+// middle of the sprite.
+function drawWeaponArtFitted(ctx, name, art, boxSize, anchorX = 0) {
+  if (!art) return;
+  const fit = weaponArenaFit(name);
+  const sx = fit.x * art.width;
+  const sy = fit.y * art.height;
+  const sw = fit.w * art.width;
+  const sh = fit.h * art.height;
+  const longEdge = Math.max(sw, sh);
+  const scale = boxSize / longEdge;
+  const dw = sw * scale;
+  const dh = sh * scale;
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(art, sx, sy, sw, sh, -dw / 2 + anchorX * dw, -dh / 2, dw, dh);
 }
 
 loadArt();

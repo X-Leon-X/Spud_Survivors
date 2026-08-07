@@ -80,7 +80,9 @@ function spawnEnemyDeath(enemy) {
     radius: enemy.radius,
     color: enemy.color,
     bob: enemy.bob,
-    facing: state.player && state.player.x < enemy.x ? -1 : 1,
+    // Same orientation correction the live sprite uses, so left-facing art (the Darter)
+    // doesn't snap around the moment it dies.
+    facing: (state.player && state.player.x < enemy.x ? -1 : 1) * enemyArtFacingSign(enemy.name),
     life: 0.28,
     maxLife: 0.28
   });
@@ -100,7 +102,10 @@ function freshRunStats() {
     kills: 0,
     scrapEarned: 0,
     timePlayed: 0,
-    damageBySource: {}
+    damageBySource: {},
+    // Kept separate from damageBySource: that map is damage the player DEALT, and mixing
+    // harm they received into it would inflate their own weapon totals.
+    damageTakenBySource: {}
   };
 }
 
@@ -109,6 +114,13 @@ function trackDamage(source, amount) {
   if (!stats || !(amount > 0)) return;
   const key = source ?? "Other";
   stats.damageBySource[key] = (stats.damageBySource[key] ?? 0) + amount;
+}
+
+function trackDamageTaken(source, amount) {
+  const stats = state?.runStats;
+  if (!stats || !(amount > 0)) return;
+  const key = source ?? "Unknown";
+  stats.damageTakenBySource[key] = (stats.damageTakenBySource[key] ?? 0) + amount;
 }
 
 function trackScrap(amount) {

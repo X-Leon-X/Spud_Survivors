@@ -295,6 +295,95 @@ canvas {
   display: none;
 }
 
+/* Monster Compendium placeholder button (WIP) */
+/* .hidden is declared above this rule, so its display:none would lose the cascade tie to
+   the display:flex below. Re-assert it here so toggling .hidden actually hides the button. */
+.compendium-button.hidden {
+  display: none;
+}
+
+.compendium-button {
+  align-items: center;
+  background: linear-gradient(180deg, rgba(34, 42, 57, 0.86), rgba(22, 27, 37, 0.78));
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  box-shadow: none;
+  cursor: pointer;
+  display: flex;
+  filter: saturate(0.75);
+  height: 44px;
+  justify-content: center;
+  opacity: 0.85;
+  padding: 0;
+  position: absolute;
+  right: 16px;
+  top: 66px;
+  transition: opacity 150ms ease, filter 150ms ease, transform 120ms ease;
+  width: 44px;
+}
+
+.compendium-button:hover,
+.compendium-button:focus-visible {
+  filter: saturate(1);
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
+.compendium-button:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.compendium-icon {
+  height: 66%;
+  object-fit: contain;
+  pointer-events: none;
+  width: 66%;
+}
+
+.compendium-wip-badge {
+  background: var(--red);
+  border-radius: 999px;
+  bottom: -4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  color: white;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  padding: 2px 4px;
+  pointer-events: none;
+  position: absolute;
+  right: -4px;
+}
+
+.compendium-button::after {
+  background: var(--panel-strong, #273449);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  color: var(--cream, #fff7e7);
+  content: "Compendium coming soon";
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0;
+  padding: 6px 10px;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  transform: translateY(-4px);
+  transition: opacity 150ms ease, transform 150ms ease;
+  white-space: nowrap;
+  z-index: 20;
+}
+
+.compendium-button.compendium-toast-show::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 .start-menu,
 .shop,
 .reward {
@@ -441,7 +530,7 @@ h1 {
   border-radius: 8px;
   display: grid;
   gap: 12px;
-  grid-template-columns: 132px minmax(300px, 1fr) minmax(520px, 0.95fr);
+  grid-template-columns: 190px minmax(260px, 1fr) minmax(520px, 0.95fr);
   margin-top: 12px;
   min-height: 318px;
   padding: 12px;
@@ -548,6 +637,7 @@ h1 {
 }
 
 #playerPreview {
+  align-self: start;
   aspect-ratio: 1;
   background: #223143;
   border: 2px solid #111722;
@@ -2050,6 +2140,10 @@ button:active:not(:disabled) {
   transition: width 500ms ease;
 }
 
+.summary-weapon-bar.taken i {
+  background: linear-gradient(90deg, #ff5c5c, #c62828);
+}
+
 .summary-weapon-value {
   color: var(--gold);
   font-size: 12px;
@@ -2110,6 +2204,15 @@ button:active:not(:disabled) {
 }
 .title-screen.hidden { display: none; }
 
+/* Double-clicking the logo/buttons shouldn't blue-highlight text like a document. Scoped
+   to the title screen only -- inputs elsewhere in the game must stay selectable. */
+.title-screen .title-logo,
+.title-screen .title-menu,
+.title-screen .title-footer {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 /* Slow warm pulse behind the potato, like a spotlight. */
 .title-bg-glow {
   position: absolute;
@@ -2155,11 +2258,47 @@ button:active:not(:disabled) {
 }
 .title-word-accent {
   color: var(--gold);
-  animation: titleBob 3.2s ease-in-out infinite;
 }
-@keyframes titleBob {
-  0%, 100% { transform: translateY(0) rotate(-0.6deg); }
-  50%      { transform: translateY(-4px) rotate(0.6deg); }
+/* No motion on the opening-screen text per design direction: a single gentle fade-in
+   on load, nothing that translates/rotates/scales afterward. */
+.title-word {
+  animation: titleWordFadeIn 0.9s ease both;
+}
+.title-word-accent {
+  animation: titleWordFadeIn 0.9s ease 0.12s both;
+}
+@keyframes titleWordFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+/* The clickable "O" in SURVIVORS (task: click it to shoot). Kept inline and styled
+   identically to the surrounding letters so wrapping it in a span is visually invisible. */
+.title-o {
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
+  color: inherit;
+}
+/* Muzzle flash burst shown briefly on click, layered over the O without shifting layout. */
+.title-o::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 140%;
+  height: 140%;
+  transform: translate(-50%, -50%) scale(0.4);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 244, 200, 0.95) 0%, rgba(255, 200, 90, 0.6) 45%, transparent 70%);
+  opacity: 0;
+  pointer-events: none;
+}
+.title-o.title-o-flash::after {
+  animation: titleOFlash 0.25s ease-out;
+}
+@keyframes titleOFlash {
+  0%   { opacity: 1; transform: translate(-50%, -50%) scale(0.4); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.6); }
 }
 .title-tag {
   margin-top: 8px;
@@ -2289,6 +2428,9 @@ button:active:not(:disabled) {
   gap: 14px;
   text-align: center;
   padding: 0 24px;
+  /* Same rationale as .title-screen: prevent the double-click text-selection highlight. */
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .start-gate-title {
@@ -2301,7 +2443,7 @@ button:active:not(:disabled) {
   paint-order: stroke fill;
   text-transform: uppercase;
   filter: drop-shadow(0 6px 0 rgba(0, 0, 0, 0.35));
-  animation: titleBob 3.2s ease-in-out infinite;
+  animation: titleWordFadeIn 0.9s ease both;
 }
 
 .start-gate-btn {
@@ -2366,21 +2508,12 @@ button:active:not(:disabled) {
   opacity: 0;
   will-change: transform, opacity;
 }
-/* Fade in / hold / fade out. */
+/* Every card is pure opacity: fade in, hold, fade out. No translate/scale/rotate. */
 .intro-line.intro-fade-in { animation: introFadeIn 0.7s ease forwards; }
 .intro-line.intro-fade-out { opacity: 1; animation: introFadeOut 0.6s ease forwards; }
-/* Snap on (for the "ripoff" reveal that precedes the boom + drop). */
-.intro-line.intro-pop { opacity: 1; animation: introPop 0.28s cubic-bezier(0.2, 1.4, 0.4, 1) forwards; }
-/* Fall off the bottom of the screen. */
-.intro-line.intro-drop { opacity: 1; animation: introDrop 0.7s cubic-bezier(0.5, 0, 0.75, 0) forwards; }
 
-@keyframes introFadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes introFadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes introFadeOut { from { opacity: 1; } to { opacity: 0; } }
-@keyframes introPop { 0% { opacity: 0; transform: scale(0.82); } 100% { opacity: 1; transform: scale(1); } }
-@keyframes introDrop {
-  0% { transform: translateY(0) rotate(0); opacity: 1; }
-  100% { transform: translateY(140%) rotate(12deg); opacity: 0; }
-}
 
 .intro-skip {
   position: absolute;
@@ -2390,4 +2523,200 @@ button:active:not(:disabled) {
   font-size: 12px;
   letter-spacing: 0.6px;
   pointer-events: none;
+}
+
+/* ---- Gravestone overlay: shared "you're done" beat for death + Quit (js/00-gravestone.js).
+   z-index 500 is deliberately above both the run summary (350) and the title screen (5) --
+   this overlay can appear on top of either one depending on which path triggered it. ---- */
+.gravestone-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 8, 12, 0);
+  transition: background 0.35s ease;
+  pointer-events: none;
+}
+.gravestone-overlay.hidden {
+  display: none;
+}
+.gravestone-overlay.gravestone-show {
+  background: rgba(10, 8, 12, 0.82);
+}
+
+.gravestone-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  opacity: 0;
+  transform: translateY(-18px) scale(0.94);
+  transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.22, 1.2, 0.36, 1);
+}
+.gravestone-overlay.gravestone-show .gravestone-card {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.gravestone-img {
+  width: min(160px, 34vw);
+  height: auto;
+  filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.55));
+}
+
+.gravestone-epitaph {
+  margin: 0;
+  color: var(--cream);
+  font-weight: 800;
+  font-size: clamp(14px, 3vw, 20px);
+  text-align: center;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+}
+
+/* ---- Version badge + update log (title screen) ------------------------------ */
+.title-version {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  color: rgba(255, 247, 231, 0.55);
+  background: rgba(13, 18, 27, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 5px 11px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: color 140ms ease, background 140ms ease, transform 100ms ease;
+}
+.title-version:hover {
+  color: var(--gold);
+  background: rgba(13, 18, 27, 0.8);
+  transform: translateY(-1px);
+}
+
+.title-changelog {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 12, 10, 0.72);
+  z-index: 6;
+}
+.title-changelog.hidden { display: none; }
+
+.title-changelog-panel {
+  background: var(--panel);
+  border: 3px solid #111722;
+  border-radius: 12px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+  padding: 20px 24px;
+  width: min(520px, 88vw);
+  max-height: min(76vh, 560px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.title-changelog-panel h2 { margin: 0 0 4px; }
+
+/* The list is the only scrolling part, so the heading and Back button stay put. */
+.changelog-list {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-right: 6px;
+}
+
+.changelog-entry {
+  border-left: 3px solid rgba(242, 196, 95, 0.35);
+  padding-left: 11px;
+}
+.changelog-entry.latest { border-left-color: var(--gold); }
+
+.changelog-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 5px;
+}
+.changelog-version {
+  color: var(--gold);
+  font-size: 15px;
+  font-weight: 1000;
+  letter-spacing: 0.5px;
+}
+.changelog-title {
+  color: var(--cream);
+  font-size: 13px;
+  font-weight: 800;
+}
+.changelog-date {
+  color: rgba(255, 247, 231, 0.4);
+  font-size: 11px;
+  font-weight: 700;
+  margin-left: auto;
+}
+.changelog-entry ul {
+  margin: 0;
+  padding-left: 17px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.changelog-entry li {
+  color: rgba(255, 247, 231, 0.78);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.42;
+}
+
+/* ---- Full-bleed roaming slimes on the title screen --------------------------- */
+/* Sits behind .title-inner (which has no z-index, so it stacks above this in DOM
+   order) and is click-through, so the logo, menu and version badge stay usable.
+   Separate from #titleStage because that canvas is only 360x300 around the potato,
+   which is why the enemies on it can never leave the middle of the screen. */
+.title-slime-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  pointer-events: none;
+}
+
+/* The clickable "o" in "Move" — spawns another slime. Styled to look like plain
+   footer text so it stays a discovery, with only a faint hover tell. */
+.footer-o {
+  cursor: pointer;
+  display: inline-block;
+  color: inherit;
+  pointer-events: auto;
+  transition: color 140ms ease, transform 120ms ease;
+}
+.footer-o:hover {
+  color: var(--mint);
+  transform: scale(1.25);
+}
+
+/* .title-footer is pointer-events:none via .hud rules in places; make sure the span
+   inside it can still receive clicks. */
+.title-screen .title-footer { pointer-events: auto; }
+
+/* Quick squash feedback on the footer "o" when it spits out a slime. */
+.footer-o-pop { animation: footerOPop 260ms ease; }
+@keyframes footerOPop {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.6); color: var(--mint); }
+  100% { transform: scale(1); }
 }

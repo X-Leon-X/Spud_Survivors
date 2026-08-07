@@ -15,6 +15,7 @@ function draw() {
   for (const tree of state.trees) drawTree(tree);
   for (const crate of state.crates) drawCrate(crate);
   for (const drop of state.crateDrops) drawCrateDrop(drop);
+  for (const cookie of state.fortuneCookies) drawFortuneCookie(cookie);
   for (const bulb of state.bulbs) drawBulb(bulb);
   for (const coin of state.coins) drawCoin(coin);
   for (const coin of state.bagAnimations) drawBagCoin(coin);
@@ -216,6 +217,13 @@ function drawGroundDetail(x, y, seed) {
 }
 
 function drawPlayer(player) {
+  // Once the run is over the spud is replaced in-place by a little headstone, so the arena
+  // still shows where you fell. The big centre-screen gravestone card is separate (see
+  // js/00-gravestone.js) and plays over the top of this.
+  if (state.mode === "gameover") {
+    drawPlayerGrave(player);
+    return;
+  }
   ctx.save();
   const moving = keys.has("KeyW") || keys.has("ArrowUp") || keys.has("KeyS") || keys.has("ArrowDown") || keys.has("KeyA") || keys.has("ArrowLeft") || keys.has("KeyD") || keys.has("ArrowRight");
   const time = performance.now();
@@ -228,6 +236,33 @@ function drawPlayer(player) {
   ctx.scale((player.hurtTimer > 0 ? 1.07 : 1 + stepSquash) * charScale, (player.hurtTimer > 0 ? 0.94 : 1 - stepSquash) * charScale);
   drawShadow(0, 18, 25, 9);
   drawSpudBody(ctx, state.character ?? characters[0], player.hurtTimer > 0);
+  ctx.restore();
+}
+
+// The headstone that marks where the player died. Rises and settles once rather than
+// looping, so it reads as a one-off beat rather than an idle animation.
+function drawPlayerGrave(player) {
+  const art = artFor("ui:gravestone");
+  const rise = clamp((state.graveTimer ?? 0) / 0.45, 0, 1);
+  const eased = 1 - Math.pow(1 - rise, 3);
+  ctx.save();
+  ctx.translate(player.x, player.y);
+  drawShadow(0, 18, 24 * eased, 9 * eased);
+  ctx.globalAlpha = eased;
+  if (art) {
+    const size = 74 * (0.6 + eased * 0.4);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(art, -size / 2, -size + 22, size, size);
+  } else {
+    // Fallback slab if the PNG hasn't loaded, so the death spot is never blank.
+    ctx.fillStyle = "#9aa7b8";
+    ctx.strokeStyle = "#111722";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    roundedRectPath(ctx, -16, -40, 32, 46, 14);
+    ctx.fill();
+    ctx.stroke();
+  }
   ctx.restore();
 }
 
@@ -246,14 +281,20 @@ function drawArenaWeapon(player) {
   const time = performance.now();
   const count = Math.min(maxWeaponSlots(), state.weapons.length);
   const scale = weaponArenaScale(count);
+  // Mirror fireEquippedWeapons' targeting gate so the aim visual never points at a crate
+  // while the weapon itself is actually holding fire on enemies (see destructiblesTargetable
+  // in 07-combat.js for why a per-slot range check alone lets that happen).
+  const allowDestructibles = destructiblesTargetable(player, state.weapons, count);
 
   for (let index = 0; index < count; index += 1) {
     const weapon = state.weapons[index];
     const slot = getWeaponSlotPosition(player, index, count, time);
-    if (isWeaponSlotSwinging(weapon, slot)) {
+    if (isWeaponSlotSwinging(weapon, index)) {
       continue;
     }
-    const target = findNearestEnemyFrom(slot.x, slot.y, weaponRange(weapon)) ?? findNearestDestructibleFrom(slot.x, slot.y, weaponRange(weapon));
+    const target = allowDestructibles
+      ? findNearestEnemyFrom(slot.x, slot.y, weaponRange(weapon)) ?? findNearestDestructibleFrom(slot.x, slot.y, weaponRange(weapon))
+      : findNearestEnemyFrom(slot.x, slot.y, weaponRange(weapon));
     let angle = target ? Math.atan2(target.y - slot.y, target.x - slot.x) : slot.slotAngle + Math.PI / 2;
     // Melee weapons (the Stub Club) gently sway around their ready pose instead of locking
     // rigidly to the aim, so the idle-to-swing motion reads as one fluid, weighty arc.
@@ -280,15 +321,18 @@ function drawArenaWeapon(player) {
     if (weapon.recoil > 0) ctx.translate(-weapon.recoil, 0);
     ctx.scale(scale * breathe, scale * breathe);
     if (arenaArt) {
-      // Tile-less weapon PNG: draw it centered, sized to the sprite footprint. Kept
-      // smaller than the code-sprite so detailed art reads cleanly and doesn't crowd
+      // Tile-less weapon PNG: draw it centered, cropped to its content bbox and scaled
+      // to preserve its true aspect ratio (see drawWeaponArtFitted) instead of stretching
+      // into a square. boxSize is the longest edge of the cropped content, not the old
+      // canvas-edge "size" - now that padding is cropped away the weapon reads bigger at
+      // the same box, so this is tuned down from the old 52 to land on a similar on-screen
+      // mass while staying a touch larger, matching detailed art cleanly without crowding
       // the player when several weapons orbit at once. The per-weapon angle correction
       // levels its display-pose barrel to the aim direction.
-      const size = 52;
-      ctx.imageSmoothingEnabled = true;
+      const boxSize = 44;
       ctx.save();
       ctx.rotate(arenaWeaponAngle(weapon.name));
-      ctx.drawImage(arenaArt, -size / 2, -size / 2, size, size);
+      drawWeaponArtFitted(ctx, weapon.name, arenaArt, boxSize);
       ctx.restore();
     } else {
       drawWeaponSpriteShape(ctx, weapon);
@@ -297,13 +341,12 @@ function drawArenaWeapon(player) {
   }
 }
 
-function isWeaponSlotSwinging(weapon, slot) {
-  return state.swings.some((swing) => {
-    if (swing.weaponName !== weapon.name) return false;
-    const dx = swing.x - slot.x;
-    const dy = swing.y - slot.y;
-    return dx * dx + dy * dy < 12 * 12;
-  });
+// Matched on slot index rather than a proximity check: since the swing's origin now
+// tracks the same orbiting slot every frame (see weaponSwingOrigin in 07-combat.js), the
+// old "within 12px" distance test could fail on a fast orbit and let the idle PNG and the
+// swinging weapon render on the same frame. An index match can never miss.
+function isWeaponSlotSwinging(weapon, index) {
+  return state.swings.some((swing) => swing.weaponIndex === index && swing.weaponName === weapon.name);
 }
 
 function drawWeaponSwing(swing) {
@@ -311,11 +354,10 @@ function drawWeaponSwing(swing) {
   const alpha = clamp(Math.sin(geom.progress * Math.PI) * 1.15, 0, 1);
   const extensionPush = geom.gripPush + Math.sin(geom.progress * Math.PI) * 3;
   const weapon = { name: swing.weaponName, tier: swing.tier ?? 1 };
-  const grip = weaponGripOffset(swing.weaponName);
   const scale = 1.02 + (swing.crit ? 0.08 : 0);
   const reveal = clamp(geom.activeLength / Math.max(1, geom.weaponLength), 0.38, 1);
-  const x = swing.x + Math.cos(geom.current) * extensionPush;
-  const y = swing.y + Math.sin(geom.current) * extensionPush;
+  const x = geom.x + Math.cos(geom.current) * extensionPush;
+  const y = geom.y + Math.sin(geom.current) * extensionPush;
 
   ctx.save();
   ctx.globalAlpha = 0.16 * alpha;
@@ -333,8 +375,25 @@ function drawWeaponSwing(swing) {
   ctx.translate(x, y);
   ctx.rotate(geom.current);
   ctx.scale(scale * reveal, scale);
-  ctx.translate(-grip.x, -grip.y);
-  drawWeaponSpriteShape(ctx, weapon);
+
+  // Use the SAME PNG as the idle orbiting sprite so the weapon never visibly swaps art the
+  // instant it attacks. drawWeaponSpriteShape (the old hand-drawn vector) is now only a
+  // fallback for weapons with no arena art.
+  const arenaArt = weaponArenaArt(swing.weaponName);
+  if (arenaArt) {
+    // Same aspect-correct fit and boxSize as the idle orbiting sprite (see drawArenaWeapon)
+    // so the club neither changes proportions nor jumps size the instant it swings. The
+    // grip sits toward the sprite's handle end rather than its centre, so the swing pivots
+    // around the handle with the head leading, the way a held weapon actually moves.
+    const boxSize = 44;
+    ctx.rotate(arenaWeaponAngle(swing.weaponName));
+    drawWeaponArtFitted(ctx, swing.weaponName, arenaArt, boxSize, 0.18);
+  } else {
+    const grip = weaponGripOffset(swing.weaponName);
+    ctx.translate(-grip.x, -grip.y);
+    drawWeaponSpriteShape(ctx, weapon);
+  }
+
   if (swing.crit) {
     ctx.globalCompositeOperation = "screen";
     ctx.globalAlpha = 0.35;
@@ -896,12 +955,13 @@ function drawWeaponSpriteShape(targetCtx, weapon) {
   targetCtx.restore();
 }
 
-// Animated open cartoon eyes (white eyeball + dark pupil + highlight + blink + gaze drift)
-// painted over the PNG character's baked-in sleepy slit-eyes. The eye position is tuned per
-// character (their sprites frame the face slightly differently). Before drawing each open eye,
-// a soft skin-tone radial-gradient patch masks out the baked slit underneath so only our drawn
-// eye shows — the gradient fades to transparent at the rim so there's no visible patch seam
-// against the shaded potato face.
+// Animated open cartoon eyes (white eyeball + upper eyelid + dark pupil + highlight + blink +
+// gaze drift) painted over the PNG character's baked-in sleepy slit-eyes. The eye position is
+// tuned per character (their sprites frame the face slightly differently). Before drawing each
+// open eye, a soft skin-tone radial-gradient patch masks out the baked slit underneath so only
+// our drawn eye shows — the gradient fades to transparent at the rim so there's no visible patch
+// seam against the shaded potato face. The eyeball itself is drawn as a wide, low almond with a
+// partial upper lid (rather than a tall exposed oval) to avoid a "googly eyes" look.
 //
 // All anchor + mask numbers below are MEASURED, not guessed: a Node/sharp script scanned each
 // 512x512 source PNG for the two dark (luminance<90), opaque (alpha>180), horizontal-slit-shaped
@@ -916,18 +976,26 @@ function drawWeaponSpriteShape(targetCtx, weapon) {
 //   chunk:  L centroid=(205.8,249.8) bbox 46x15 | R centroid=(298.7,249.6) bbox 44x15
 //   zip:    L centroid=(209.6,246.3) bbox 42x13 | R centroid=(299.9,246.3) bbox 44x13
 const CHARACTER_EYES = {
-  sprout: { x: -0.22, y: -4.79, spread: 7.26, r: 3.3, maskHalfW: 4.68, maskHalfH: 2.53 },
-  chunk:  { x: -0.64, y: -7.08, spread: 7.98, r: 3.5, maskHalfW: 5.45, maskHalfH: 2.79 },
-  zip:    { x: -0.21, y: -7.67, spread: 7.76, r: 3.2, maskHalfW: 5.28, maskHalfH: 2.62 }
+  sprout: { x: -0.22, y: -4.79, spread: 7.26, r: 2.8, maskHalfW: 4.68, maskHalfH: 2.53 },
+  chunk:  { x: -0.64, y: -7.08, spread: 7.98, r: 3.0, maskHalfW: 5.45, maskHalfH: 2.79 },
+  zip:    { x: -0.21, y: -7.67, spread: 7.76, r: 2.75, maskHalfW: 5.28, maskHalfH: 2.62 }
 };
 
 function drawSpudEyes(g, character) {
   const cfg = CHARACTER_EYES[character?.id] ?? CHARACTER_EYES.sprout;
-  const time = performance.now();
-  // Blink ~ every 3.2s for a brief moment; a slow gaze drift keeps them lively.
+  // De-sync blinking per character so the cast doesn't all blink in perfect unison: derive a
+  // stable per-character phase offset from their id (sum of char codes mod the blink period).
+  let idOffset = 0;
+  const id = character?.id;
+  if (id) {
+    for (let i = 0; i < id.length; i++) idOffset += id.charCodeAt(i);
+    idOffset = idOffset % 3200;
+  }
+  const time = performance.now() + idOffset;
+  // Blink ~ every 3.2s for a brief, quick moment; a slow gaze drift keeps them lively.
   const blinkPhase = (time % 3200) / 3200;
-  const blinking = blinkPhase > 0.955;
-  const gaze = Math.sin(time / 1400) * 0.7;      // pupils drift left/right a touch
+  const blinking = blinkPhase > 0.965;
+  const gaze = Math.sin(time / 1400) * 0.45;     // pupils drift left/right a touch
 
   const lx = cfg.x - cfg.spread;
   const rx = cfg.x + cfg.spread;
@@ -950,9 +1018,9 @@ function drawSpudEyes(g, character) {
     g.fill();
 
     if (blinking) {
-      // closed lid: a short dark line
-      g.strokeStyle = "#20160f";
-      g.lineWidth = 2.2;
+      // closed lid: a short, soft line (thinner + lighter than a hard bar)
+      g.strokeStyle = "#3a2618";
+      g.lineWidth = 1.8;
       g.lineCap = "round";
       g.beginPath();
       g.moveTo(ex - cfg.r, cfg.y);
@@ -960,24 +1028,41 @@ function drawSpudEyes(g, character) {
       g.stroke();
       continue;
     }
-    // eye white
+    // eye white: wide, low almond/lens shape (wider than tall) instead of a tall googly oval
+    const eyeRx = cfg.r * 1.05;
+    const eyeRy = cfg.r * 0.72;
     g.fillStyle = "#fdfdf7";
     g.strokeStyle = "#20160f";
     g.lineWidth = 1.4;
     g.beginPath();
-    g.ellipse(ex, cfg.y, cfg.r + 0.6, cfg.r + 1.2, 0, 0, Math.PI * 2);
+    g.ellipse(ex, cfg.y, eyeRx, eyeRy, 0, 0, Math.PI * 2);
     g.fill();
     g.stroke();
+    // Pupil, highlight and lid all live inside the eye shape. The pupil is deliberately large
+    // enough to run past the almond's lower edge, so everything from here is clipped to the
+    // white — that both keeps the iris from spilling onto the cheek and lets the lid genuinely
+    // sit over the top of the eye rather than beside it.
+    g.save();
+    g.beginPath();
+    g.ellipse(ex, cfg.y, eyeRx, eyeRy, 0, 0, Math.PI * 2);
+    g.clip();
     // pupil
     g.fillStyle = "#20160f";
     g.beginPath();
-    g.arc(ex + gaze, cfg.y + 0.6, cfg.r * 0.62, 0, Math.PI * 2);
+    g.arc(ex + gaze, cfg.y + cfg.r * 0.35, cfg.r * 0.55, 0, Math.PI * 2);
     g.fill();
     // highlight
-    g.fillStyle = "rgba(255,255,255,0.9)";
+    g.fillStyle = "rgba(255,255,255,0.8)";
     g.beginPath();
-    g.arc(ex + gaze - 0.9, cfg.y - 0.6, cfg.r * 0.24, 0, Math.PI * 2);
+    g.arc(ex + gaze - cfg.r * 0.32, cfg.y + cfg.r * 0.35 - cfg.r * 0.22, cfg.r * 0.22, 0, Math.PI * 2);
     g.fill();
+    // upper eyelid: shade the top of the eye so the eyeball isn't a fully exposed circle —
+    // this is the single biggest fix for the "creepy staring" look.
+    g.fillStyle = "rgba(150,112,72,0.85)";
+    g.beginPath();
+    g.ellipse(ex, cfg.y - eyeRy * 0.62, eyeRx * 1.02, eyeRy * 0.62, 0, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
   }
   g.restore();
 }
@@ -1312,6 +1397,20 @@ function drawZapAsh(ash) {
   ctx.restore();
 }
 
+// Warning strobe for a Darter's wind-up. Previously this keyed off the enemy's per-enemy
+// random `bob` phase (Math.sin(enemy.bob * 7) > 0), which meant the flash timing was
+// uncorrelated with the actual windup countdown: at a ~0.9s bob period some Darters would
+// sit through their whole windup on the "off" half of the cycle and never visibly flash.
+// Keying off windupTimer instead guarantees every Darter strobes during every windup, and
+// speeding the pulse up as windupTimer runs out makes the warning read as more urgent right
+// before the lunge fires.
+function darterStrobeOn(enemy) {
+  const elapsed = DARTER_WINDUP - enemy.windupTimer; // 0 at windup start, DARTER_WINDUP at end
+  const urgency = clamp(elapsed / DARTER_WINDUP, 0, 1); // 0 -> 1 as the lunge approaches
+  const pulseHz = 4 + urgency * 10; // starts slow, ramps up to a fast, urgent strobe
+  return Math.sin(elapsed * pulseHz * Math.PI * 2) > 0;
+}
+
 function drawEnemy(enemy) {
   const art = enemyArt(enemy.name);
   ctx.save();
@@ -1345,9 +1444,13 @@ function drawEnemy(enemy) {
     ctx.rotate(enemy.lungeAngle - Math.atan2(0, 1));
     ctx.fillStyle = `rgba(255, 209, 95, ${0.22 + Math.sin(enemy.bob * 4) * 0.08})`;
     ctx.beginPath();
+    // Telegraph cone honestly represents the lunge distance (speed * chargeTimer multiplier
+    // * chargeTimer duration ~= 68 * 8.45 * 0.42 =~ 241px), rather than stopping short at
+    // ~92px (radius * 5.1) and understating how far the Darter will actually travel.
+    // Kept semi-transparent above so it still reads as a warning, not a solid wall.
     ctx.moveTo(enemy.radius * 0.8, 0);
-    ctx.lineTo(enemy.radius * 5.1, -enemy.radius * 0.85);
-    ctx.lineTo(enemy.radius * 5.1, enemy.radius * 0.85);
+    ctx.lineTo(enemy.radius * 12, -enemy.radius * 0.85);
+    ctx.lineTo(enemy.radius * 12, enemy.radius * 0.85);
     ctx.closePath();
     ctx.fill();
     ctx.restore();
@@ -1370,7 +1473,7 @@ function drawEnemy(enemy) {
   enemyBody.addColorStop(0.86, softEdgeShade);
   enemyBody.addColorStop(1, edgeShade);
   ctx.fillStyle = enemyBody;
-  if (enemy.windupTimer > 0 && Math.sin(enemy.bob * 7) > 0) {
+  if (enemy.windupTimer > 0 && darterStrobeOn(enemy)) {
     ctx.fillStyle = "#ffd15f";
   }
   ctx.strokeStyle = "#111722";
@@ -1623,7 +1726,7 @@ function drawEnemyArtBody(enemy, art) {
   // makes them snap sides for no visual gain and reads as "facing the wrong way".
   const facing = ENEMY_NO_FLIP.has(enemy.name)
     ? 1
-    : state.player && state.player.x < enemy.x ? -1 : 1;
+    : (state.player && state.player.x < enemy.x ? -1 : 1) * enemyArtFacingSign(enemy.name);
 
   // Idle wobble: gentle breathing plus a slight lean, unique per enemy.
   const breathe = 1 + Math.sin(time / 300 + enemy.bob) * 0.035;
@@ -1644,7 +1747,7 @@ function drawEnemyArtBody(enemy, art) {
   let stretchX = 1;
   let stretchY = 1;
   if (enemy.windupTimer > 0) {
-    const w = clamp(enemy.windupTimer / 0.52, 0, 1);
+    const w = clamp(enemy.windupTimer / DARTER_WINDUP, 0, 1);
     stretchX = 1 + (1 - w) * 0.18;
     stretchY = 1 - (1 - w) * 0.14;
   } else if (enemy.chargeTimer > 0) {
@@ -1676,7 +1779,7 @@ function drawEnemyArtBody(enemy, art) {
   }
 
   // Wind-up telegraph: flash the sprite gold just before a Darter lunges.
-  if (enemy.windupTimer > 0 && Math.sin(enemy.bob * 7) > 0) {
+  if (enemy.windupTimer > 0 && darterStrobeOn(enemy)) {
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     ctx.globalAlpha = 0.5;
@@ -1788,6 +1891,33 @@ function drawCrate(crate) {
     roundedRectPath(ctx, -crate.radius, -crate.radius, crate.radius * 2, crate.radius * 2, 6);
     ctx.fill();
     ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// Rare 1%-drop pickup. Bobs and glows so it reads as special against the scrap coins.
+function drawFortuneCookie(cookie) {
+  const art = artFor("item:fortune_cookie");
+  const bobY = Math.sin(cookie.bob) * 4;
+  const pulse = 1 + Math.sin(cookie.bob * 1.3) * 0.06;
+  ctx.save();
+  ctx.translate(cookie.x, cookie.y + bobY);
+  const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, 34 * pulse);
+  glow.addColorStop(0, "rgba(255, 216, 115, 0.45)");
+  glow.addColorStop(1, "rgba(255, 216, 115, 0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(0, 0, 34 * pulse, 0, Math.PI * 2);
+  ctx.fill();
+  if (art) {
+    const size = 40 * pulse;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(art, -size / 2, -size / 2, size, size);
+  } else {
+    ctx.fillStyle = "#ffd873";
+    ctx.beginPath();
+    ctx.arc(0, 0, 13, 0, Math.PI * 2);
+    ctx.fill();
   }
   ctx.restore();
 }
@@ -2469,30 +2599,55 @@ function drawEnemyBullet(bullet) {
   ctx.rotate(Math.atan2(bullet.vy, bullet.vx));
 
   if (bullet.kind === "fireball") {
-    const pulse = 1 + Math.sin((bullet.spin ?? 0) * 2) * 0.08;
+    const spin = bullet.spin ?? 0;
+    const flicker = Math.sin(spin * 7.3) * 0.05 + Math.sin(spin * 3.1 + 1.4) * 0.03;
+    const pulse = 1 + Math.sin(spin * 2) * 0.08 + flicker;
     ctx.scale(pulse, 1 / pulse);
-    ctx.fillStyle = "rgba(255, 111, 69, 0.28)";
+
+    // Outer pulsing glow — makes the projectile read as hot/dangerous from a distance.
+    const glowPulse = 1 + Math.sin(spin * 3) * 0.18;
+    const glow = ctx.createRadialGradient(-6, 0, 2, -6, 0, 30 * glowPulse);
+    glow.addColorStop(0, "rgba(255, 210, 130, 0.32)");
+    glow.addColorStop(0.55, "rgba(255, 111, 69, 0.22)");
+    glow.addColorStop(1, "rgba(255, 111, 69, 0)");
+    ctx.fillStyle = glow;
     ctx.beginPath();
-    ctx.ellipse(-18, 0, 21, 9, 0, 0, Math.PI * 2);
+    ctx.ellipse(-6, 0, 30 * glowPulse, 15 * glowPulse, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    const flame = ctx.createRadialGradient(-4, -3, 2, 0, 0, 14);
-    flame.addColorStop(0, "#fff3a6");
-    flame.addColorStop(0.42, "#ff9c5b");
+    ctx.fillStyle = "rgba(255, 111, 69, 0.32)";
+    ctx.beginPath();
+    ctx.ellipse(-22, 0, 26, 11, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Trailing ember flecks along -x, in addition to the particle trail spawned elsewhere.
+    ctx.fillStyle = "rgba(255, 224, 150, 0.85)";
+    for (let i = 0; i < 2; i += 1) {
+      const t = (i + 1) * 9 + Math.sin(spin * 6 + i) * 2;
+      const off = Math.sin(spin * 9 + i * 2.1) * 3;
+      ctx.beginPath();
+      ctx.arc(-16 - t, off, 1.6 - i * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const flame = ctx.createRadialGradient(-4, -3, 1, 0, 0, 18);
+    flame.addColorStop(0, "#ffffff");
+    flame.addColorStop(0.32, "#fff3a6");
+    flame.addColorStop(0.6, "#ff9c5b");
     flame.addColorStop(1, "#b94834");
     ctx.fillStyle = flame;
     ctx.strokeStyle = "#111722";
-    ctx.lineWidth = 2.4;
+    ctx.lineWidth = 2.6;
     ctx.beginPath();
-    ctx.moveTo(10, 0);
-    ctx.bezierCurveTo(1, -13, -14, -11, -17, 0);
-    ctx.bezierCurveTo(-8, 9, 4, 12, 10, 0);
+    ctx.moveTo(13, 0);
+    ctx.bezierCurveTo(1, -17, -18, -14, -22, 0);
+    ctx.bezierCurveTo(-10, 12, 5, 15, 13, 0);
     ctx.fill();
     ctx.stroke();
 
-    ctx.fillStyle = "#fff2a8";
+    ctx.fillStyle = "#fffbe0";
     ctx.beginPath();
-    ctx.ellipse(-2, -2, 5, 3, -0.35, 0, Math.PI * 2);
+    ctx.ellipse(-2, -2, 6.5, 4, -0.35, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
     return;
