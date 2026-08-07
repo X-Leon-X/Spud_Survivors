@@ -200,13 +200,13 @@ const characters = [
   {
     id: "zip",
     name: "Zip",
-    role: "Glass-cannon skirmisher",
-    description: "+22% Speed, +18 Luck, +6% Attack Speed, -20 Max HP, -8% Damage.",
+    role: "Fast, lucky scavenger",
+    description: "+26% Speed, +22 Luck, +6% Attack Speed, -20 Max HP, -8% Damage.",
     body: "#f4c7a3",
     leaf: "#f2d35f",
     accent: "#ff9c5b",
     scale: 0.9,
-    stats: { speed: 22, luck: 18, attackSpeed: 6, maxHp: -20, damagePercent: -8 }
+    stats: { speed: 26, luck: 22, attackSpeed: 6, maxHp: -20, damagePercent: -8 }
   }
 ];
 

@@ -39,29 +39,11 @@ function initTitleMotes() {
 // matching initTitleMotes's no-Math.random-at-load-time approach.
 const TITLE_ENEMY_KINDS = ["Nibbler", "Skitter", "Orbiter", "Darter"];
 const TITLE_ENEMY_STYLES = ["bounce", "crawl", "hop"];
-function initTitleEnemies() {
-  if (titleEnemies.length) return;
-  const w = 360, h = 300;
-  for (let i = 0; i < 5; i += 1) {
-    const name = TITLE_ENEMY_KINDS[i % TITLE_ENEMY_KINDS.length];
-    const style = TITLE_ENEMY_STYLES[i % TITLE_ENEMY_STYLES.length];
-    titleEnemies.push({
-      id: i,
-      name,
-      style,
-      alive: true,
-      respawnAt: 0,
-      // Deterministic starting position/velocity/phase, spread around the canvas edges
-      // so they read as roaming around (not through) the potato.
-      x: 30 + (i * 71) % (w - 60),
-      y: 40 + (i * 53) % (h - 90),
-      vx: (i % 2 === 0 ? 1 : -1) * (26 + (i * 7) % 18),
-      vy: (i % 2 === 0 ? -1 : 1) * (18 + (i * 5) % 14),
-      phase: i * 1.3,
-      hitFlash: 0
-    });
-  }
-}
+// The title screen used to keep a few small blobs on #titleStage (360x300), but they were
+// boxed in around the potato and read as clutter. The roaming slimes on the full-bleed
+// background layer (09c-title-slimes.js) replaced them, so this is now a no-op kept only
+// so the existing call sites stay valid.
+function initTitleEnemies() {}
 
 // Advances one title-screen enemy's position per its motion style. dt is computed once per
 // frame by the caller (drawTitleFrame) and passed in -- these are cosmetic-only props, not
@@ -369,8 +351,9 @@ function initTitleInteractions() {
       ev.stopPropagation();
       if (state.mode !== "title") return;
       const oRect = oSpan.getBoundingClientRect();
-      const { x, y } = toCanvasSpace(oRect.left + oRect.width / 2, oRect.top + oRect.height / 2);
-      fireTitleShotFrom(x, y);
+      // Fire on the FULL-BLEED slime layer, not #titleStage: the roaming slimes are the
+      // only enemies left on the title screen and they live on that bigger canvas.
+      if (typeof fireSlimeShotFromElement === "function") fireSlimeShotFromElement(oSpan);
       oSpan.classList.remove("title-o-flash");
       // Force reflow so re-adding the class restarts the animation on rapid repeat clicks.
       void oSpan.offsetWidth;

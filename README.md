@@ -43,7 +43,7 @@ Three potatoes, each pulling in a very different direction:
 
 - **Sprout** is the balanced starter with no downside.
 - **Chunk** is a slow armoured heavy hitter with a big health pool.
-- **Zip** is a fast, lucky glass cannon that dies if you get careless.
+- **Zip** is a fast, lucky scavenger who finds more loot but hits softer and dies quicker.
 
 ## Running it locally
 
@@ -60,4 +60,4 @@ for the full patch notes.
 
 ## Credits
 
-Made by [X-Leon-X](https://github.com/X-Leon-X). Heavily inspired by Brotato.
+Made by [X-Leon-X](https://github.com/X-Leon-X). Inspired by Brotato.

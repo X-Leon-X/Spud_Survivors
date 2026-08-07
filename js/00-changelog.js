@@ -14,6 +14,17 @@
 
 const CHANGELOG = [
   {
+    version: "0.10.1",
+    date: "2026-08-07",
+    title: "Character fixes & title screen revamp",
+    notes: [
+      "Fixed the character descriptions. Zip is a fast, lucky scavenger, not a heavy hitter.",
+      "Zip leans further into what it is actually good at: more speed, more luck.",
+      "Title screen revamp: the little blobs crowding the potato are gone.",
+      "Slimes now have the run of the whole screen, and there is room for a LOT of them."
+    ]
+  },
+  {
     version: "0.10.0",
     date: "2026-08-06",
     title: "Readme refresh",

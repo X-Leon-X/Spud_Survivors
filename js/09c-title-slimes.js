@@ -9,9 +9,13 @@
 
 const titleSlimes = [];
 const TITLE_SLIME_KINDS = ["Nibbler", "Skitter", "Orbiter", "Darter", "Ember Glob", "Spitter"];
-const TITLE_SLIME_MAX = 40;   // generous, but stops a click-spammer melting the framerate
+// Deliberately high: spawning a swarm is the whole point of the easter egg, so the cap is
+// only here as a last-resort guard against a genuinely absurd click-spam session.
+const TITLE_SLIME_MAX = 400;
 let titleSlimeSeed = 0;
 let titleSlimeLastT = null;
+const slimeShots = [];    // projectiles fired from the "O" in SURVIVORS
+const slimeBursts = [];   // death puffs
 
 // Cheap deterministic-ish spread. Math.random is fine here (unlike the seeded motes, which
 // run at module load) because slimes are only ever created from a click or from showTitle.
@@ -112,6 +116,10 @@ function drawTitleSlimeLayer(now) {
     }
     g.restore();
   }
+
+  // Shots and death puffs draw on top of the slimes themselves.
+  updateSlimeShots(g, t);
+  updateSlimeBursts(g, t);
 }
 
 // Converts the footer "o"'s on-screen position into slime-layer canvas coordinates, so the
@@ -142,3 +150,104 @@ function initFooterSlimeSpawner() {
 // Boots from this file rather than 09b-title.js's init block: this script loads AFTER that
 // one, so its functions don't exist yet when 09b runs its own boot lines.
 initFooterSlimeSpawner();
+
+// ---- Shooting the "O" in SURVIVORS -------------------------------------------------
+// The O now targets these full-screen slimes rather than the old stage-bound blobs, so a
+// shot can cross the entire title screen to reach something near the edges.
+
+// Converts a DOM element's centre into slime-layer canvas coordinates. Shared by the "O"
+// (shoots) and the footer "o" (spawns), since both are DOM text over the same canvas.
+function elementToSlimeCanvas(el) {
+  const cv = document.getElementById("titleSlimeLayer");
+  if (!el || !cv) return null;
+  const er = el.getBoundingClientRect();
+  const cr = cv.getBoundingClientRect();
+  if (!cr.width || !cr.height) return null;
+  return {
+    cv,
+    x: (er.left + er.width / 2 - cr.left) * (cv.width / cr.width),
+    y: (er.top + er.height / 2 - cr.top) * (cv.height / cr.height)
+  };
+}
+
+function fireSlimeShotFromElement(el) {
+  const at = elementToSlimeCanvas(el);
+  if (!at) return;
+  if (!titleSlimes.length) {
+    playSfx("shoot");
+    return;
+  }
+  // Nearest slime, so the shot visibly picks a sensible target instead of firing across
+  // the whole screen past three closer ones.
+  let target = null;
+  let best = Infinity;
+  for (const s of titleSlimes) {
+    const d = (s.x - at.x) ** 2 + (s.y - at.y) ** 2;
+    if (d < best) { best = d; target = s; }
+  }
+  if (!target) return;
+  const t = performance.now() / 1000;
+  slimeShots.push({
+    x0: at.x, y0: at.y,
+    target,
+    start: t,
+    duration: 0.28
+  });
+  playSfx("shoot");
+}
+
+function updateSlimeShots(g, t) {
+  for (let i = slimeShots.length - 1; i >= 0; i -= 1) {
+    const shot = slimeShots[i];
+    const p = (t - shot.start) / shot.duration;
+    // Home on the target's CURRENT position so a drifting slime can't be missed.
+    const tx = shot.target.x;
+    const ty = shot.target.y;
+    if (p >= 1) {
+      const idx = titleSlimes.indexOf(shot.target);
+      if (idx >= 0) {
+        titleSlimes.splice(idx, 1);
+        slimeBursts.push({ x: tx, y: ty, start: t, duration: 0.45 });
+        playSfx("kill");
+      }
+      slimeShots.splice(i, 1);
+      continue;
+    }
+    const x = shot.x0 + (tx - shot.x0) * p;
+    const y = shot.y0 + (ty - shot.y0) * p;
+    g.save();
+    g.globalAlpha = 0.95;
+    g.fillStyle = "#ffe37a";
+    g.beginPath();
+    g.arc(x, y, 5, 0, Math.PI * 2);
+    g.fill();
+    // Short motion streak back toward the muzzle.
+    g.strokeStyle = "rgba(255, 227, 122, 0.5)";
+    g.lineWidth = 3;
+    g.lineCap = "round";
+    g.beginPath();
+    g.moveTo(x, y);
+    g.lineTo(x - (tx - shot.x0) * 0.06, y - (ty - shot.y0) * 0.06);
+    g.stroke();
+    g.restore();
+  }
+}
+
+function updateSlimeBursts(g, t) {
+  for (let i = slimeBursts.length - 1; i >= 0; i -= 1) {
+    const b = slimeBursts[i];
+    const p = (t - b.start) / b.duration;
+    if (p >= 1) { slimeBursts.splice(i, 1); continue; }
+    g.save();
+    g.globalAlpha = (1 - p) * 0.9;
+    g.fillStyle = "#ffb36b";
+    for (let k = 0; k < 8; k += 1) {
+      const a = (k / 8) * Math.PI * 2;
+      const r = 6 + p * 30;
+      g.beginPath();
+      g.arc(b.x + Math.cos(a) * r, b.y + Math.sin(a) * r, 3.5 * (1 - p), 0, Math.PI * 2);
+      g.fill();
+    }
+    g.restore();
+  }
+}
