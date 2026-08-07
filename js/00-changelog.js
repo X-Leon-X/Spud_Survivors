@@ -14,6 +14,14 @@
 
 const CHANGELOG = [
   {
+    version: "0.10.0",
+    date: "2026-08-06",
+    title: "Readme refresh",
+    notes: [
+      "Rewrote the readme with a proper rundown of how the game actually plays."
+    ]
+  },
+  {
     version: "0.9.0",
     date: "2026-08-06",
     title: "Balance, stats & the send-off",
