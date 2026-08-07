@@ -999,30 +999,47 @@ function renderLoadout() {
     ui.weaponList.appendChild(pill);
   }
 
+  // Inventory: an icon grid rather than a wall of text pills. Art is far quicker to scan,
+  // and the name/details surface on hover (into the shared detail panel, plus a small
+  // floating label) so nothing is actually hidden -- just decluttered.
   ui.itemList.innerHTML = "";
   if (state.items.length === 0) {
-    ui.itemList.appendChild(createPill("No items yet", 1));
+    const empty = document.createElement("p");
+    empty.className = "inventory-empty";
+    empty.textContent = "No items yet.";
+    ui.itemList.appendChild(empty);
   } else {
     const grouped = groupItems(state.items);
     for (const group of grouped) {
-      const pill = createPill(`${group.name} ${rankLabelFor(group)}${group.count > 1 ? ` x${group.count}` : ""}`, group.tier);
       const menuKey = `${group.id}:${group.tier}`;
-      pill.tabIndex = 0;
-      pill.setAttribute("role", "button");
-      pill.addEventListener("mouseenter", () => showOwnedItemDetails(group));
-      pill.addEventListener("focus", () => showOwnedItemDetails(group));
-      pill.addEventListener("click", (event) => {
+      const cell = document.createElement("button");
+      cell.type = "button";
+      cell.className = `inventory-item tier-${group.tier}`;
+      const countBadge = group.count > 1 ? `<span class="inv-count">x${group.count}</span>` : "";
+      cell.innerHTML = `
+        <canvas width="96" height="96" aria-hidden="true"></canvas>
+        <span class="inv-rank">${rankLabelFor(group)}</span>
+        ${countBadge}
+        <span class="inv-name">${group.name}</span>
+      `;
+      // Native tooltip too, so touch and keyboard users who never hover still get the name.
+      cell.title = `${group.name} ${rankLabelFor(group)}${group.count > 1 ? ` x${group.count}` : ""}`;
+      cell.addEventListener("mouseenter", () => showOwnedItemDetails(group));
+      cell.addEventListener("focus", () => showOwnedItemDetails(group));
+      cell.addEventListener("click", (event) => {
         event.stopPropagation();
         const isOpen = state.openActionMenu?.type === "item" && state.openActionMenu.key === menuKey;
         state.openActionMenu = isOpen ? null : { type: "item", key: menuKey };
         renderLoadout();
         showOwnedItemDetails(group);
       });
+      drawItemIcon(cell.querySelector("canvas"), group);
+      if (itemArtIsFullCard(group)) cell.classList.add("has-art-tile");
       if (state.openActionMenu?.type === "item" && state.openActionMenu.key === menuKey) {
-        pill.classList.add("menu-open");
-        appendActionDropdown(pill, getOwnedItemActions(group));
+        cell.classList.add("menu-open");
+        appendActionDropdown(cell, getOwnedItemActions(group));
       }
-      ui.itemList.appendChild(pill);
+      ui.itemList.appendChild(cell);
     }
   }
   drawPlayerPreview();
@@ -1053,7 +1070,7 @@ function drawPlayerPreview() {
   const preview = ui.playerPreview;
   const pctx = preview.getContext("2d");
   const cx = preview.width / 2;
-  const cy = preview.height / 2 + 12;
+  const cy = preview.height / 2 + 12 * (preview.width / 220);
 
   pctx.clearRect(0, 0, preview.width, preview.height);
   const bg = pctx.createLinearGradient(0, 0, preview.width, preview.height);
@@ -1062,14 +1079,19 @@ function drawPlayerPreview() {
   pctx.fillStyle = bg;
   pctx.fillRect(0, 0, preview.width, preview.height);
 
+  // Everything below is sized RELATIVE to the canvas, so bumping the backing-store
+  // resolution scales the portrait instead of just leaving the spud small in a bigger box.
+  const fit = preview.width / 220;
+
   pctx.fillStyle = "rgba(0, 0, 0, 0.25)";
   pctx.beginPath();
-  pctx.ellipse(cx, cy + 42, 56, 16, 0, 0, Math.PI * 2);
+  pctx.ellipse(cx, cy + 42 * fit, 56 * fit, 16 * fit, 0, 0, Math.PI * 2);
   pctx.fill();
 
   pctx.save();
   pctx.translate(cx, cy);
-  pctx.scale(1.48 * (state.character?.scale ?? 1), 1.48 * (state.character?.scale ?? 1));
+  const bodyScale = 1.48 * fit * (state.character?.scale ?? 1);
+  pctx.scale(bodyScale, bodyScale);
   drawSpudBody(pctx, state.character ?? characters[0]);
   drawPreviewGear(pctx);
   pctx.restore();

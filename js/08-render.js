@@ -284,10 +284,12 @@ function drawArenaWeapon(player) {
   // Mirror fireEquippedWeapons' targeting gate so the aim visual never points at a crate
   // while the weapon itself is actually holding fire on enemies (see destructiblesTargetable
   // in 07-combat.js for why a per-slot range check alone lets that happen).
-  const allowDestructibles = destructiblesTargetable(player, state.weapons, count);
 
   for (let index = 0; index < count; index += 1) {
     const weapon = state.weapons[index];
+    // Per-weapon, matching fireEquippedWeapons exactly: a short-reach melee weapon may
+    // swing at a crate while the long-range guns stay locked on a distant fight.
+    const allowDestructibles = destructiblesTargetable(player, state.weapons, count, weapon);
     const slot = getWeaponSlotPosition(player, index, count, time);
     if (isWeaponSlotSwinging(weapon, index)) {
       continue;
@@ -1963,6 +1965,23 @@ function drawTree(tree) {
   ctx.rotate(sway);
   drawShadow(0, 20, 24, 8);
 
+  // Berry bush PNG when it has loaded; the code-drawn tree below is the fallback so the
+  // arena still populates if the art is missing.
+  const bushArt = artFor("env:bush");
+  if (bushArt) {
+    const size = 86;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(bushArt, -size / 2, -size / 2 - 6, size, size);
+    if (tree.hp < tree.maxHp) {
+      ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+      ctx.fillRect(-24, -46, 48, 5);
+      ctx.fillStyle = "#f2c45f";
+      ctx.fillRect(-24, -46, 48 * (tree.hp / tree.maxHp), 5);
+    }
+    ctx.restore();
+    return;
+  }
+
   const trunkGradient = ctx.createLinearGradient(-8, 0, 8, 30);
   trunkGradient.addColorStop(0, "#b97843");
   trunkGradient.addColorStop(1, "#6d432d");
@@ -2054,6 +2073,16 @@ function drawBulb(bulb) {
   drawShadow(0, 15, 17, 6);
   ctx.translate(0, bob);
   ctx.rotate(sway);
+
+  // Health apple PNG when loaded, else fall through to the original code-drawn bulb.
+  const appleArt = artFor("env:apple");
+  if (appleArt) {
+    const size = 40;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(appleArt, -size / 2, -size / 2 - 4, size, size);
+    ctx.restore();
+    return;
+  }
 
   ctx.fillStyle = `rgba(255, 120, 140, ${glow})`;
   ctx.beginPath();

@@ -453,7 +453,21 @@ function initTitleControls() {
 // and the gravestone, then straight back to a fresh title screen. Nothing is lost - it
 // reads as a themed transition, and showTitleScreen() re-runs freshState() for us.
 function quitToFarewell() {
-  playGravestone("Here lies the run that never was", showTitleScreen);
+  playGravestone("Here lies the run that never was", () => {
+    // Browsers only allow window.close() on a tab the script itself opened, so on a normal
+    // page load (including GitHub Pages) this is a silent no-op by design -- there is no
+    // way around that rule. Try it anyway for the wrapped/standalone case, then fall back
+    // to the title screen, which is what actually happens in a browser.
+    try {
+      window.close();
+    } catch {
+      // ignore: closing was never permitted here
+    }
+    // If the tab is still open a moment later, the close was blocked -- go back to the menu.
+    setTimeout(() => {
+      if (!window.closed) showTitleScreen();
+    }, 120);
+  });
 }
 
 // ---- Intro cinematic ----------------------------------------------------------------

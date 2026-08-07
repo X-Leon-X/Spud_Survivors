@@ -90,6 +90,8 @@ const ART_SOURCES = {
   // Environment objects drawn in the arena.
   "env:crate": "assets/environment/crate.png",
   "env:crate_broken": "assets/environment/crate_broken.png",
+  "env:bush": "assets/environment/bush.png",
+  "env:apple": "assets/environment/apple.png",
 
   // Enemies - drawn in the arena as the creature body. Overlays (health bar, hit
   // flash, burn, buff aura, wind-up telegraph) are still drawn by the game on top.

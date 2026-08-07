@@ -85,7 +85,7 @@ const distSq = (a, b) => {
   return dx * dx + dy * dy;
 };
 
-const MAX_ENEMIES = 320;
+const MAX_ENEMIES = 480;   // raised with the faster spawn curve so late waves stay dense
 const BASE_WEAPON_SLOTS = 6;
 const MAX_WEAPON_RANK = 5;
 const DRUMMER_BUFF_RADIUS = 260;
@@ -93,14 +93,14 @@ const DRUMMER_SPEED_MULTIPLIER = 1.4;
 const DRUMMER_DAMAGE_MULTIPLIER = 1.25;
 
 const enemyTypes = [
-  { name: "Nibbler", behavior: "chase", size: "small", color: "#f1766e", hp: 9, speed: 106, radius: 16, damage: 6, scrap: 1, minWave: 1, weight: 8 },
-  { name: "Skitter", behavior: "chase", size: "small", color: "#88d27a", hp: 6, speed: 158, radius: 12, damage: 4, scrap: 1, minWave: 2, weight: 6 },
-  { name: "Bruiser", behavior: "chase", size: "large", color: "#b28cf2", hp: 110, speed: 34, radius: 28, damage: 14, scrap: 4, minWave: 3, weight: 2 },
+  { name: "Nibbler", behavior: "chase", size: "small", color: "#f1766e", hp: 9, speed: 106, radius: 16, damage: 6, scrap: 1, minWave: 1, weight: 14 },
+  { name: "Skitter", behavior: "chase", size: "small", color: "#88d27a", hp: 6, speed: 158, radius: 12, damage: 4, scrap: 1, minWave: 2, weight: 12 },
+  { name: "Bruiser", behavior: "chase", size: "large", color: "#b28cf2", hp: 92, speed: 34, radius: 28, damage: 14, scrap: 9, minWave: 3, weight: 2 },
   { name: "Darter", behavior: "charge", size: "medium", color: "#ff9c5b", hp: 40, speed: 68, radius: 18, damage: 10, scrap: 2, minWave: 4, weight: 1 },
   { name: "Ember Glob", behavior: "fireball", size: "medium", color: "#e56f45", hp: 16, speed: 52, radius: 17, damage: 5, scrap: 2, minWave: 5, weight: 1 },
   { name: "Spitter", behavior: "shoot", size: "medium", color: "#66c7d8", hp: 20, speed: 58, radius: 18, damage: 8, scrap: 2, minWave: 5, weight: 3 },
-  { name: "Orbiter", behavior: "orbit", size: "small", color: "#f2d35f", hp: 11, speed: 162, radius: 14, damage: 6, scrap: 1, minWave: 6, weight: 3 },
-  { name: "Drummer", behavior: "buffer", size: "large", color: "#ff7eb6", hp: 98, speed: 36, radius: 30, damage: 10, scrap: 5, minWave: 7, weight: 1 }
+  { name: "Orbiter", behavior: "orbit", size: "small", color: "#f2d35f", hp: 11, speed: 162, radius: 14, damage: 6, scrap: 1, minWave: 6, weight: 6 },
+  { name: "Drummer", behavior: "buffer", size: "large", color: "#ff7eb6", hp: 80, speed: 36, radius: 30, damage: 10, scrap: 5, minWave: 7, weight: 1 }
 ];
 
 const rarities = {

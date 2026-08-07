@@ -381,28 +381,30 @@ function enemySpawnInterval() {
   const elapsedRatio = state.waveDuration
     ? clamp((state.waveDuration - state.waveTime) / state.waveDuration, 0, 1)
     : 0;
-  // Steeper spawn-rate ramp (1.13 -> 1.19 base) so the arena fills up sooner each wave.
-  const wavePressure = Math.pow(1.19, wave - 1) * (1 + Math.max(0, wave - 6) * 0.04 + Math.max(0, wave - 13) * 0.045);
+  // Enemies are individually squishier now, so the pressure comes from VOLUME instead:
+  // roughly 2.8x the throughput of the old curve. Carving a path through a thick crowd is
+  // the point, and a faster trickle keeps kills landing constantly.
+  const wavePressure = Math.pow(1.26, wave - 1) * (1 + Math.max(0, wave - 6) * 0.05 + Math.max(0, wave - 13) * 0.05);
   const lateWavePush = 1 + elapsedRatio * Math.min(0.4, wave * 0.02);
-  return Math.max(0.16, 1.48 / Math.min(10.5, wavePressure * lateWavePush));
+  return Math.max(0.09, 1.30 / Math.min(15.5, wavePressure * lateWavePush));
 }
 
 function enemySpawnBatchSize() {
   const wave = Math.max(1, state.wave);
   // Bigger early batches (kicks in from wave 2 instead of 3, steeper exponent).
-  const growth = Math.floor(Math.pow(Math.max(0, wave - 1), 1.22) / 3.4);
-  const midBonus = Math.floor(Math.max(0, wave - 8) / 4);
-  const lateBonus = Math.floor(Math.max(0, wave - 13) / 3);
+  const growth = Math.floor(Math.pow(Math.max(0, wave - 1), 1.22) / 2.3);
+  const midBonus = Math.floor(Math.max(0, wave - 8) / 3);
+  const lateBonus = Math.floor(Math.max(0, wave - 13) / 2);
   // Pet Alien (and anything else granting extraEnemies) thickens every wave slightly. The
   // cap still applies, so it makes waves arrive denser rather than uncapping the arena.
   const owned = calculateOwnedUpgradeEffects().extraEnemies ?? 0;
-  return Math.min(14, 1 + growth + midBonus + lateBonus + owned);
+  return Math.min(22, 1 + growth + midBonus + lateBonus + owned);
 }
 
 function enemyActiveCap() {
   const wave = Math.max(1, state.wave);
   // Higher concurrent-enemy cap earlier, so the screen gets crowded sooner.
-  const curve = 28 + wave * 12 + Math.pow(Math.max(0, wave - 3), 1.45) * 2.8 + Math.max(0, wave - 10) * 5.1;
+  const curve = 40 + wave * 17 + Math.pow(Math.max(0, wave - 3), 1.45) * 3.6 + Math.max(0, wave - 10) * 6.5;
   return Math.min(MAX_ENEMIES, Math.round(curve));
 }
 
@@ -478,7 +480,9 @@ function rollTreeCount() {
   const base = 3 + Math.floor(wave / 4);
   const randomExtra = Math.floor(rand(0, 3));
   const luckExtra = Math.random() * 100 < Math.min(45, luck * 0.35) ? 1 : 0;
-  return Math.min(10, base + randomExtra + luckExtra);
+  // Hard floor of 3: bushes are the between-fight breather and the fruit/scrap source, so
+  // a wave should never open with a bare arena regardless of how the rolls land.
+  return clamp(base + randomExtra + luckExtra, 3, 10);
 }
 
 function chooseEnemyType() {
@@ -519,15 +523,14 @@ function enemyScaling() {
   const growth = wave - 1;
   const midGame = Math.max(0, wave - 6);
   const lateGame = Math.max(0, wave - 12);
-  // Player DPS compounds MULTIPLICATIVELY (tier baseDamage x tier scaling multiplier x
-  // damagePercent / cooldown x 6 slots) and roughly 36x's from wave 5 to wave 15. A linear
-  // HP curve can never keep pace with that, so HP now compounds geometrically per wave
-  // instead: ~20.5% growth per wave, tapered off after wave ~23 with a light linear tail
-  // so the late game stays a bullet-sponge grind rather than a literal unkillable wall.
-  // Approx multiplier: w1 1x, w5 2.1x, w10 5.4x, w15 13.6x, w20 34.6x, w25 61x, w30 63x.
+  // HP still compounds (a linear curve can never track the player's multiplicative power
+  // growth), but deliberately GENTLER than raw parity would demand. Enemies that each take
+  // a second to chew through kill the power fantasy -- the fun is carving through a crowd,
+  // so trash should pop instantly and the pressure should come from how MANY arrive.
+  // Approx multiplier: w1 1x, w5 1.8x, w10 3.7x, w15 7.5x, w20 15.5x.
   const hpCompoundGrowth = Math.min(growth, 22);
-  const hpLateTail = Math.max(0, growth - 22) * 0.35;
-  const hp = Math.pow(1.205, hpCompoundGrowth) + hpLateTail;
+  const hpLateTail = Math.max(0, growth - 22) * 0.3;
+  const hp = Math.pow(1.155, hpCompoundGrowth) + hpLateTail;
   // Damage deliberately stays shallow and roughly unchanged from before: the goal is to
   // overwhelm the player with numbers and chip damage, not to let any single hit spike, so
   // relative damage between enemy types matters far more here than the absolute scalar.
@@ -545,11 +548,14 @@ function enemyScaling() {
 // smaller version of the same treatment; small enemies are the baseline swarm and get none.
 function sizeHpMultiplier(size, wave) {
   const growth = Math.max(0, wave - 1);
+  // Capped well below the old +220%: stacked on top of compounding HP it turned Bruisers
+  // into 10k-HP walls that took ~5s to drop. They should still clearly outlast the swarm,
+  // just not stall the run.
   if (size === "large") {
-    return 1 + Math.min(2.2, growth * 0.09);
+    return 1 + Math.min(1.1, growth * 0.05);
   }
   if (size === "medium") {
-    return 1 + Math.min(0.9, growth * 0.035);
+    return 1 + Math.min(0.5, growth * 0.022);
   }
   return 1;
 }
@@ -562,14 +568,24 @@ function sizeHpMultiplier(size, wave) {
 // The fix: decide ONCE per frame, from the player's position, whether the fight is still
 // "on" at all. Only when nothing is engaged does any slot consider destructibles; otherwise
 // a slot with no enemy in reach simply holds fire instead of shooting the crate.
-function destructiblesTargetable(player, weapons, count) {
-  let maxRange = 0;
-  for (let index = 0; index < count; index += 1) {
-    maxRange = Math.max(maxRange, weaponRange(weapons[index]));
+function destructiblesTargetable(player, weapons, count, weapon) {
+  // Judged PER WEAPON against its own reach. A club with 56px range should not be frozen
+  // just because a pistol across the loadout can see something 500px away -- it cannot
+  // help in that fight, so it may as well smash the crate it is standing next to.
+  // Long-range weapons still hold fire while anything is engaged, which is what stops
+  // them peeling off mid-fight (see the orbit-slot note below).
+  let reach;
+  if (weapon) {
+    reach = weaponRange(weapon) + 48;
+  } else {
+    let maxRange = 0;
+    for (let index = 0; index < count; index += 1) {
+      maxRange = Math.max(maxRange, weaponRange(weapons[index]));
+    }
+    // +48 covers the weapon orbit radius (slots sit ~36-45px out) so an enemy just past a
+    // slot's own range, but still near the player, still counts as "engaged".
+    reach = maxRange + 48;
   }
-  // +48 covers the weapon orbit radius (slots sit ~36-45px out) so an enemy just past a
-  // slot's own range, but still near the player, still counts as "engaged".
-  const reach = maxRange + 48;
   return !findNearestEnemyFrom(player.x, player.y, reach);
 }
 
@@ -577,9 +593,9 @@ function fireEquippedWeapons(dt) {
   const player = state.player;
   const now = performance.now();
   const count = Math.min(maxWeaponSlots(), state.weapons.length);
-  const allowDestructibles = destructiblesTargetable(player, state.weapons, count);
   for (let index = 0; index < count; index += 1) {
     const weapon = state.weapons[index];
+    const allowDestructibles = destructiblesTargetable(player, state.weapons, count, weapon);
     weapon.fireCooldown = Math.max(0, (weapon.fireCooldown ?? 0) - dt);
     // Recoil springs back to 0 quickly (a snappy kick, not a slow drift).
     if (weapon.recoil > 0) weapon.recoil = Math.max(0, weapon.recoil - dt * 55);
@@ -894,7 +910,7 @@ function applyBulletHit(bullet, enemy, enemyIndex) {
   const angle = Math.atan2(bullet.vy, bullet.vx);
   // Single tuning point for ALL weapon knockback (profiles feed their per-weapon numbers
   // through here), kept low so hits stagger enemies instead of punting them off-screen.
-  const push = (bullet.knockback ?? 0) * 4.5;
+  const push = (bullet.knockback ?? 0) * 4.5 * enemyKnockbackResist(enemy);
   enemy.knockX = (enemy.knockX ?? 0) + Math.cos(angle) * push;
   enemy.knockY = (enemy.knockY ?? 0) + Math.sin(angle) * push;
 
@@ -1363,6 +1379,17 @@ function updateEnemyBehavior(enemy, dt) {
 
   enemy.vx = Math.cos(angle) * speed;
   enemy.vy = Math.sin(angle) * speed;
+}
+
+// How much of an incoming hit's knockback an enemy actually takes. Heavy enemies are meant
+// to feel like they plant their feet: the Bruiser especially should keep walking through
+// fire rather than being skated backwards, which also stops chip damage from trivially
+// kiting it forever. Applied to weapon knockback only, not the Darter lunge.
+function enemyKnockbackResist(enemy) {
+  if (enemy.name === "Bruiser") return 0.25;
+  if (enemy.size === "large") return 0.45;
+  if (enemy.size === "medium") return 0.8;
+  return 1;
 }
 
 function enemyContactDamage(enemy) {

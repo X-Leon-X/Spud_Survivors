@@ -14,6 +14,25 @@
 
 const CHANGELOG = [
   {
+    version: "0.11.0",
+    date: "2026-08-07",
+    title: "Carve through the swarm",
+    notes: [
+      "Enemies die much faster. Trash should pop, not soak up a full second each.",
+      "Way more of them, too: roughly triple the spawn rate, and the arena holds far more at once.",
+      "Nibblers, Skitters and Orbiters now make up the bulk of a wave.",
+      "Bruisers are leaner but shrug off knockback, so they still plant their feet and walk at you.",
+      "Bruisers drop a lot more scrap, since killing one is a real commitment.",
+      "New art: seven enemies, five weapons and three items are drawn and ready to be built.",
+      "New berry bush and health apple sprites in the arena.",
+      "Bigger character portrait in the shop, and Items is now a proper Inventory of icons.",
+      "Hover any inventory item to see what it is.",
+      "Melee weapons stop standing idle and break nearby crates when no enemy is in reach.",
+      "Every wave now has at least three bushes.",
+      "Cleaned the leftover glow and drop shadows off the older weapon art."
+    ]
+  },
+  {
     version: "0.10.1",
     date: "2026-08-07",
     title: "Character fixes & title screen revamp",
