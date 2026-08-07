@@ -523,14 +523,17 @@ function enemyScaling() {
   const growth = wave - 1;
   const midGame = Math.max(0, wave - 6);
   const lateGame = Math.max(0, wave - 12);
-  // HP still compounds (a linear curve can never track the player's multiplicative power
-  // growth), but deliberately GENTLER than raw parity would demand. Enemies that each take
-  // a second to chew through kill the power fantasy -- the fun is carving through a crowd,
-  // so trash should pop instantly and the pressure should come from how MANY arrive.
-  // Approx multiplier: w1 1x, w5 1.8x, w10 3.7x, w15 7.5x, w20 15.5x.
-  const hpCompoundGrowth = Math.min(growth, 22);
-  const hpLateTail = Math.max(0, growth - 22) * 0.3;
-  const hp = Math.pow(1.155, hpCompoundGrowth) + hpLateTail;
+  // HP compounds, but only for a WINDOW, then goes linear. This is the important bit: the
+  // player's power is not actually unbounded -- weapons cap at tier 5, you get 6 slots, and
+  // stat gains taper once the good items are bought. So an endlessly compounding HP curve
+  // ALWAYS wins eventually, no matter how gentle the rate, and the run stops being winnable
+  // rather than getting hard. Compounding at a mild 10% through wave ~18 keeps the mid-game
+  // tightening, then a linear tail lets the plateaued player stay ahead while the swarm size
+  // (see enemySpawnInterval) carries the difficulty from there.
+  // Approx multiplier: w1 1x, w5 1.5x, w10 2.4x, w15 3.8x, w20 5.0x, w30 8.0x, w40 11x.
+  const hpCompoundGrowth = Math.min(growth, 17);
+  const hpLateTail = Math.max(0, growth - 17) * 0.3;
+  const hp = Math.pow(1.10, hpCompoundGrowth) + hpLateTail;
   // Damage deliberately stays shallow and roughly unchanged from before: the goal is to
   // overwhelm the player with numbers and chip damage, not to let any single hit spike, so
   // relative damage between enemy types matters far more here than the absolute scalar.

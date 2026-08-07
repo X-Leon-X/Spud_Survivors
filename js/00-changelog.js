@@ -8,11 +8,30 @@
 // The title screen reads GAME_VERSION straight from the first changelog entry's version,
 // so the badge and the notes can never disagree.
 //
+// IMPORTANT: index.html appends ?v=<version> to every script/stylesheet tag. GitHub Pages
+// serves JS with Cache-Control: max-age=600, so WITHOUT that query string a returning
+// player keeps running old code for 10 minutes after a deploy (this bit us: index.html
+// updated while 08-render.js stayed stale, so new art silently never appeared). Bump the
+// ?v= in index.html to match whenever you bump GAME_VERSION.
+//
 // Versioning: 0.MINOR.PATCH while pre-1.0.
 //   PATCH - fixes, tuning, art swaps.
 //   MINOR - new systems, content or screens.
 
 const CHANGELOG = [
+  {
+    version: "0.11.1",
+    date: "2026-08-07",
+    title: "Updates show up, and the run stays winnable",
+    notes: [
+      "Fixed the game serving stale code after an update, so new art and fixes appear right away.",
+      "The berry bush and health apple are now actually visible.",
+      "Enemy health grows far more slowly, and stops compounding entirely in the late game.",
+      "Late waves no longer outrun a maxed-out build. The swarm gets bigger instead of spongier.",
+      "Cleaned up the character portrait in the Field Market.",
+      "The shop now shows only your current build. Run totals moved to the end-of-run summary."
+    ]
+  },
   {
     version: "0.11.0",
     date: "2026-08-07",

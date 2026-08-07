@@ -910,8 +910,7 @@ function renderStatSheets() {
     ["Zap Cooldown", `${engineeringZapCooldown(effectiveStat("engineering")).toFixed(2)}s`, "derived"],
     ["Shop Discount", `${Math.round(state.shopDiscount * 100)}%`, "derived"],
     ["Recycle Rate", `${Math.round(state.recycleRate * 100)}%`, "derived"],
-    ["HP Regen Delay", (() => { const d = hpRegenHealDelay(effectiveStat("hpRegen")); return d === Infinity ? "—" : `${d.toFixed(2)}s`; })(), "derived"],
-    ["Dmg Taken (Run)", Math.round(Object.values(state.runStats.damageTakenBySource ?? {}).reduce((a, b) => a + b, 0)), "derived"]
+    ["HP Regen Delay", (() => { const d = hpRegenHealDelay(effectiveStat("hpRegen")); return d === Infinity ? "—" : `${d.toFixed(2)}s`; })(), "derived"]
   ].map(([name, value, className]) => `<div class="stat-row ${className}"><span class="stat-name">${name}</span><span class="stat-value">${value}</span></div>`);
 
   const statRows = statDefs.map((stat) => {
@@ -924,14 +923,10 @@ function renderStatSheets() {
     return `<div class="stat-row"><span class="stat-name">${stat.name}</span><span class="stat-value">${value}${ownedText}${bonusText}</span></div>`;
   });
 
-  const runStatsHeading = `<div class="stats-title" style="grid-column: 1 / -1; margin-top: 8px;">Run Stats</div>`;
-  const runStatsRows = [
-    ["Kills", state.runStats.kills, "derived"],
-    ["Time Played", formatDuration(state.runStats.timePlayed), "derived"],
-    ["Scrap Earned", state.runStats.scrapEarned, "derived"]
-  ].map(([name, value, className]) => `<div class="stat-row ${className}"><span class="stat-name">${name}</span><span class="stat-value">${value}</span></div>`);
-
-  const html = [...derivedRows, ...statRows, runStatsHeading, ...runStatsRows].join("");
+  // Deliberately no run-total rows here (kills, time played, scrap earned, damage taken):
+  // the shop is for deciding what to buy NEXT, so it only shows current build stats. The
+  // retrospective numbers live on the end-of-run summary instead.
+  const html = [...derivedRows, ...statRows].join("");
   ui.shopStatList.innerHTML = html;
 }
 
@@ -1082,11 +1077,6 @@ function drawPlayerPreview() {
   // Everything below is sized RELATIVE to the canvas, so bumping the backing-store
   // resolution scales the portrait instead of just leaving the spud small in a bigger box.
   const fit = preview.width / 220;
-
-  pctx.fillStyle = "rgba(0, 0, 0, 0.25)";
-  pctx.beginPath();
-  pctx.ellipse(cx, cy + 42 * fit, 56 * fit, 16 * fit, 0, 0, Math.PI * 2);
-  pctx.fill();
 
   pctx.save();
   pctx.translate(cx, cy);
