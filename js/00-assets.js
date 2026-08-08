@@ -39,6 +39,9 @@ const ART_SOURCES = {
   "item:speed": "assets/items/speed.png",
   "item:split": "assets/items/split.png",
   "item:fortune_cookie": "assets/items/fortune_cookie.png",
+  "item:fun_hat": "assets/items/fun_hat.png",
+  "item:flint_steel": "assets/items/flint_steel.png",
+  "item:useful_glasses": "assets/items/useful_glasses.png",
 
   // Weapon shop-card icons, keyed by upgrade id (underscore filenames).
   "item:flamethrower": "assets/items/flamethrower.png",
@@ -49,13 +52,17 @@ const ART_SOURCES = {
   "item:spark_weapon": "assets/items/spark_weapon.png",
   "item:stub_club": "assets/items/stub_club.png",
   "item:twig_wand": "assets/items/twig_wand.png",
+  "item:potato_masher": "assets/items/potato_masher.png",
+  "item:seed_shotgun": "assets/items/seed_shotgun.png",
+  "item:thorn_lasher": "assets/items/thorn_lasher.png",
+  "item:frost_bow": "assets/items/frost_bow.png",
+  "item:shuriken": "assets/items/shuriken.png",
 
   // Weapons by display name. itemArt() prefers these over the item: key above, so a
-  // weapon's card uses this art. Note the exported weapon files use hyphens.
-  // Weapons point at the improved detailed cutouts (assets/items/<id>.png) where one
-  // exists, so the shop card + equipped slot show the good art. The 3 without an
-  // improved image yet (Stub Club, Flamethrower, Grenade Launcher) keep the old
-  // assets/weapons sprite until their art is redone.
+  // weapon's card uses this art. EVERY weapon now points at an improved tile-less cutout in
+  // assets/items/<id>.png. The original hyphen-named sprites they replaced are archived in
+  // "assets/Old assets/" and are no longer loaded by anything -- this table is the single
+  // source of truth for which files the game actually uses.
   "weapon:Spark Peashooter": "assets/items/spark_weapon.png",
   "weapon:Twig Wand": "assets/items/twig_wand.png",
   "weapon:Stub Club": "assets/items/stub_club.png",
@@ -64,6 +71,11 @@ const ART_SOURCES = {
   "weapon:Scrap Revolver": "assets/items/scrap_revolver.png",
   "weapon:Tin Dragon Flamethrower": "assets/items/flamethrower.png",
   "weapon:Grenade Launcher": "assets/items/grenade_launcher.png",
+  "weapon:Potato Masher": "assets/items/potato_masher.png",
+  "weapon:Seed Shotgun": "assets/items/seed_shotgun.png",
+  "weapon:Thorn Lasher": "assets/items/thorn_lasher.png",
+  "weapon:Frost Bow": "assets/items/frost_bow.png",
+  "weapon:Shuriken": "assets/items/shuriken.png",
 
   "mutation:eye": "assets/mutations/steady_eye.png",
   "mutation:reinforced heart": "assets/mutations/heart_reinforced.png",
@@ -92,6 +104,13 @@ const ART_SOURCES = {
   "env:crate_broken": "assets/environment/crate_broken.png",
   "env:bush": "assets/environment/bush.png",
   "env:apple": "assets/environment/apple.png",
+  // Seamlessly tileable arena floor, drawn under everything else (see drawArena).
+  "env:ground": "assets/environment/arena_ground.png",
+  // Two frames of the same bin. Cropped so the BODY is identically sized and sits on the
+  // same baseline in both, with the open frame's lid overhanging upward, so swapping frames
+  // animates the lid instead of making the whole bin jump.
+  "env:scrap_bin": "assets/environment/scrap_bin_closed.png",
+  "env:scrap_bin_open": "assets/environment/scrap_bin_open.png",
 
   // Enemies - drawn in the arena as the creature body. Overlays (health bar, hit
   // flash, burn, buff aura, wind-up telegraph) are still drawn by the game on top.
@@ -103,6 +122,13 @@ const ART_SOURCES = {
   "enemy:Spitter": "assets/enemies/spitter.png",
   "enemy:Orbiter": "assets/enemies/orbiter.png",
   "enemy:Drummer": "assets/enemies/drummer.png",
+  "enemy:Husk": "assets/enemies/husk.png",
+  "enemy:Thistle": "assets/enemies/thistle.png",
+  "enemy:Blight Sac": "assets/enemies/blight-sac.png",
+  "enemy:Gravebloom": "assets/enemies/gravebloom.png",
+  "enemy:Clown": "assets/enemies/clown.png",
+  "enemy:Clown Mid": "assets/enemies/clown-mid.png",
+  "enemy:Clown Small": "assets/enemies/clown-small.png",
 
   // UI chrome icons (buttons, placeholders).
   "ui:compendium": "assets/ui/compendium.png",
@@ -127,13 +153,33 @@ const ENEMY_ART_CONFIG = {
   // 2.1 scale it drew ~15% larger and read as the biggest thing on screen. The Bruiser is
   // meant to be the visual heavyweight, so the Drummer is scaled down under it here. Purely
   // cosmetic — scale never touches the hitbox.
-  Drummer: { scale: 1.62, yOffset: -0.06 }         // drums flank the body
+  Drummer: { scale: 1.62, yOffset: -0.06 },        // drums flank the body
+
+  // New cast. Gravebloom and Clown are big, but both stay under the Bruiser's effective
+  // drawn size so the Bruiser remains the visual heavyweight (see ART_BRIEF.md).
+  Husk: { scale: 1.85, yOffset: -0.05 },
+  Thistle: { scale: 1.9, yOffset: -0.02 },          // rooted: sits low, on its base
+  "Blight Sac": { scale: 2.0, yOffset: -0.07 },     // bloated, slightly overhangs
+  Gravebloom: { scale: 1.72, yOffset: -0.1 },       // tall drooping flower head
+  Clown: { scale: 1.78, yOffset: -0.06 },
+  "Clown Mid": { scale: 1.9, yOffset: -0.05 },
+  "Clown Small": { scale: 2.0, yOffset: -0.04 }
 };
 
 // Enemies whose art faces the camera head-on and is left/right symmetric. These must NOT be
 // horizontally flipped to "face" the player — mirroring a front-facing sprite is a no-op that
 // only causes a jarring snap when the player crosses to the other side.
-const ENEMY_NO_FLIP = new Set(["Bruiser"]);
+// Thistle is rooted and symmetric, Gravebloom is a front-facing flower, and the three
+// clowns all stare straight at the camera — flipping any of them is a visual no-op that
+// only produces a snap when the player crosses sides.
+const ENEMY_NO_FLIP = new Set([
+  "Bruiser",
+  "Thistle",
+  "Gravebloom",
+  "Clown",
+  "Clown Mid",
+  "Clown Small"
+]);
 
 // The facing flip in drawEnemyArtBody assumes each sprite is drawn facing RIGHT. The Darter
 // art is drawn facing LEFT (its fins trail right), so the flip ran backwards and it turned
@@ -168,7 +214,11 @@ function enemyArtConfig(name) {
 // parchment tile + rank badge drawn behind them, so nothing is full-card. (The four item
 // keys that used to sit here were tuned for older baked-tile art these exports replaced.)
 // mutation:eye has no export and falls back to code art.
-const ART_FULL_CARD = new Set([]);
+// item:flint_steel is the one exception: its art is a deliberately photorealistic film
+// still with an OPAQUE rectangular background (the joke). Drawing the engine's parchment
+// tile behind it leaves a visible frame poking out around an opaque photo, which reads as
+// a rendering bug rather than a gag, so it is treated as a full card and skips the tile.
+const ART_FULL_CARD = new Set(["item:flint_steel"]);
 
 // Weapon art that is a full card tile does NOT read well spinning around the player in
 // the arena, so those keep their code-drawn sprite in-world. List weapon keys here whose
@@ -182,7 +232,12 @@ const ART_ARENA_WEAPON = new Set([
   "weapon:Slingshot",
   "weapon:Scrap Revolver",
   "weapon:Tin Dragon Flamethrower",
-  "weapon:Grenade Launcher"
+  "weapon:Grenade Launcher",
+  "weapon:Potato Masher",
+  "weapon:Seed Shotgun",
+  "weapon:Thorn Lasher",
+  "weapon:Frost Bow",
+  "weapon:Shuriken"
 ]);
 
 // Per-weapon sprite rotation offset (radians) added on top of the aim rotation in-arena.

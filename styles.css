@@ -317,10 +317,16 @@ canvas {
   opacity: 0.85;
   padding: 0;
   position: absolute;
+  /* Top-right, tucked under the HUD row. That row is min-height 42px from top:16px so it
+     ends around y=58; top:66px clears it with a small gap and leaves the arena unobscured. */
   right: 16px;
   top: 66px;
   transition: opacity 150ms ease, filter 150ms ease, transform 120ms ease;
   width: 44px;
+  /* Must clear the shop/reward panels (z-index 20). Those are centered with a 1080px cap,
+     so on viewports below ~1112px they span the full width and would otherwise cover this
+     button completely -- i.e. it would vanish on exactly the screens where it is shown. */
+  z-index: 25;
 }
 
 .compendium-button:hover,
@@ -1676,6 +1682,14 @@ h1 {
     padding: 6px 9px;
   }
 
+  /* The HUD shifts to left:10px/top:10px here AND is allowed to wrap onto a second row, so
+     the desktop top:66px would sit on top of a wrapped chip. Match the HUD's left edge and
+     drop below two rows of the smaller (36px) chips. */
+  .compendium-button {
+    right: 10px;
+    top: 96px;
+  }
+
   .shop-grid {
     grid-template-columns: 1fr;
     min-height: 0;
@@ -2828,3 +2842,365 @@ button:active:not(:disabled) {
 /* Full-card art fills the tile rather than sitting inside the parchment frame. */
 .inventory-item.has-art-tile { padding: 0; }
 .inventory-item.has-art-tile canvas { border-radius: 6px; }
+
+/* --- Developer testing sidebar -------------------------------------------------------
+   Hidden tooling, not a player feature. Unlocked by typing a dev code (see
+   js/09d-devpanel.js). Fixed to the right edge so it never displaces the game canvas. */
+.dev-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 999;
+  width: 208px;
+  max-height: 100vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: rgba(14, 20, 24, 0.94);
+  border-left: 2px solid rgba(255, 247, 231, 0.22);
+  box-shadow: -8px 0 28px rgba(0, 0, 0, 0.5);
+  color: var(--cream);
+  font-size: 12px;
+}
+
+/* .hidden is declared far above, so re-assert it here or display:flex wins the tie and the
+   panel stays visible when toggled off (same trap as .compendium-button.hidden). */
+.dev-panel.hidden {
+  display: none;
+}
+
+.dev-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  letter-spacing: 2px;
+  opacity: 0.75;
+}
+
+.dev-close {
+  background: transparent;
+  border: 1px solid rgba(255, 247, 231, 0.3);
+  border-radius: 4px;
+  color: var(--cream);
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 6px;
+}
+
+.dev-section {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(255, 247, 231, 0.14);
+}
+
+.dev-label {
+  font-size: 11px;
+  letter-spacing: 1px;
+  opacity: 0.62;
+  text-transform: uppercase;
+}
+
+.dev-row {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.dev-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 247, 231, 0.22);
+  border-radius: 4px;
+  color: var(--cream);
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.dev-input.narrow {
+  max-width: 58px;
+}
+
+.dev-btn {
+  padding: 4px 9px;
+  background: rgba(255, 247, 231, 0.12);
+  border: 1px solid rgba(255, 247, 231, 0.28);
+  border-radius: 4px;
+  color: var(--cream);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.dev-btn:hover {
+  background: rgba(255, 247, 231, 0.22);
+}
+
+.dev-btn.wide {
+  flex: 1;
+}
+
+.dev-status {
+  font-size: 11px;
+  min-height: 13px;
+  color: #9fe0a8;
+  opacity: 0.9;
+}
+
+/* --- Time machine: play an older build ------------------------------------------------
+   The "Play" chip next to each deployed version in the patch-notes panel. */
+.changelog-play {
+  background: rgba(242, 196, 95, 0.14);
+  border: 1px solid rgba(242, 196, 95, 0.5);
+  border-radius: 5px;
+  color: #f2c45f;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  margin-left: auto;
+  padding: 3px 10px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.changelog-play:hover {
+  background: rgba(242, 196, 95, 0.28);
+  color: #fff7e7;
+}
+
+/* The newest entry is what you are already running, so it says so instead of offering a
+   button that would just reload the same thing. */
+.changelog-current {
+  color: rgba(255, 247, 231, 0.5);
+  font-size: 11px;
+  font-style: italic;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.changelog-archive-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 6px;
+}
+
+.changelog-archive .changelog-play {
+  margin-left: 0;
+}
+
+/* --- Monster Compendium ---------------------------------------------------------------
+   Two-pane bestiary: enemy list on the left, the selected entry on the right. Sits above
+   the shop/reward panels (z-index 20) since it opens from a button on top of them. */
+/* Anchored under its own button in the top right rather than being a full-screen modal:
+   it opens over the shop, and blacking out the whole screen to read a bestiary entry hid
+   the loadout you were shopping for. No backdrop, so everything behind stays visible. */
+.compendium-panel {
+  position: absolute;
+  top: 118px;
+  right: 16px;
+  bottom: 16px;
+  z-index: 60;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.compendium-panel.hidden { display: none; }
+
+.compendium-inner {
+  background: var(--panel);
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+  color: var(--cream);
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
+  /* Sized to sit in the right-hand margin instead of spanning the screen. */
+  width: min(560px, calc(100vw - 32px));
+  overflow: hidden;
+  /* The wrapper is click-through so the arena behind stays interactive; the panel itself
+     must still take clicks. */
+  pointer-events: auto;
+}
+
+.compendium-head {
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 247, 231, 0.14);
+  display: flex;
+  gap: 14px;
+  padding: 14px 18px;
+}
+
+.compendium-head h2 { margin: 2px 0 0; font-size: 20px; }
+
+.compendium-count {
+  color: #f2c45f;
+  font-size: 12px;
+  font-weight: 800;
+  margin-left: auto;
+}
+
+.compendium-close {
+  background: rgba(255, 247, 231, 0.1);
+  border: 1px solid rgba(255, 247, 231, 0.3);
+  border-radius: 6px;
+  color: var(--cream);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 6px 14px;
+}
+
+.compendium-close:hover { background: rgba(255, 247, 231, 0.2); }
+
+.compendium-body {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  min-height: 0;
+}
+
+.compendium-list {
+  border-right: 1px solid rgba(255, 247, 231, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.compendium-row {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--cream);
+  cursor: pointer;
+  display: flex;
+  font-family: inherit;
+  font-size: 13px;
+  gap: 8px;
+  padding: 7px 9px;
+  text-align: left;
+}
+
+.compendium-row:hover:not(.locked) { background: rgba(255, 247, 231, 0.09); }
+
+.compendium-row.selected {
+  background: rgba(242, 196, 95, 0.14);
+  border-color: rgba(242, 196, 95, 0.45);
+}
+
+.compendium-row.locked {
+  color: rgba(255, 247, 231, 0.35);
+  cursor: default;
+  font-style: italic;
+}
+
+.compendium-row-dot {
+  border-radius: 50%;
+  flex: 0 0 auto;
+  height: 10px;
+  width: 10px;
+}
+
+.compendium-row-name { flex: 1; }
+
+.compendium-row-wave {
+  color: rgba(255, 247, 231, 0.45);
+  font-size: 11px;
+}
+
+.compendium-detail {
+  overflow-y: auto;
+  padding: 16px 20px 22px;
+}
+
+.compendium-detail-head {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+}
+
+.compendium-detail-head h3 { margin: 0; font-size: 22px; }
+
+.compendium-art {
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 247, 231, 0.14);
+  border-radius: 8px;
+  flex: 0 0 auto;
+  height: 128px;
+  width: 128px;
+}
+
+.compendium-tagline {
+  color: #f2c45f;
+  font-size: 13px;
+  font-style: italic;
+  margin: 4px 0 0;
+}
+
+.compendium-threat {
+  color: rgba(255, 247, 231, 0.8);
+  font-size: 13px;
+  margin: 8px 0 0;
+}
+
+.compendium-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.compendium-stats div {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 247, 231, 0.1);
+  border-radius: 6px;
+  min-width: 66px;
+  padding: 6px 10px;
+}
+
+.compendium-stats span {
+  color: rgba(255, 247, 231, 0.55);
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.compendium-stats strong { font-size: 15px; }
+
+.compendium-basenote {
+  color: rgba(255, 247, 231, 0.4);
+  font-size: 11px;
+  margin: 8px 0 0;
+}
+
+.compendium-lore { margin-top: 14px; }
+
+.compendium-lore p {
+  font-size: 13.5px;
+  line-height: 1.62;
+  margin: 0 0 11px;
+}
+
+.compendium-shared,
+.compendium-empty {
+  color: rgba(255, 247, 231, 0.5);
+  font-size: 12px;
+  font-style: italic;
+}
+
+@media (max-width: 760px) {
+  .compendium-body { grid-template-columns: 1fr; }
+  .compendium-list { border-right: none; border-bottom: 1px solid rgba(255, 247, 231, 0.12); max-height: 150px; }
+}

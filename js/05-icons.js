@@ -103,7 +103,10 @@ function paintIconCanvas(iconCanvas, now) {
   // When the rank tile is drawn behind, fit the art inside its cream panel (~71% of the
   // canvas, matching drawIconTile's 34/48 inner rect) so the tier border stays visible
   // around it. Full-card art fills the whole canvas as before.
-  const inset = itemArtIsFullCard(data) ? 1 : 0.72;
+  // Full-card art used to draw at 1 (the entire canvas), which let Flint & Steel's opaque
+  // photo cover the card's own text. 0.86 keeps it visibly larger than a framed item (0.72)
+  // while leaving the label readable underneath.
+  const inset = itemArtIsFullCard(data) ? 0.86 : 0.72;
   const aw = w * inset;
   const ah = h * inset;
 

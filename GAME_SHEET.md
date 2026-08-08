@@ -62,7 +62,7 @@ If all 6 weapon slots are filled, shop weapon buys are disabled. Crate weapons c
 | Bandage Sprout | 1 | 35 | +2 HP Regen | Slow sustain |
 | Vampiric Straw | 3 | 45 | +3% Life Steal | Hit-based sustain |
 | Scrap Helmet | 2 | 45 | +3 Armor | Reduces hit damage |
-| Nimble Socks | 2 | 38 | +6% Dodge | Avoids hits, capped at 60% |
+| Nimble Boots | 2 | 38 | +6% Dodge | Avoids hits, capped at 60% |
 | Lucky Button | 2 | 35 | +10 Luck | Better rarity, prices, drops |
 | Compost Kit | 1 | 35 | +6 Harvesting | End-wave scrap growth |
 | Coupon Leaf | 2 | 38 | -6% shop prices | Economy item |

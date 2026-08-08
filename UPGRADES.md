@@ -35,7 +35,7 @@ These can combine with the same weapon at the same rank, up to Rank 4.
 - Bandage Sprout: +2 HP Regen
 - Vampiric Straw: +3% Life Steal
 - Scrap Helmet: +3 Armor
-- Nimble Socks: +6% Dodge
+- Nimble Boots: +6% Dodge
 - Lucky Button: +10 Luck
 - Compost Kit: +6 Harvesting
 - Coupon Leaf: -6% shop prices

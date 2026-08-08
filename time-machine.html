@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Spud Survivors — older build</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #0f141b; color: #fff7e7;
+        font-family: Inter, system-ui, sans-serif; }
+      #tmStatus { position: fixed; inset: 0; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 14px; text-align: center; padding: 24px; }
+      #tmStatus h1 { font-size: 20px; margin: 0; letter-spacing: 1px; }
+      #tmStatus p { margin: 0; opacity: 0.75; max-width: 460px; line-height: 1.5; font-size: 14px; }
+      #tmStatus a { color: #f2c45f; }
+      .tm-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 99999;
+        display: flex; align-items: center; gap: 12px; padding: 6px 12px; font-size: 13px;
+        background: rgba(12, 16, 22, 0.92); border-bottom: 1px solid rgba(255,247,231,0.18); }
+      .tm-bar strong { color: #f2c45f; }
+      .tm-bar a { color: #fff7e7; text-decoration: none; border: 1px solid rgba(255,247,231,0.3);
+        border-radius: 5px; padding: 3px 10px; }
+      .tm-bar a:hover { background: rgba(255,247,231,0.14); }
+    </style>
+  </head>
+  <body>
+    <div id="tmStatus">
+      <h1>Loading older build…</h1>
+      <p id="tmDetail">Fetching that version from GitHub.</p>
+    </div>
+
+    <script>
+      // Time machine: runs a PREVIOUS deployed build of the game in place.
+      //
+      // Every playable build is a real GitHub Pages deployment whose commit is still hosted,
+      // so nothing is stored in this repo and nothing is cached or cleaned up locally --
+      // this page just rewrites that build's index.html to load its own commit-pinned code
+      // and art from jsDelivr, then runs it.
+      //
+      // Why not simply navigate to the old index.html: raw.githubusercontent.com and
+      // jsDelivr both serve .html as text/plain with nosniff, so the browser will not render
+      // it. Their .js/.css/.png ARE served with correct MIME types, which is what makes this
+      // approach work at all.
+      (function () {
+        var REPO = "X-Leon-X/Spud_Survivors";
+        var params = new URLSearchParams(location.search);
+        var sha = (params.get("sha") || "").trim();
+        var detail = document.getElementById("tmDetail");
+        var status = document.getElementById("tmStatus");
+
+        // Only allow a plain hex commit sha, so a crafted URL can't point this at anything else.
+        if (!/^[0-9a-f]{7,40}$/i.test(sha)) {
+          document.querySelector("#tmStatus h1").textContent = "No build selected";
+          detail.innerHTML = 'Pick a build from the version panel. <a href="index.html">Back to the game</a>';
+          return;
+        }
+
+        var base = "https://cdn.jsdelivr.net/gh/" + REPO + "@" + sha + "/";
+
+        function fail(msg) {
+          document.querySelector("#tmStatus h1").textContent = "Could not load that build";
+          detail.innerHTML = msg + '<br><br><a href="index.html">Back to the current version</a>';
+        }
+
+        fetch(base + "index.html")
+          .then(function (r) {
+            if (!r.ok) throw new Error("HTTP " + r.status);
+            return r.text();
+          })
+          .then(function (html) {
+            // Rewrite every relative src/href so the old build pulls ITS OWN code and art,
+            // not the current version's. Absolute URLs and anchors are left alone.
+            html = html.replace(/(src|href)=("|')(?!https?:|\/\/|#|data:)([^"']+)\2/gi,
+              function (m, attr, q, path) {
+                return attr + "=" + q + base + path.replace(/^\.?\//, "") + q;
+              });
+
+            // Strip the old <head>/<body> wrappers and inject the contents directly, so the
+            // old build's markup and scripts run in this page.
+            var headMatch = html.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
+            var bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+            var headHtml = headMatch ? headMatch[1] : "";
+            var bodyHtml = bodyMatch ? bodyMatch[1] : html;
+
+            // Styles and markup first.
+            var headFrag = document.createElement("div");
+            headFrag.innerHTML = headHtml;
+            Array.prototype.forEach.call(headFrag.querySelectorAll("link[rel=stylesheet], style"), function (n) {
+              document.head.appendChild(n);
+            });
+
+            status.remove();
+            var host = document.createElement("div");
+            // Scripts inserted via innerHTML never execute, so pull them out and re-add them
+            // as real elements below, in order.
+            var bodyFrag = document.createElement("div");
+            bodyFrag.innerHTML = bodyHtml;
+            var scripts = Array.prototype.slice.call(bodyFrag.querySelectorAll("script"));
+            scripts.forEach(function (s) { s.remove(); });
+            host.innerHTML = bodyFrag.innerHTML;
+            document.body.appendChild(host);
+
+            // A small bar so it is obvious you are not on the current version.
+            var bar = document.createElement("div");
+            bar.className = "tm-bar";
+            bar.innerHTML = '<strong>Older build</strong><span>' + sha +
+              '</span><a href="index.html">Back to current version</a>';
+            document.body.appendChild(bar);
+
+            // Load the old build's scripts strictly in order; they depend on each other.
+            (function next(i) {
+              if (i >= scripts.length) return;
+              var src = scripts[i].getAttribute("src");
+              var el = document.createElement("script");
+              if (src) {
+                el.src = src;
+                el.onload = function () { next(i + 1); };
+                el.onerror = function () { next(i + 1); };
+                document.body.appendChild(el);
+              } else {
+                el.textContent = scripts[i].textContent;
+                document.body.appendChild(el);
+                next(i + 1);
+              }
+            })(0);
+          })
+          .catch(function (e) {
+            fail("GitHub did not return that build (" + e.message + "). It may have been " +
+                 "removed, or you may be offline.");
+          });
+      })();
+    </script>
+  </body>
+</html>

@@ -19,6 +19,36 @@ Living checklist. Order matters: finish art swaps before new mechanics.
       (+2 Ranged Damage). So the bent-nail art → save as `ranged.png`. Already registered
       as item:ranged. Waiting on the clean cutout export.
 
+## Outstanding features (added 8 Aug 2026)
+
+Three deferred features, in the order they make sense to build. Each has real code
+already in place, so none of them start from zero.
+
+- [ ] **Fill out the Monster Compendium.** Currently a button + WIP badge only: clicking
+      it flashes a "coming soon" toast (`js/09-main.js` ~line 225). The button already
+      shows/hides correctly (shop + reward screens only) and sits top-right under the
+      HUD. Original ask was "show enemies registering when killed", i.e. a bestiary that
+      fills in as you meet each enemy.
+      Needs: per-enemy discovered flag on `state` (persisted or per-run — decide which),
+      a panel UI, and entries for all 15 `enemyTypes` including the three Clown sizes and
+      the split-only ones. Art already exists for every enemy, so it is UI + state only.
+      NOTE: the arena is a canvas but every other panel (shop/reward/pause) is DOM —
+      follow the DOM pattern, not a canvas overlay.
+
+- [ ] **Implement the Fortune Cookie effect.** Drop, pickup, art and floater all work
+      (`killEnemy` + `updateFortuneCookies` in `js/07-combat.js`); it is a flat 1% drop
+      from any enemy, deliberately NOT luck-scaled. Collecting it currently grants
+      nothing and says "(coming soon)".
+      BLOCKED: the effect has never been decided. Do not invent one — ask first.
+
+- [ ] **Add achievements.** Nothing exists yet; this is the only one of the three that
+      is genuinely from scratch. `state.runStats` already tracks kills, time, scrap and
+      damage taken, and `js/00-gravestone.js` + the run summary already show end-of-run
+      data, so those are the natural hooks.
+      Decide first: per-run only, or persisted across runs via localStorage (settings
+      already persist there, so the pattern exists). Persisted needs a versioned save
+      shape or it will break every time the achievement list changes.
+
 ## Repeat-art to differentiate LATER (tracked debt)
 - [ ] BOOTS art is used for BOTH `speed` and `dodge` (prev AI was lazy). Make two
       distinct icons so the items don't look identical.

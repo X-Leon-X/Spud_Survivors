@@ -100,7 +100,31 @@ const enemyTypes = [
   { name: "Ember Glob", behavior: "fireball", size: "medium", color: "#e56f45", hp: 16, speed: 52, radius: 17, damage: 5, scrap: 2, minWave: 5, weight: 1 },
   { name: "Spitter", behavior: "shoot", size: "medium", color: "#66c7d8", hp: 20, speed: 58, radius: 18, damage: 8, scrap: 2, minWave: 5, weight: 3 },
   { name: "Orbiter", behavior: "orbit", size: "small", color: "#f2d35f", hp: 11, speed: 162, radius: 14, damage: 6, scrap: 1, minWave: 6, weight: 6 },
-  { name: "Drummer", behavior: "buffer", size: "large", color: "#ff7eb6", hp: 80, speed: 36, radius: 30, damage: 10, scrap: 5, minWave: 7, weight: 1 }
+  { name: "Drummer", behavior: "buffer", size: "large", color: "#ff7eb6", hp: 80, speed: 36, radius: 30, damage: 10, scrap: 5, minWave: 7, weight: 1 },
+
+  // --- New cast (see brotato-art-wiring / ART_BRIEF for how the PNGs are registered) ---
+  // Husk: small and brittle, cheap scrap. Its whole point is the death split (see killEnemy),
+  // so its own HP/damage stay modest — the threat is what it leaves behind, not itself.
+  { name: "Husk", behavior: "chase", size: "small", color: "#c9a26a", hp: 13, speed: 96, radius: 15, damage: 5, scrap: 1, minWave: 4, weight: 4 },
+  // Thistle: stationary turret, spawned in-arena by its own placement logic (not the edge
+  // spawner) — see rollTurretSpawnPos in js/07-combat.js. HP is on the higher side since it
+  // can't dodge or flee.
+  // HP 34 -> 58: it is a rooted, woody plant that can never dodge, flee or reposition, so it
+  // should take real effort to clear rather than dying faster than a Darter (40) that can
+  // actually escape. Still well under the Bruiser (92) -- it is sturdy, not a boss.
+  { name: "Thistle", behavior: "turret", size: "medium", color: "#7fae5c", hp: 58, speed: 0, radius: 19, damage: 9, scrap: 3, minWave: 6, weight: 2 },
+  // Blight Sac: medium bloated chaser, drops a poison pool on death (see killEnemy/updatePoisonPools).
+  { name: "Blight Sac", behavior: "chase", size: "medium", color: "#8fbf5a", hp: 30, speed: 46, radius: 20, damage: 7, scrap: 3, minWave: 7, weight: 2 },
+  // Gravebloom: large, slow, interruptible summoner. Big HP pool so a focus-fire interrupt
+  // is a real decision rather than a free kill — see the "summoner" behavior branch.
+  { name: "Gravebloom", behavior: "summoner", size: "large", color: "#7a5ea8", hp: 70, speed: 30, radius: 27, damage: 11, scrap: 6, minWave: 9, weight: 1 },
+  // Clown family: base Clown implodes into 2 Clown Mid, which each implode into 2 Clown
+  // Small (see killEnemy). Kept RARE (weight 1) since one kill eventually yields 7 bodies.
+  // Clown Mid/Small exist here only as spawnEnemy templates — chooseEnemyType filters them
+  // out via spawnable:false so the wave roll never picks them directly.
+  { name: "Clown", behavior: "chase", size: "large", color: "#ff6f91", hp: 60, speed: 50, radius: 26, damage: 10, scrap: 5, minWave: 10, weight: 1 },
+  { name: "Clown Mid", behavior: "chase", size: "medium", color: "#ff8fab", hp: 22, speed: 72, radius: 18, damage: 7, scrap: 2, minWave: Infinity, weight: 0, spawnable: false },
+  { name: "Clown Small", behavior: "chase", size: "small", color: "#ffb0c4", hp: 9, speed: 128, radius: 12, damage: 4, scrap: 1, minWave: Infinity, weight: 0, spawnable: false }
 ];
 
 const rarities = {
@@ -172,8 +196,12 @@ const BASE_PLAYER_STATS = {
 
 const OWNED_TIER_MULTIPLIERS = [0, 1, 2.25, 5.1, 11.5, 26];
 const UNIQUE_TIER = 5;
+// The slot machine rolls two independent effects, each of which flips good/bad on its own
+// (see rollSlotMachineEffect). The downside pool is kept as wide as the buff pool so a
+// two-downside spin doesn't keep landing on the same two or three stats and feel repetitive.
+// Both pools use percentage-style stats so a 4-10 roll reads consistently either way.
 const SLOT_MACHINE_BUFFS = ["damagePercent", "attackSpeed", "critChance", "dodge", "speed"];
-const SLOT_MACHINE_DOWNSIDES = ["damagePercent", "attackSpeed", "speed"];
+const SLOT_MACHINE_DOWNSIDES = ["damagePercent", "attackSpeed", "critChance", "dodge", "speed"];
 
 const characters = [
   {

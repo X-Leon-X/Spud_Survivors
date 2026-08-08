@@ -222,22 +222,142 @@ ui.nextWaveButton.addEventListener("click", () => {
   startWave();
 });
 
-// Placeholder only: the monster compendium isn't built yet, so clicking flashes a
-// "coming soon" toast rather than opening anything.
+// --- Monster Compendium ----------------------------------------------------------------
+// A bestiary that fills in as you meet each enemy. Lore lives in js/03b-compendium.js;
+// stats are read live from enemyTypes so a page can never disagree with the real balance.
 const compendiumButton = ui.compendiumButton;
-if (compendiumButton) {
-  compendiumButton.addEventListener("click", () => {
-    playSfx("click");
-    compendiumButton.classList.remove("compendium-toast-show");
-    // force reflow so re-adding the class restarts the animation if clicked again quickly
-    void compendiumButton.offsetWidth;
-    compendiumButton.classList.add("compendium-toast-show");
-    clearTimeout(compendiumButton._toastTimer);
-    compendiumButton._toastTimer = setTimeout(() => {
-      compendiumButton.classList.remove("compendium-toast-show");
-    }, 1600);
-  });
+const compendiumPanel = document.getElementById("compendiumPanel");
+const compendiumList = document.getElementById("compendiumList");
+const compendiumDetail = document.getElementById("compendiumDetail");
+const compendiumCount = document.getElementById("compendiumCount");
+let compendiumSelection = null;
+
+function openCompendium() {
+  if (!compendiumPanel) return;
+  playSfx("click");
+  compendiumPanel.classList.remove("hidden");
+  renderCompendium();
 }
+
+function closeCompendium() {
+  if (!compendiumPanel) return;
+  playSfx("click");
+  compendiumPanel.classList.add("hidden");
+}
+
+function renderCompendium() {
+  if (!compendiumList) return;
+  const entries = compendiumEntries();
+  const found = compendiumDiscoveredCount();
+  compendiumCount.textContent = `${found} / ${entries.length} discovered`;
+
+  // Default to the first thing you've actually met.
+  if (!compendiumSelection || !isEnemyDiscovered(compendiumSelection)) {
+    compendiumSelection = entries.find((e) => isEnemyDiscovered(e.name))?.name ?? null;
+  }
+
+  compendiumList.innerHTML = entries.map((entry) => {
+    const known = isEnemyDiscovered(entry.name);
+    const selected = entry.name === compendiumSelection ? " selected" : "";
+    // Undiscovered enemies are listed but not named, so the book shows how much is left
+    // without spoiling what is coming.
+    const label = known ? escapeChangelogText(entry.name) : "???";
+    return `<button type="button" class="compendium-row${known ? "" : " locked"}${selected}"
+      data-enemy="${escapeChangelogText(entry.name)}" ${known ? "" : "disabled"}>
+      <span class="compendium-row-dot" style="background:${known ? entry.type.color : "rgba(255,247,231,0.15)"}"></span>
+      <span class="compendium-row-name">${label}</span>
+      <span class="compendium-row-wave">${known ? `W${entry.type.minWave === Infinity ? "-" : entry.type.minWave}` : ""}</span>
+    </button>`;
+  }).join("");
+
+  for (const row of compendiumList.querySelectorAll(".compendium-row")) {
+    row.addEventListener("click", () => {
+      compendiumSelection = row.dataset.enemy;
+      renderCompendium();
+    });
+  }
+
+  renderCompendiumDetail(entries.find((e) => e.name === compendiumSelection) ?? null);
+}
+
+function renderCompendiumDetail(entry) {
+  if (!compendiumDetail) return;
+  if (!entry) {
+    compendiumDetail.innerHTML = `<p class="compendium-empty">Nothing catalogued yet.
+      Enemies are added to the book the first time you meet one.</p>`;
+    return;
+  }
+
+  const t = entry.type;
+  // Stats are pulled from the live table, and labelled as BASE values because enemy HP
+  // scales with the wave -- showing "9 HP" for a wave-20 Nibbler would be a lie.
+  const stats = [
+    ["HP", t.hp],
+    ["Damage", t.damage],
+    ["Speed", t.speed === 0 ? "rooted" : t.speed],
+    ["Scrap", t.scrap],
+    ["Size", t.size]
+  ];
+
+  const lore = entry.lore
+    ? entry.lore.body.map((p) => `<p>${escapeChangelogText(p)}</p>`).join("")
+    : `<p class="compendium-empty">No field notes recorded.</p>`;
+
+  const sharedNote = entry.sharesLoreWith
+    ? `<p class="compendium-shared">Field notes shared with ${escapeChangelogText(entry.sharesLoreWith)}.</p>`
+    : "";
+
+  const splitNote = entry.splitOnly
+    ? `<p class="compendium-shared">Never appears on its own. Only produced when a larger one is destroyed.</p>`
+    : "";
+
+  compendiumDetail.innerHTML = `
+    <div class="compendium-detail-head">
+      <canvas class="compendium-art" width="128" height="128"></canvas>
+      <div>
+        <h3>${escapeChangelogText(entry.name)}</h3>
+        ${entry.lore ? `<p class="compendium-tagline">${escapeChangelogText(entry.lore.tagline)}</p>` : ""}
+        <p class="compendium-threat">${escapeChangelogText(entry.threat)}</p>
+      </div>
+    </div>
+    <div class="compendium-stats">
+      ${stats.map(([k, v]) => `<div><span>${k}</span><strong>${escapeChangelogText(String(v))}</strong></div>`).join("")}
+    </div>
+    <p class="compendium-basenote">Base values. Enemy health grows with every wave.</p>
+    ${splitNote}
+    <div class="compendium-lore">${lore}</div>
+    ${sharedNote}
+  `;
+
+  drawCompendiumArt(compendiumDetail.querySelector(".compendium-art"), entry);
+}
+
+// Draws the enemy's real in-game sprite into the entry, falling back to a coloured blob so
+// a missing PNG never leaves an empty box.
+function drawCompendiumArt(canvas, entry) {
+  if (!canvas) return;
+  const c = canvas.getContext("2d");
+  const size = canvas.width;
+  c.clearRect(0, 0, size, size);
+  const art = enemyArt(entry.name);
+  if (art) {
+    const scale = Math.min(size / art.width, size / art.height) * 0.92;
+    const w = art.width * scale;
+    const h = art.height * scale;
+    c.imageSmoothingEnabled = true;
+    c.drawImage(art, (size - w) / 2, (size - h) / 2, w, h);
+    return;
+  }
+  c.fillStyle = entry.type.color;
+  c.beginPath();
+  c.ellipse(size / 2, size / 2, size * 0.3, size * 0.26, 0, 0, Math.PI * 2);
+  c.fill();
+}
+
+if (compendiumButton) {
+  compendiumButton.addEventListener("click", openCompendium);
+}
+document.getElementById("compendiumClose")?.addEventListener("click", closeCompendium);
 
 state = freshState();
 initSettingsControls();

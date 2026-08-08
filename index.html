@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Spud Survivors</title>
-    <link rel="stylesheet" href="styles.css?v=0.11.1">
+    <link rel="stylesheet" href="styles.css?v=0.12.0">
   </head>
   <body>
     <main class="game-shell">
@@ -37,10 +37,26 @@
           </div>
         </div>
 
-        <button id="compendiumButton" class="compendium-button" type="button" title="Monster Compendium (work in progress)" aria-label="Monster Compendium (work in progress)">
+        <button id="compendiumButton" class="compendium-button" type="button" title="Monster Compendium" aria-label="Monster Compendium">
           <img src="assets/ui/compendium.png" alt="" class="compendium-icon">
-          <span class="compendium-wip-badge">WIP</span>
         </button>
+
+        <div id="compendiumPanel" class="compendium-panel hidden" role="dialog" aria-label="Monster Compendium">
+          <div class="compendium-inner">
+            <div class="compendium-head">
+              <div>
+                <span class="label">Bestiary</span>
+                <h2>Monster Compendium</h2>
+              </div>
+              <span id="compendiumCount" class="compendium-count"></span>
+              <button id="compendiumClose" type="button" class="compendium-close">Close</button>
+            </div>
+            <div class="compendium-body">
+              <div id="compendiumList" class="compendium-list"></div>
+              <div id="compendiumDetail" class="compendium-detail"></div>
+            </div>
+          </div>
+        </div>
 
         <div class="hud hud-bottom">
           <span>Move: WASD / Arrows</span>
@@ -251,21 +267,24 @@
       </aside>
     </main>
 
-    <script src="js/01-core.js?v=0.11.1"></script>
-    <script src="js/00-audio.js?v=0.11.1"></script>
-    <script src="js/00-changelog.js?v=0.11.1"></script>
-    <script src="js/00-gravestone.js?v=0.11.1"></script>
-    <script src="js/00-fx.js?v=0.11.1"></script>
-    <script src="js/00-assets.js?v=0.11.1"></script>
-    <script src="js/02-stats.js?v=0.11.1"></script>
-    <script src="js/03-data.js?v=0.11.1"></script>
-    <script src="js/04-flow.js?v=0.11.1"></script>
-    <script src="js/05-icons.js?v=0.11.1"></script>
-    <script src="js/06-shop.js?v=0.11.1"></script>
-    <script src="js/07-combat.js?v=0.11.1"></script>
-    <script src="js/08-render.js?v=0.11.1"></script>
-    <script src="js/09-main.js?v=0.11.1"></script>
-    <script src="js/09b-title.js?v=0.11.1"></script>
-    <script src="js/09c-title-slimes.js?v=0.11.1"></script>
+    <script src="js/01-core.js?v=0.12.0"></script>
+    <script src="js/00-audio.js?v=0.12.0"></script>
+    <script src="js/00-builds.js?v=0.12.0"></script>
+    <script src="js/00-changelog.js?v=0.12.0"></script>
+    <script src="js/00-gravestone.js?v=0.12.0"></script>
+    <script src="js/00-fx.js?v=0.12.0"></script>
+    <script src="js/00-assets.js?v=0.12.0"></script>
+    <script src="js/02-stats.js?v=0.12.0"></script>
+    <script src="js/03-data.js?v=0.12.0"></script>
+    <script src="js/03b-compendium.js?v=0.12.0"></script>
+    <script src="js/04-flow.js?v=0.12.0"></script>
+    <script src="js/05-icons.js?v=0.12.0"></script>
+    <script src="js/06-shop.js?v=0.12.0"></script>
+    <script src="js/07-combat.js?v=0.12.0"></script>
+    <script src="js/08-render.js?v=0.12.0"></script>
+    <script src="js/09-main.js?v=0.12.0"></script>
+    <script src="js/09b-title.js?v=0.12.0"></script>
+    <script src="js/09c-title-slimes.js?v=0.12.0"></script>
+    <script src="js/09d-devpanel.js?v=0.12.0"></script>
   </body>
 </html>

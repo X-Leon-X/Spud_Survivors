@@ -117,6 +117,73 @@ const upgrades = [
     }
   },
   {
+    id: "potato_masher",
+    name: "Potato Masher",
+    badge: "W",
+    description: "A heavy melee club that hits hard and slow with brutal knockback.",
+    baseCost: 42,
+    tier: 2,
+    loadoutType: "weapon",
+    weaponName: "Potato Masher",
+    apply: () => {
+      addStat("meleeDamage", 2);
+    }
+  },
+  {
+    id: "seed_shotgun",
+    name: "Seed Shotgun",
+    badge: "W",
+    description: "A short-range spread weapon devastating up close, weak at distance.",
+    baseCost: 58,
+    tier: 3,
+    loadoutType: "weapon",
+    weaponName: "Seed Shotgun",
+    apply: () => {
+      addStat("rangedDamage", 2);
+    }
+  },
+  {
+    id: "thorn_lasher",
+    name: "Thorn Lasher",
+    badge: "W",
+    description: "A long-reaching thorned whip that leaves enemies bleeding.",
+    baseCost: 60,
+    tier: 3,
+    loadoutType: "weapon",
+    weaponName: "Thorn Lasher",
+    apply: () => {
+      addStat("meleeDamage", 2);
+    }
+  },
+  {
+    id: "frost_bow",
+    name: "Frost Bow",
+    badge: "W",
+    description: "A slow-firing crossbow that chills enemies and slows their advance.",
+    baseCost: 95,
+    tier: 4,
+    loadoutType: "weapon",
+    weaponName: "Frost Bow",
+    apply: () => {
+      addStat("rangedDamage", 2);
+    }
+  },
+  {
+    id: "shuriken",
+    name: "Shuriken",
+    badge: "W",
+    description: "A cheap, fast throwing star with light damage but relentless pace.",
+    baseCost: 30,
+    tier: 2,
+    minWave: 3,
+    loadoutType: "weapon",
+    weaponName: "Shuriken",
+    apply: () => {
+      addStat("rangedDamage", 1);
+      addStat("critChance", 2);
+    }
+  },
+  {
     id: "damage",
     name: "Bigger Sparks",
     badge: "D",
@@ -265,7 +332,7 @@ const upgrades = [
   },
   {
     id: "dodge",
-    name: "Nimble Socks",
+    name: "Nimble Boots",
     badge: "E",
     description: "+4% Dodge.",
     baseCost: 34,
@@ -374,6 +441,42 @@ const upgrades = [
     }
   },
   {
+    id: "fun_hat",
+    name: "Fun Hat",
+    badge: "K",
+    description: "+16 Luck.",
+    baseCost: 40,
+    tier: 3,
+    loadoutType: "item",
+    apply: () => {
+      addStat("luck", 16);
+    }
+  },
+  {
+    id: "flint_steel",
+    name: "Flint & Steel",
+    badge: "Z",
+    description: "+4 Elemental Damage. Sparks fly with every burn.",
+    baseCost: 38,
+    tier: 3,
+    loadoutType: "item",
+    apply: () => {
+      addStat("elementalDamage", 4);
+    }
+  },
+  {
+    id: "useful_glasses",
+    name: "Useful Glasses",
+    badge: "L",
+    description: "+80 Range. The frames have no lenses.",
+    baseCost: 26,
+    tier: 2,
+    loadoutType: "item",
+    apply: () => {
+      addStat("range", 80);
+    }
+  },
+  {
     id: "pet_alien",
     name: "Pet Alien",
     badge: "A",
@@ -405,7 +508,7 @@ const upgrades = [
     id: "slot_machine",
     name: "Slot Machine",
     badge: "$",
-    description: "Unique. Spin for one random buff and one random downside. I know you want it.",
+    description: "Unique. ONE spin, two big random effects. They might both be good. They might not. I know you want it.",
     baseCost: 90,
     tier: UNIQUE_TIER,
     unique: true,
@@ -481,6 +584,31 @@ const upgradeProfiles = {
     properties: "Launches slow grenades that explode in an area. It belongs in mid and late game shops, not the starter weapon pool.",
     stats: ["Adds Grenade Launcher", "+1 Ranged Damage", "Explodes in an area", "Mid-game weapon"]
   },
+  potato_masher: {
+    lore: "A dense mash-tool head bolted to a scrap-pipe handle.",
+    properties: "A heavy melee club with a slow swing but massive knockback and top-tier Melee Damage scaling. It hits far harder than Stub Club, but leaves you exposed between swings.",
+    stats: ["Adds Potato Masher", "+2 Melee Damage", "Very high knockback"]
+  },
+  seed_shotgun: {
+    lore: "A stubby launcher tube packed tight with dried garden seeds.",
+    properties: "Fires a wide spread of seeds that devastates enemies at point-blank range but falls off hard at distance. Best used to clear tight crowds pressed against you.",
+    stats: ["Adds Seed Shotgun", "+2 Ranged Damage", "Wide spread, short range", "Damage drops off fast at range"]
+  },
+  thorn_lasher: {
+    lore: "A braided vine whip studded with sharpened thorns.",
+    properties: "A melee whip with far longer reach than any other close-range weapon. Its thorns tear a bleeding wound that keeps draining health after the hit lands.",
+    stats: ["Adds Thorn Lasher", "+2 Melee Damage", "Longest melee range", "Applies Bleed"]
+  },
+  frost_bow: {
+    lore: "A crossbow carved from cold ironwood, its string frosted over.",
+    properties: "A slow-firing ranged weapon that chills whatever it hits, dulling their advance. The only weapon in the game built around crowd control instead of raw damage.",
+    stats: ["Adds Frost Bow", "+2 Ranged Damage", "Slows enemies on hit", "Slow fire rate"]
+  },
+  shuriken: {
+    lore: "A flat little throwing star stamped out of scrap tin.",
+    properties: "Thrown rather than fired. It pierces through a few enemies, then boomerangs back to your hand and damages them again on the return trip. Range matters more than usual, since a longer throw sweeps more of the arena on both passes.",
+    stats: ["Adds Shuriken", "+1 Ranged Damage", "+2% Crit Chance", "Pierces, then returns", "Hits again on the way back"]
+  },
   damage: {
     lore: "A pouch of extra-hot spark dust with a warning label drawn in crayon.",
     properties: "Raises final damage after flat weapon scaling is calculated. This improves projectile hits, melee swings, burn ticks, electric zaps, and most damage effects.",
@@ -542,7 +670,7 @@ const upgradeProfiles = {
     stats: ["+3 Armor"]
   },
   dodge: {
-    lore: "Soft socks with padded heels and a little too much bounce.",
+    lore: "Padded ankle boots with springy soles and a little too much bounce.",
     properties: "Adds a chance to completely ignore an incoming hit. Dodge is capped so it cannot replace health and armor forever.",
     stats: ["+4% Dodge"]
   },
@@ -586,6 +714,21 @@ const upgradeProfiles = {
     properties: "Adds flat damage to elemental-scaling weapons and increases burn damage. Strongest on weapons that keep enemies burning while you kite.",
     stats: ["+2 Elemental Damage"]
   },
+  fun_hat: {
+    lore: "A floppy party hat kept in a drawer for exactly this kind of occasion.",
+    properties: "A stronger, pricier upgrade on the Lucky Button. Improves rare shop offers, body-part upgrades, crate reward rarity, and small scrap drop bonuses more than its cheaper cousin.",
+    stats: ["+16 Luck"]
+  },
+  flint_steel: {
+    lore: "A striking stone and a scrap of steel, still warm from the last spark.",
+    properties: "A stronger, pricier upgrade on the Static Seed. Adds flat damage to elemental-scaling weapons and increases burn damage by more than the early-game version.",
+    stats: ["+4 Elemental Damage"]
+  },
+  useful_glasses: {
+    lore: "A sturdy pair of frames rescued from a junk drawer. The lenses fell out ages ago.",
+    properties: "A stronger upgrade on the Long Straw. Increases attack range for most ranged weapons and targeting range for destructibles, even though the glasses themselves do nothing for your eyesight.",
+    stats: ["+80 Range"]
+  },
   pet_alien: {
     lore: "A bright little alien perched on your head, or eating your backpack. Possibly both.",
     properties: "Gives survivability and better luck at the cost of movement speed, and its noise pulls an extra enemy into every wave. The luck and the bigger crowd both mean more scrap, so it pays for itself if you can handle slower dodging.",
@@ -598,8 +741,8 @@ const upgradeProfiles = {
   },
   slot_machine: {
     lore: "I know you want it.",
-    properties: "Unique item. Spin it from the owned-item menu to reroll one random buff and one random downside. Each side caps at 10%. It cannot be recycled; throwing it away costs scrap.",
-    stats: ["Unique", "Spin: random buff and random downside", "Throw Away costs scrap"]
+    properties: "Unique item. You do not find out what it gives until you spin it, and you only ever get ONE spin. That spin rolls two large random effects, each independently a buff or a downside, so you can walk away with two big buffs, two big downsides, or one of each. There is no reroll. It cannot be recycled; throwing it away costs scrap.",
+    stats: ["Unique", "ONE spin only, no rerolls", "Two large random effects, good or bad", "14 to 32 per effect", "Throw Away costs scrap"]
   },
   extra_arm: {
     lore: "A spare field arm with straps, buckles, and a surprisingly steady grip.",
@@ -669,6 +812,41 @@ const weaponProfiles = {
     role: "Explosive crowd clear",
     scaling: "Scales with Ranged Damage, Damage %, Crit Chance, Attack Speed, and explosion radius.",
     attack: "Launches a wobbling grenade that explodes on impact or when it reaches max range."
+  },
+  "Potato Masher": {
+    lore: "A dense mash-tool head bolted to a scrap-pipe handle.",
+    properties: "A heavy melee club, slower than Stub Club but hitting far harder with much stronger knockback. It rewards standing your ground and punishing whatever gets close.",
+    role: "Heavy close-range bruiser",
+    scaling: "Scales heavily with Melee Damage, then Damage %, Attack Speed, Crit Chance, and knockback value.",
+    attack: "Swings a wide, slow arc from its own weapon position toward the nearest target."
+  },
+  "Seed Shotgun": {
+    lore: "A stubby launcher tube packed tight with dried garden seeds.",
+    properties: "A short-range spread weapon that shreds anything pressed against you but loses most of its bite at distance. Best paired with weapons that can handle far targets.",
+    role: "Point-blank burst",
+    scaling: "Scales mainly with Ranged Damage, then Damage %, Attack Speed, and Crit Chance.",
+    attack: "Fires a wide spread of seed pellets from its own weapon position toward the nearest target."
+  },
+  "Thorn Lasher": {
+    lore: "A braided vine whip studded with sharpened thorns.",
+    properties: "A melee whip with unusually long reach for a close-range weapon. Its thorns leave a bleeding wound that keeps draining health after the strike lands.",
+    role: "Long-reach bleed melee",
+    scaling: "Scales mainly with Melee Damage, then Damage %, Attack Speed, and Crit Chance.",
+    attack: "Lashes out in a long arc from its own weapon position toward the nearest target, applying bleed."
+  },
+  "Frost Bow": {
+    lore: "A crossbow carved from cold ironwood, its string frosted over.",
+    properties: "A slow-firing ranged weapon built around crowd control rather than raw damage. Its bolts chill enemies, slowing their approach so the rest of your kit can work.",
+    role: "Movement control",
+    scaling: "Scales mainly with Ranged Damage, then Damage %, Crit Chance, and Range.",
+    attack: "Fires a single frost bolt from its own weapon position toward the nearest target, slowing it on hit."
+  },
+  "Shuriken": {
+    lore: "A flat little throwing star stamped out of scrap tin.",
+    properties: "Thrown, not fired. It pierces through enemies, and once it runs out of range or targets it loops back to your hand, cutting through everything a second time on the way. Each hit is light, but a good throw connects twice.",
+    role: "Piercing boomerang",
+    scaling: "Scales mainly with Ranged Damage and Crit Chance, then Damage %, Attack Speed and Range.",
+    attack: "Throws the star itself, leaving your hand empty until it comes back. It sheds mini stars at the far end of its arc, then returns and can be thrown again."
   }
 };
 
@@ -676,7 +854,7 @@ const weaponStatProfiles = {
   "Spark Peashooter": {
     attackType: "projectile",
     tags: ["Ranged", "Garden"],
-    baseDamage: [6, 13, 25, 45, 78],
+    baseDamage: [7, 14, 27, 49, 84],
     scaling: { rangedDamage: 0.65 },
     cooldown: [0.74, 0.63, 0.54, 0.46, 0.38],
     range: [330, 355, 385, 420, 465],
@@ -695,7 +873,7 @@ const weaponStatProfiles = {
   "Twig Wand": {
     attackType: "projectile",
     tags: ["Elemental", "Garden"],
-    baseDamage: [5, 10, 19, 35, 64],
+    baseDamage: [6, 11, 21, 38, 69],
     scaling: { elementalDamage: 0.75, rangedDamage: 0.16 },
     cooldown: [0.9, 0.76, 0.66, 0.56, 0.47],
     range: [350, 380, 410, 440, 480],
@@ -717,7 +895,7 @@ const weaponStatProfiles = {
   "Stub Club": {
     attackType: "swing",
     tags: ["Melee", "Primitive"],
-    baseDamage: [11, 20, 38, 68, 116],
+    baseDamage: [12, 22, 41, 73, 125],
     scaling: { meleeDamage: 0.9, rangedDamage: 0.12 },
     cooldown: [1.08, 0.9, 0.78, 0.66, 0.56],
     range: [56, 62, 68, 74, 82],
@@ -738,7 +916,7 @@ const weaponStatProfiles = {
   "Rusty Pistol": {
     attackType: "projectile",
     tags: ["Ranged"],
-    baseDamage: [8, 16, 30, 52, 88],
+    baseDamage: [9, 17, 32, 56, 95],
     scaling: { rangedDamage: 0.82 },
     cooldown: [0.62, 0.54, 0.47, 0.4, 0.33],
     range: [360, 385, 420, 455, 500],
@@ -757,7 +935,7 @@ const weaponStatProfiles = {
   "Slingshot": {
     attackType: "projectile",
     tags: ["Ranged", "Primitive"],
-    baseDamage: [10, 19, 36, 62, 104],
+    baseDamage: [11, 21, 39, 67, 112],
     scaling: { rangedDamage: 0.92 },
     cooldown: [0.96, 0.84, 0.72, 0.62, 0.52],
     range: [335, 360, 390, 425, 470],
@@ -776,7 +954,7 @@ const weaponStatProfiles = {
   "Scrap Revolver": {
     attackType: "projectile",
     tags: ["Ranged"],
-    baseDamage: [15, 29, 54, 94, 158],
+    baseDamage: [16, 31, 58, 102, 171],
     scaling: { rangedDamage: 1.18 },
     cooldown: [1.08, 0.95, 0.82, 0.7, 0.58],
     range: [390, 420, 455, 500, 555],
@@ -795,7 +973,7 @@ const weaponStatProfiles = {
   "Tin Dragon Flamethrower": {
     attackType: "projectile",
     tags: ["Elemental"],
-    baseDamage: [6, 12, 22, 40, 74],
+    baseDamage: [7, 13, 24, 43, 80],
     scaling: { elementalDamage: 0.62, rangedDamage: 0.12 },
     cooldown: [0.24, 0.21, 0.18, 0.15, 0.12],
     range: [185, 210, 240, 275, 330],
@@ -818,7 +996,7 @@ const weaponStatProfiles = {
   "Grenade Launcher": {
     attackType: "projectile",
     tags: ["Ranged", "Explosive"],
-    baseDamage: [4, 12, 32, 75, 180],
+    baseDamage: [5, 13, 35, 81, 194],
     scaling: { rangedDamage: 0.42 },
     cooldown: [3.2, 2.75, 2.25, 1.75, 1.2],
     range: [295, 330, 375, 430, 540],
@@ -835,6 +1013,134 @@ const weaponStatProfiles = {
     explosionDamageMultiplier: [0.6, 0.75, 0.9, 1.1, 1.35],
     color: "#7d4f34",
     impactColor: "#ff9c3d"
+  },
+  "Potato Masher": {
+    attackType: "swing",
+    tags: ["Melee", "Primitive"],
+    baseDamage: [17, 31, 58, 104, 175],
+    scaling: { meleeDamage: 1.15, rangedDamage: 0.1 },
+    cooldown: [1.35, 1.14, 0.98, 0.84, 0.71],
+    range: [58, 64, 70, 77, 85],
+    critChance: [2, 4, 6, 8, 12],
+    critMultiplier: 2.05,
+    knockback: [34, 44, 56, 72, 94],
+    pierce: [1, 2, 3, 4, 6],
+    projectileSpeed: [390, 420, 455, 490, 530],
+    projectileRadius: 12,
+    projectileScale: 1.5,
+    spread: 0.22,
+    swingArc: [0.95, 1.03, 1.11, 1.2, 1.3],
+    swingDuration: [0.18, 0.19, 0.2, 0.21, 0.22],
+    damageFalloff: 0.85,
+    color: "#c98f4f",
+    impactColor: "#f6d28f"
+  },
+  "Seed Shotgun": {
+    attackType: "projectile",
+    tags: ["Ranged", "Garden"],
+    baseDamage: [10, 18, 35, 60, 104],
+    scaling: { rangedDamage: 0.7 },
+    cooldown: [0.82, 0.71, 0.61, 0.52, 0.44],
+    range: [175, 195, 220, 250, 285],
+    critChance: [3, 5, 8, 11, 15],
+    critMultiplier: 1.8,
+    knockback: [10, 13, 16, 20, 25],
+    pierce: [0, 1, 1, 2, 2],
+    // No true multi-pellet field is fired per shot beyond `projectiles` (which is reserved
+    // here for the player's own +projectile item stacking). The "spread of pellets" concept
+    // is approximated with a very wide `spread` value plus aggressive `damageFalloff` and a
+    // short `range`, so it reads as a shotgun (strong up close, weak far away) without the
+    // engine actually simulating separate pellets.
+    projectileSpeed: [520, 550, 585, 625, 670],
+    projectileRadius: 6,
+    projectileScale: 0.85,
+    spread: 0.55,
+    damageFalloff: 0.4,
+    color: "#8fbf5a",
+    impactColor: "#d7e79a"
+  },
+  "Thorn Lasher": {
+    attackType: "swing",
+    tags: ["Melee", "Garden"],
+    baseDamage: [11, 21, 39, 69, 119],
+    scaling: { meleeDamage: 0.85, rangedDamage: 0.1 },
+    cooldown: [1.0, 0.86, 0.74, 0.63, 0.53],
+    // Much longer reach than any other melee weapon (Stub Club tops out at 82, Potato
+    // Masher at 85) to sell the "whip" concept.
+    range: [140, 155, 172, 190, 212],
+    critChance: [3, 5, 7, 10, 14],
+    critMultiplier: 1.9,
+    knockback: [8, 10, 13, 16, 20],
+    pierce: [1, 2, 2, 3, 4],
+    projectileSpeed: [420, 450, 485, 520, 560],
+    projectileRadius: 8,
+    projectileScale: 1.1,
+    spread: 0.18,
+    swingArc: [1.0, 1.08, 1.16, 1.25, 1.35],
+    swingDuration: [0.16, 0.17, 0.18, 0.19, 0.2],
+    damageFalloff: 0.78,
+    // Bleed is implemented as a burn-style DoT clone: the engine (js/07-combat.js,
+    // weaponBurnDps / enemy.burnDps / enemy.burnTime) only has one DoT channel, "burn",
+    // with no separate bleed state. So Thorn Lasher reuses the exact burnBase/burnScaling/
+    // burnDuration fields that Twig Wand and Tin Dragon Flamethrower use — it is
+    // mechanically identical to burn, just reskinned as "Bleed" in name/color/lore.
+    burnBase: [3, 6, 11, 19, 33],
+    burnScaling: { meleeDamage: 0.35 },
+    burnDuration: 3,
+    color: "#8a3f4f",
+    impactColor: "#c95a6a"
+  },
+  "Frost Bow": {
+    attackType: "projectile",
+    tags: ["Ranged"],
+    baseDamage: [11, 21, 38, 66, 110],
+    scaling: { rangedDamage: 0.7 },
+    // Deliberately slow fire rate: this weapon's value is crowd control, not DPS.
+    cooldown: [1.6, 1.4, 1.22, 1.05, 0.9],
+    range: [400, 430, 465, 505, 555],
+    critChance: [4, 6, 9, 13, 18],
+    critMultiplier: 1.85,
+    knockback: [9, 11, 14, 17, 21],
+    pierce: [0, 1, 1, 2, 3],
+    projectileSpeed: [620, 655, 690, 735, 790],
+    projectileRadius: 5,
+    projectileScale: 1,
+    spread: 0.05,
+    damageFalloff: 0.78,
+    // Data-only fields for the slow effect: this weapon's actual slow logic (applying
+    // slowFactor/slowDuration to an enemy on hit) lives in combat code owned by another
+    // agent. These two arrays are just the balance numbers for that agent to read; no
+    // slow behavior is implemented by adding them here.
+    slowFactor: [0.82, 0.78, 0.74, 0.7, 0.64],
+    slowDuration: [1.0, 1.2, 1.4, 1.6, 2.0],
+    color: "#7fd8ff",
+    impactColor: "#e3f8ff"
+  },
+  "Shuriken": {
+    attackType: "projectile",
+    // Thrown, not fired: it flies out, pierces, then boomerangs back to the player's hand,
+    // damaging enemies again on the way home (see updateReturningBullet in 07-combat.js).
+    returns: true,
+    tags: ["Ranged"],
+    baseDamage: [5, 9, 16, 29, 51],
+    scaling: { rangedDamage: 0.5 },
+    // Slower than a normal projectile weapon of this tier on purpose: each throw now gets
+    // TWO damage passes over the same enemies (outbound + return), so the old 0.4-0.22
+    // cadence would have roughly doubled its real output. The cooldown also has to cover the
+    // round trip, or a second shuriken leaves before the first is caught.
+    cooldown: [0.62, 0.55, 0.48, 0.42, 0.36],
+    range: [300, 325, 355, 390, 430],
+    critChance: [8, 12, 16, 21, 28],
+    critMultiplier: 1.8,
+    knockback: [3, 4, 5, 6, 8],
+    pierce: [1, 2, 2, 3, 4],
+    projectileSpeed: [640, 675, 715, 760, 815],
+    projectileRadius: 4,
+    projectileScale: 0.8,
+    spread: 0.1,
+    damageFalloff: 0.7,
+    color: "#c8c8d8",
+    impactColor: "#f0f0ff"
   }
 };
 

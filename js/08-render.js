@@ -2,6 +2,11 @@
 
 // render.js - canvas drawing: arena, entities, projectiles
 
+// Cached CanvasPattern for the tiled arena floor. Built once on the first frame after the
+// ground PNG finishes loading (see drawArena) -- rebuilding it every frame would throw away
+// the tiling work the browser does internally.
+let groundPattern = null;
+
 function draw() {
   const shakeAmp = gameSettings.screenShake ? fx.shake : 0;
   ctx.save();
@@ -16,6 +21,7 @@ function draw() {
   for (const crate of state.crates) drawCrate(crate);
   for (const drop of state.crateDrops) drawCrateDrop(drop);
   for (const cookie of state.fortuneCookies) drawFortuneCookie(cookie);
+  for (const pool of state.poisonPools ?? []) drawPoisonPool(pool);
   for (const bulb of state.bulbs) drawBulb(bulb);
   for (const coin of state.coins) drawCoin(coin);
   for (const coin of state.bagAnimations) drawBagCoin(coin);
@@ -68,7 +74,9 @@ function drawScreenFeedback() {
 }
 
 function drawArena() {
-  const time = performance.now();
+  // Tiled ground PNG when it's loaded, falling back to the original gradient otherwise so
+  // the arena is never blank. The gradient is drawn underneath either way: the tile is
+  // opaque, but this keeps the arena coloured during the frames before the art arrives.
   const gradient = ctx.createLinearGradient(0, 0, W, H);
   gradient.addColorStop(0, "#47626a");
   gradient.addColorStop(0.48, "#334f48");
@@ -76,143 +84,30 @@ function drawArena() {
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, W, H);
 
+  const ground = artFor("env:ground");
+  if (ground) {
+    // createPattern repeats the tile across the whole arena in one fill, so this costs a
+    // single draw call regardless of how many times it repeats.
+    groundPattern = groundPattern ?? ctx.createPattern(ground, "repeat");
+    if (groundPattern) {
+      ctx.fillStyle = groundPattern;
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+
+  // NOTE: the arena used to draw its whole ground texture procedurally on top of the fill --
+  // diagonal grid lines, 22 colour patches, 42 moss blobs, 190 pixel specks, 18 ground
+  // details, 34 stamped pixel sprites, 46 swaying grass blades and 12 twinkles, EVERY frame.
+  // That was ~1,340 canvas calls per frame before a single enemy was drawn. All of it is
+  // now baked into arena_ground.png, so redrawing it would be invisible (the tile is opaque)
+  // as well as expensive. Only the vignette survives, because it frames the screen rather
+  // than the ground and can't be part of a repeating tile.
   ctx.save();
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.035)";
-  ctx.lineWidth = 2;
-  for (let x = 40; x < W; x += 80) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x - 50, H);
-    ctx.stroke();
-  }
-  for (let y = 54; y < H; y += 72) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(W, y + 38);
-    ctx.stroke();
-  }
-
-  const patchColors = [
-    "rgba(47, 87, 72, 0.24)",
-    "rgba(85, 116, 87, 0.2)",
-    "rgba(41, 56, 61, 0.22)",
-    "rgba(126, 100, 66, 0.13)"
-  ];
-  for (let i = 0; i < 22; i += 1) {
-    const x = (i * 241 + 63) % W;
-    const y = (i * 157 + 41) % H;
-    ctx.fillStyle = patchColors[i % patchColors.length];
-    ctx.beginPath();
-    ctx.ellipse(x, y, 48 + (i % 5) * 16, 18 + (i % 4) * 8, (i % 7) * 0.45, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  ctx.fillStyle = "rgba(124, 204, 142, 0.16)";
-  for (let i = 0; i < 42; i += 1) {
-    const x = (i * 173) % W;
-    const y = (i * 97) % H;
-    ctx.beginPath();
-    ctx.ellipse(x, y, 14 + (i % 4) * 5, 5 + (i % 3) * 2, i, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  const pixelColors = [
-    "rgba(173, 209, 151, 0.18)",
-    "rgba(30, 43, 46, 0.18)",
-    "rgba(229, 203, 132, 0.12)",
-    "rgba(116, 211, 164, 0.13)"
-  ];
-  for (let i = 0; i < 190; i += 1) {
-    const x = Math.floor(((i * 67 + 19) % W) / 4) * 4;
-    const y = Math.floor(((i * 131 + 53) % H) / 4) * 4;
-    const size = 2 + (i % 3) * 2;
-    ctx.fillStyle = pixelColors[i % pixelColors.length];
-    ctx.fillRect(x, y, size, size);
-  }
-
-  for (let i = 0; i < 18; i += 1) {
-    const x = (i * 311 + 94) % W;
-    const y = (i * 167 + 128) % H;
-    drawGroundDetail(x, y, i);
-  }
-
-  ctx.save();
-  ctx.globalAlpha = 0.42;
-  for (let i = 0; i < 34; i += 1) {
-    const stamp = i % 3 === 0 ? pixelSprites.groundMoss : i % 3 === 1 ? pixelSprites.groundPebbles : pixelSprites.groundFlowers;
-    const x = ((i * 227 + 71) % W) - 8;
-    const y = ((i * 173 + 39) % H) - 8;
-    drawPixelSprite(ctx, stamp, x, y, 2);
-  }
-  ctx.restore();
-
-  ctx.strokeStyle = "rgba(194, 223, 151, 0.18)";
-  ctx.lineWidth = 2;
-  for (let i = 0; i < 46; i += 1) {
-    const x = (i * 113 + 37) % W;
-    const y = (i * 191 + 29) % H;
-    const sway = Math.sin(time / 900 + i) * 2;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + 8 + sway, y - 5 - (i % 4));
-    ctx.stroke();
-  }
-
-  ctx.fillStyle = "rgba(255, 247, 231, 0.08)";
-  for (let i = 0; i < 12; i += 1) {
-    const pulse = 0.45 + Math.sin(time / 700 + i * 1.9) * 0.25;
-    const x = (i * 281 + 120) % W;
-    const y = (i * 149 + 96) % H;
-    ctx.globalAlpha = pulse;
-    ctx.fillRect(x, y, 4, 4);
-  }
-  ctx.globalAlpha = 1;
-
   const vignette = ctx.createRadialGradient(W / 2, H / 2, 120, W / 2, H / 2, W * 0.62);
   vignette.addColorStop(0, "rgba(255, 255, 255, 0)");
   vignette.addColorStop(1, "rgba(6, 10, 16, 0.18)");
   ctx.fillStyle = vignette;
   ctx.fillRect(0, 0, W, H);
-  ctx.restore();
-}
-
-function drawGroundDetail(x, y, seed) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate((seed % 9) * 0.26);
-
-  if (seed % 3 === 0) {
-    ctx.strokeStyle = "rgba(20, 31, 35, 0.24)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(-16, 0);
-    ctx.lineTo(-6, -3);
-    ctx.lineTo(2, 2);
-    ctx.lineTo(14, -2);
-    ctx.stroke();
-    ctx.strokeStyle = "rgba(255, 247, 231, 0.05)";
-    ctx.beginPath();
-    ctx.moveTo(-12, 4);
-    ctx.lineTo(6, 6);
-    ctx.stroke();
-  } else if (seed % 3 === 1) {
-    const colors = ["#5a7f66", "#7ca46d", "#365f58"];
-    for (let i = 0; i < 7; i += 1) {
-      const px = -13 + i * 4 + (seed % 2) * 2;
-      const py = (i % 2) * 4;
-      ctx.fillStyle = colors[i % colors.length];
-      ctx.fillRect(px, py, 3, 10 - (i % 3) * 2);
-    }
-  } else {
-    ctx.fillStyle = "rgba(32, 42, 45, 0.22)";
-    ctx.fillRect(-12, -3, 6, 4);
-    ctx.fillRect(-3, 2, 4, 3);
-    ctx.fillRect(7, -1, 7, 5);
-    ctx.fillStyle = "rgba(231, 203, 137, 0.14)";
-    ctx.fillRect(-8, -7, 4, 3);
-    ctx.fillRect(5, -6, 3, 3);
-  }
-
   ctx.restore();
 }
 
@@ -294,6 +189,12 @@ function drawArenaWeapon(player) {
     if (isWeaponSlotSwinging(weapon, index)) {
       continue;
     }
+    // A thrown weapon is literally not in your hand while it's in the air -- the star you
+    // can see flying IS this weapon, so drawing it orbiting the player too would show the
+    // same object twice. The slot stays empty until it's caught (see updateReturningBullet).
+    if (weapon.airborne) {
+      continue;
+    }
     const target = allowDestructibles
       ? findNearestEnemyFrom(slot.x, slot.y, weaponRange(weapon)) ?? findNearestDestructibleFrom(slot.x, slot.y, weaponRange(weapon))
       : findNearestEnemyFrom(slot.x, slot.y, weaponRange(weapon));
@@ -315,13 +216,19 @@ function drawArenaWeapon(player) {
     const breathe = 1 + Math.sin(time / 360 + index * 1.3) * 0.045;
     const arenaArt = weaponArenaArt(weapon.name);
 
+    // Per-weapon fire animation, layered on top of the shared recoil. `fire` runs 0 -> 1
+    // across the shot (0 at the instant of firing), so each weapon can shape its own motion
+    // curve rather than every gun sharing one generic kick.
+    const anim = weaponFireAnimation(weapon, time, index);
+
     ctx.save();
     ctx.globalAlpha = overlapEnemy ? 0.54 : 0.94;
     ctx.translate(slot.x, slot.y);
-    ctx.rotate(angle);
+    ctx.rotate(angle + anim.rotate);
     // Recoil kick: shove the weapon back along its aim (local -x) right after firing.
     if (weapon.recoil > 0) ctx.translate(-weapon.recoil, 0);
-    ctx.scale(scale * breathe, scale * breathe);
+    if (anim.pushX || anim.pushY) ctx.translate(anim.pushX, anim.pushY);
+    ctx.scale(scale * breathe * anim.scaleX, scale * breathe * anim.scaleY);
     if (arenaArt) {
       // Tile-less weapon PNG: draw it centered, cropped to its content bbox and scaled
       // to preserve its true aspect ratio (see drawWeaponArtFitted) instead of stretching
@@ -341,6 +248,117 @@ function drawArenaWeapon(player) {
     }
     ctx.restore();
   }
+}
+
+// Per-weapon fire animation. Returns a transform layered on top of the shared recoil kick
+// in drawArenaWeapon: a rotation, a local push (x = along the aim, y = perpendicular), and
+// a squash/stretch. `t` runs 0 -> 1 over the weapon's fireAnim window (0 = just fired).
+//
+// The point is that each weapon should read as its own physical object. A slingshot's band
+// snaps forward; a crossbow dips to re-cock; a shotgun lurches. Weapons with no entry fall
+// through to a small shared settle, plus a permanent idle drift so nothing is ever static.
+function weaponFireAnimation(weapon, time, index) {
+  const none = { rotate: 0, pushX: 0, pushY: 0, scaleX: 1, scaleY: 1 };
+  const name = weapon.name;
+  const max = weapon.fireAnimMax ?? 0;
+  const remaining = weapon.fireAnim ?? 0;
+
+  // Idle life: a slow drift so an unfired weapon still breathes. Deliberately tiny -- it
+  // should be felt, not noticed, and must not fight the aim direction.
+  const idleSway = Math.sin(time / 620 + index * 2.1) * 0.035;
+
+  if (max <= 0 || remaining <= 0) {
+    return { ...none, rotate: idleSway };
+  }
+
+  const t = clamp(1 - remaining / max, 0, 1);   // 0 at the shot, 1 when the animation ends
+  const settle = Math.sin(t * Math.PI);          // rises then falls: a single pulse
+  const snap = Math.pow(1 - t, 2.2);             // sharp at the shot, decays fast
+
+  // Slingshot: the band is drawn back, then snaps forward. Stretch along the aim on
+  // release and rock the fork back, so the elastic release is legible.
+  if (name === "Slingshot") {
+    return {
+      rotate: idleSway - snap * 0.5,
+      pushX: -snap * 5 + settle * 2,
+      pushY: 0,
+      scaleX: 1 + snap * 0.24,                   // stretches along the shot
+      scaleY: 1 - snap * 0.14
+    };
+  }
+
+  // Frost Bow: a crossbow re-cocking. Dips the nose down and pulls back while it reloads,
+  // then levels off -- the slowest, most mechanical animation in the set.
+  if (name === "Frost Bow") {
+    const reload = Math.sin(clamp(t * 1.25, 0, 1) * Math.PI);
+    return {
+      rotate: idleSway + reload * 0.34,          // nose dips as it re-cocks
+      pushX: -reload * 4.5,
+      pushY: reload * 2.2,
+      scaleX: 1 - reload * 0.1,
+      scaleY: 1 + reload * 0.07
+    };
+  }
+
+  // Seed Shotgun: a heavy double-barrel lurch -- big kick up and back, slow settle.
+  if (name === "Seed Shotgun") {
+    return {
+      rotate: idleSway - snap * 0.42,
+      pushX: -snap * 8,
+      pushY: -snap * 2.5,
+      scaleX: 1 + snap * 0.1,
+      scaleY: 1 + snap * 0.16                    // barrels flare
+    };
+  }
+
+  // Shuriken: spun and flicked away. A fast full-ish spin sells it as thrown, not fired.
+  if (name === "Shuriken") {
+    return {
+      rotate: idleSway + (1 - t) * Math.PI * 1.5,
+      pushX: -snap * 3,
+      pushY: 0,
+      scaleX: 1 - snap * 0.12,
+      scaleY: 1 - snap * 0.12
+    };
+  }
+
+  // Twig Wand: a magical flourish rather than a recoil -- it swirls and pulses.
+  if (name === "Twig Wand") {
+    return {
+      rotate: idleSway + Math.sin(t * Math.PI * 2) * 0.3,
+      pushX: settle * 2.5,
+      pushY: Math.sin(t * Math.PI * 2) * 2,
+      scaleX: 1 + settle * 0.12,
+      scaleY: 1 + settle * 0.12
+    };
+  }
+
+  // Grenade Launcher / Scrap Revolver: heavy weapons buck upward hard.
+  if (name === "Grenade Launcher" || name === "Scrap Revolver") {
+    return {
+      rotate: idleSway - snap * 0.46,
+      pushX: -snap * 6,
+      pushY: -snap * 3,
+      scaleX: 1 + snap * 0.08,
+      scaleY: 1 + snap * 0.1
+    };
+  }
+
+  // Flamethrower: no discrete shot to animate, so it just shudders continuously.
+  if (name === "Tin Dragon Flamethrower") {
+    const shudder = Math.sin(time / 45) * 0.03;
+    return { rotate: idleSway + shudder, pushX: -snap * 2, pushY: 0, scaleX: 1, scaleY: 1 + shudder };
+  }
+
+  // Default (pistols, peashooter, anything new): a small snappy kick so every weapon has
+  // at least some life without needing its own entry here.
+  return {
+    rotate: idleSway - snap * 0.26,
+    pushX: -snap * 3.5,
+    pushY: -snap * 1,
+    scaleX: 1 + snap * 0.06,
+    scaleY: 1 - snap * 0.04
+  };
 }
 
 // Matched on slot index rather than a proximity check: since the swing's origin now
@@ -1232,13 +1250,60 @@ function drawSpudBody(targetCtx, character, hurt = false) {
   targetCtx.fill();
 }
 
+// Each link is a 4-segment squiggle costing ~28 canvas calls, and every enemy inside a
+// Drummer's aura gets one. In a late-wave crowd that ran away completely: at the 480-enemy
+// cap it was 4,701 links = ~131k canvas calls = 15ms/frame, i.e. the whole frame budget for
+// one decorative effect, and 13x the cost of drawing every enemy sprite. It also stopped
+// communicating anything -- thousands of overlapping squiggles read as noise, not "these
+// are buffed".
+//
+// So it is capped. The nearest links to each Drummer are kept (those are the ones the eye
+// actually follows) and the rest are dropped; the pink buff aura on each enemy already
+// carries the "I am buffed" information on its own.
+const MAX_DRUMMER_LINKS_PER_DRUMMER = 6;
+// A per-drummer cap alone does NOT bound the total: late waves put ~60 Drummers on screen,
+// so 60 x 6 links x ~28 canvas calls was still 10,080 calls -- 43% of the entire frame, more
+// than every enemy sprite combined. This is the hard ceiling for the whole screen. Past a
+// handful of drummers the links are unreadable spaghetti anyway, and each enemy already
+// carries its own pink buff aura, so nothing is actually lost by stopping here.
+const MAX_DRUMMER_LINKS_TOTAL = 18;
+
 function drawDrummerBuffLinks() {
   const time = performance.now();
-  for (const drummer of state.enemies) {
+  const enemies = state.enemies;
+  let drawn = 0;
+  for (let d = 0; d < enemies.length; d += 1) {
+    const drummer = enemies[d];
     if (drummer.behavior !== "buffer") continue;
-    for (const target of state.enemies) {
-      if (!isDrummerBuffingEnemy(drummer, target)) continue;
-      drawDrummerBuffLink(drummer, target, time);
+    if (drawn >= MAX_DRUMMER_LINKS_TOTAL) break;
+
+    // Keep a small "closest N" list by insertion rather than collecting every enemy in the
+    // aura and sorting: in a dense crowd that array was thousands of entries per Drummer,
+    // and all but a handful were thrown away immediately.
+    const best = [];
+    for (let t = 0; t < enemies.length; t += 1) {
+      const target = enemies[t];
+      if (target === drummer) continue;
+      // The aura test below is the authoritative check for THIS drummer, so the cached flag
+      // is only a cheap early-out. It must not be read directly: draw() runs while paused
+      // even though update() (which refreshes the flag) does not, so a freshly spawned enemy
+      // can have no flag yet -- isEnemyDrummerBuffed falls back to a live scan in that case.
+      if (target._drummerBuffed === false) continue;
+      const dx = target.x - drummer.x;
+      const dy = target.y - drummer.y;
+      const distSq = dx * dx + dy * dy;
+      if (distSq >= DRUMMER_BUFF_RADIUS * DRUMMER_BUFF_RADIUS) continue;
+      if (best.length === MAX_DRUMMER_LINKS_PER_DRUMMER && distSq >= best[best.length - 1].distSq) {
+        continue;
+      }
+      let slot = best.length;
+      while (slot > 0 && best[slot - 1].distSq > distSq) slot -= 1;
+      best.splice(slot, 0, { target, distSq });
+      if (best.length > MAX_DRUMMER_LINKS_PER_DRUMMER) best.length = MAX_DRUMMER_LINKS_PER_DRUMMER;
+    }
+    for (let i = 0; i < best.length && drawn < MAX_DRUMMER_LINKS_TOTAL; i += 1) {
+      drawDrummerBuffLink(drummer, best[i].target, time);
+      drawn += 1;
     }
   }
 }
@@ -1414,6 +1479,18 @@ function darterStrobeOn(enemy) {
 }
 
 function drawEnemy(enemy) {
+  // Off-screen cull. Enemies spawn outside the arena edges and walk in, so at the late-wave
+  // cap a real fraction of the array is never visible -- drawing them meant a full save/
+  // transform/shadow/art/health-bar pass per enemy for nothing. The margin is generous
+  // enough to cover the largest sprite's scaled overhang so nothing can pop in at the edge.
+  const cullMargin = enemy.radius * 3 + 40;
+  if (
+    enemy.x < -cullMargin || enemy.x > W + cullMargin ||
+    enemy.y < -cullMargin || enemy.y > H + cullMargin
+  ) {
+    return;
+  }
+
   const art = enemyArt(enemy.name);
   ctx.save();
   ctx.translate(enemy.x, enemy.y);
@@ -1427,18 +1504,17 @@ function drawEnemy(enemy) {
     drawShadow(0, enemy.radius * 0.78, enemy.radius * 1.05, enemy.radius * 0.34);
   }
 
+  // Buff aura: ONE stroked ring, not a ring plus a filled disc. In a late wave almost every
+  // enemy on screen is buffed, so this runs hundreds of times a frame -- halving its work
+  // (and dropping the per-enemy template-string alpha) is worth more than the faint inner
+  // glow, which was barely visible under the sprite anyway.
   if (enemy.behavior !== "buffer" && isEnemyDrummerBuffed(enemy)) {
     const pulse = 0.72 + Math.sin(performance.now() / 130 + enemy.bob) * 0.18;
-    ctx.strokeStyle = `rgba(255, 126, 182, ${0.28 + pulse * 0.18})`;
+    ctx.strokeStyle = pulse > 0.8 ? "rgba(255, 126, 182, 0.44)" : "rgba(255, 126, 182, 0.32)";
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(0, 0, enemy.radius * (1.18 + pulse * 0.08), 0, Math.PI * 2);
+    ctx.arc(0, 0, enemy.radius * 1.2, 0, Math.PI * 2);
     ctx.stroke();
-
-    ctx.fillStyle = `rgba(255, 126, 182, ${0.08 + pulse * 0.045})`;
-    ctx.beginPath();
-    ctx.arc(0, 0, enemy.radius * 1.1, 0, Math.PI * 2);
-    ctx.fill();
   }
 
   if (enemy.windupTimer > 0) {
@@ -1454,6 +1530,43 @@ function drawEnemy(enemy) {
     ctx.lineTo(enemy.radius * 12, -enemy.radius * 0.85);
     ctx.lineTo(enemy.radius * 12, enemy.radius * 0.85);
     ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Thistle arming: a red ring/pulse warning during its 5s TURRET_ARM_TIME so the player
+  // sees it appear and has time to react before it can shoot.
+  if (enemy.behavior === "turret" && enemy.armTimer > 0) {
+    const armProgress = 1 - clamp(enemy.armTimer / TURRET_ARM_TIME, 0, 1);
+    const strobeHz = 2 + armProgress * 6;                     // strobes faster as arming finishes
+    const strobe = 0.35 + Math.max(0, Math.sin(performance.now() / 1000 * strobeHz * Math.PI * 2)) * 0.4;
+    ctx.save();
+    ctx.strokeStyle = `rgba(255, 70, 70, ${strobe})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, enemy.radius * (1.3 + armProgress * 0.25), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = `rgba(255, 70, 70, ${strobe * 0.18})`;
+    ctx.beginPath();
+    ctx.arc(0, 0, enemy.radius * (1.3 + armProgress * 0.25), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Gravebloom summon cast: a growing purple charge ring so the interrupt window (see
+  // checkGravebloomInterrupt) is obviously readable, not a hidden timer.
+  if (enemy.behavior === "summoner" && enemy.castTimer > 0) {
+    const castProgress = 1 - clamp(enemy.castTimer / GRAVEBLOOM_CAST_TIME, 0, 1);
+    const pulse = 0.5 + Math.sin(performance.now() / 110) * 0.22;
+    ctx.save();
+    ctx.strokeStyle = `rgba(169, 143, 214, ${0.35 + pulse * 0.35})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, enemy.radius * (1.15 + castProgress * 0.9), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = `rgba(169, 143, 214, ${0.1 + castProgress * 0.14})`;
+    ctx.beginPath();
+    ctx.arc(0, 0, enemy.radius * (1.15 + castProgress * 0.9), 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -1663,19 +1776,6 @@ function enemyLocomotion(enemy, time) {
     return { hopY: -scuttle, jellyX: 1 + shimmy, jellyY: 1 - shimmy * 0.6 };
   }
 
-  // Bruiser (and any large 'strong' body): subtle heavy stomp. Long slow cadence, weighty
-  // squash near the ground, barely leaves it — reads as mass, not bounce.
-  if (name === "Bruiser" || enemy.size === "large") {
-    const stompClock = time / 1000 * 2.4 * rate + phase;
-    const step = Math.pow(Math.abs(Math.sin(stompClock)), 1.4);   // sharp plant, slow rise
-    const grounded = 1 - step;
-    return {
-      hopY: -step * r * 0.16,
-      jellyX: 1 + grounded * 0.1,
-      jellyY: 1 - grounded * 0.1
-    };
-  }
-
   // Spitter / Ember Glob: planted with a light idle bob. When it fires, a recoil pulse
   // (enemy.fireAnim, set in combat) makes the body rear back and puff: a quick anticipatory
   // squash that springs into a forward stretch, so the shot has visible weight.
@@ -1702,6 +1802,102 @@ function enemyLocomotion(enemy, time) {
     const coilClock = time / 1000 * 3.2 + phase;
     const twitch = Math.sin(coilClock) * 0.03;
     return { hopY: 0, jellyX: 1.04 + twitch, jellyY: 0.96 - twitch };
+  }
+
+  // Husk: stiff, brittle, dry. Reads as rigid rather than jelly — minimal squash, and a
+  // sharp little jitter/rattle in place of a soft bounce.
+  if (name === "Husk") {
+    const rattleClock = time / 1000 * 11 * rate + phase;
+    const rattle = Math.sin(rattleClock) * r * 0.025 + Math.sin(rattleClock * 2.7) * r * 0.012;
+    const creak = Math.sin(rattleClock * 0.9) * 0.015;
+    return { hopY: rattle, jellyX: 1 + creak, jellyY: 1 - creak };
+  }
+
+  // Thistle: rooted turret. NO hop, ever — it's planted in the ground. A slow breathing
+  // sway/bristle normally; a visible tension pulse while arming; the fireAnim recoil
+  // pattern (same one Spitter uses) on each shot once armed.
+  if (name === "Thistle") {
+    const swayClock = time / 1000 * 1.1 + phase;
+    let jellyX = 1 + Math.sin(swayClock) * 0.025;
+    let jellyY = 2 - jellyX;
+    if ((enemy.armTimer ?? 0) > 0) {
+      // Tension builds as arming nears completion (fast small pulse), telegraphing "about
+      // to wake up" separately from the red warning overlay drawn in drawEnemy.
+      const armProgress = 1 - clamp(enemy.armTimer / TURRET_ARM_TIME, 0, 1);
+      const tensionClock = time / 1000 * (3 + armProgress * 9) + phase;
+      const tension = Math.sin(tensionClock) * 0.03 * (0.3 + armProgress * 0.7);
+      jellyX += tension;
+      jellyY -= tension;
+    }
+    const fire = enemy.fireAnim ?? 0;
+    if (fire > 0) {
+      const t = 1 - fire / 0.32;
+      const kick = Math.sin(t * Math.PI);
+      const windup = clamp(1 - t * 3, 0, 1);
+      jellyX += kick * 0.14 - windup * 0.09;
+      jellyY += -kick * 0.1 + windup * 0.07;
+    }
+    return { hopY: 0, jellyX, jellyY };
+  }
+
+  // Blight Sac: heavy fluid wobble — a slow, over-damped, sloshing jiggle with noticeably
+  // more squash than other enemies, like an unstable water balloon about to burst.
+  if (name === "Blight Sac") {
+    const sloshClock = time / 1000 * 1.6 * rate + phase;
+    const slosh = Math.sin(sloshClock);
+    const slosh2 = Math.sin(sloshClock * 1.7 + 1.1) * 0.5;
+    const wobble = (slosh + slosh2) * 0.22;               // big amplitude, over-damped
+    const bob = Math.abs(Math.sin(sloshClock * 0.5)) * r * 0.06;
+    return { hopY: -bob, jellyX: 1 + wobble, jellyY: 1 - wobble * 0.85 };
+  }
+
+  // Gravebloom: tall, slow drooping sway from the flower head, almost no vertical hop.
+  // During the summon cast it visibly rears up / pulses so the telegraph reads clearly.
+  if (name === "Gravebloom") {
+    const droopClock = time / 1000 * 0.8 + phase;
+    let jellyX = 1 + Math.sin(droopClock) * 0.03;
+    let jellyY = 2 - jellyX;
+    let hopY = Math.sin(droopClock * 0.5) * r * 0.03;
+    if ((enemy.castTimer ?? 0) > 0) {
+      const castProgress = 1 - clamp(enemy.castTimer / GRAVEBLOOM_CAST_TIME, 0, 1);
+      const rearClock = time / 1000 * 5 + phase;
+      const rear = Math.sin(rearClock) * 0.06 * (0.4 + castProgress * 0.6);
+      hopY -= r * 0.14 * castProgress;                     // rears up as the cast nears completion
+      jellyX -= rear;
+      jellyY += rear;
+    }
+    return { hopY, jellyX, jellyY };
+  }
+
+  // Clown family: bouncy and manic — the smaller the clown, the faster and springier the
+  // bounce, so the trio reads as increasingly over-energetic vs. everything else on screen.
+  if (name === "Clown" || name === "Clown Mid" || name === "Clown Small") {
+    const sizeRate = name === "Clown" ? 1 : name === "Clown Mid" ? 1.5 : 2.2;
+    const bounceClock = time / 1000 * 4.6 * sizeRate * rate + phase;
+    const lift = Math.pow(Math.abs(Math.sin(bounceClock)), 0.55);
+    const grounded = 1 - lift;
+    const wobble = Math.sin(bounceClock * 2.3) * 0.05 * sizeRate * 0.6;
+    return {
+      hopY: -lift * r * 0.6 * (0.7 + sizeRate * 0.2),
+      jellyX: 1 + grounded * 0.18 - lift * 0.08 + wobble,
+      jellyY: 1 - grounded * 0.18 + lift * 0.1 - wobble
+    };
+  }
+
+  // Bruiser (and any other large 'strong' body not already handled above by name): subtle
+  // heavy stomp. Long slow cadence, weighty squash near the ground, barely leaves it — reads
+  // as mass, not bounce. Kept AFTER the name-specific branches above (Husk/Thistle/Blight
+  // Sac/Gravebloom/Clown family) so this generic size check never swallows Gravebloom or
+  // Clown — both are size:"large" but need their own distinct locomotion.
+  if (name === "Bruiser" || enemy.size === "large") {
+    const stompClock = time / 1000 * 2.4 * rate + phase;
+    const step = Math.pow(Math.abs(Math.sin(stompClock)), 1.4);   // sharp plant, slow rise
+    const grounded = 1 - step;
+    return {
+      hopY: -step * r * 0.16,
+      jellyX: 1 + grounded * 0.1,
+      jellyY: 1 - grounded * 0.1
+    };
   }
 
   // Default: springy jelly hop (Nibbler, Ember Glob, and other small bouncy blobs).
@@ -1921,6 +2117,33 @@ function drawFortuneCookie(cookie) {
     ctx.arc(0, 0, 13, 0, Math.PI * 2);
     ctx.fill();
   }
+  ctx.restore();
+}
+
+// Blight Sac's death pool: a sickly-green puddle that fades over its lifetime. Bubbles
+// gently to read as active/dangerous rather than a static decal.
+function drawPoisonPool(pool) {
+  const fade = clamp(pool.life / pool.maxLife, 0, 1);
+  const pulse = 1 + Math.sin(pool.bob) * 0.05;
+  ctx.save();
+  ctx.translate(pool.x, pool.y);
+  ctx.globalAlpha = 0.28 + fade * 0.32;
+  const gradient = ctx.createRadialGradient(0, 0, 2, 0, 0, pool.radius * pulse);
+  gradient.addColorStop(0, "rgba(143, 191, 90, 0.85)");
+  gradient.addColorStop(0.7, "rgba(96, 145, 58, 0.55)");
+  gradient.addColorStop(1, "rgba(96, 145, 58, 0)");
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, pool.radius * pulse, pool.radius * pulse * 0.55, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.globalAlpha = (0.35 + fade * 0.35) * (0.6 + Math.sin(pool.bob * 2.2) * 0.4);
+  ctx.fillStyle = "#c8e6a0";
+  ctx.beginPath();
+  ctx.arc(-pool.radius * 0.3, pool.radius * 0.05, pool.radius * 0.08, 0, Math.PI * 2);
+  ctx.arc(pool.radius * 0.28, -pool.radius * 0.1, pool.radius * 0.06, 0, Math.PI * 2);
+  ctx.arc(pool.radius * 0.05, pool.radius * 0.22, pool.radius * 0.05, 0, Math.PI * 2);
+  ctx.fill();
   ctx.restore();
 }
 
@@ -2236,6 +2459,19 @@ function drawUnusedBag() {
   ctx.scale(pulse, pulse);
   drawShadow(0, 24, 31, 8);
 
+  // Redesigned PNG bin: two frames of the same object, swapped on `open`. Both were cropped
+  // so the body is the same size and sits on the same baseline, so this swap animates only
+  // the lid. Drawn bottom-anchored to match where the old code-drawn sack sat.
+  const binArt = artFor(open ? "env:scrap_bin_open" : "env:scrap_bin");
+  if (binArt) {
+    const size = 88;
+    // Baseline: the old sack's base was ~y+30, so anchor the art's bottom there.
+    ctx.drawImage(binArt, -size / 2, 30 - size, size, size);
+    drawUnusedBagCount();
+    ctx.restore();
+    return;
+  }
+
   ctx.fillStyle = "#111722";
   ctx.beginPath();
   roundedRectPath(ctx, -24, -28, 48, 58, 10);
@@ -2299,20 +2535,66 @@ function drawUnusedBag() {
   ctx.quadraticCurveTo(7, 7, 16, 14);
   ctx.stroke();
 
-  ctx.fillStyle = "#f2c45f";
-  ctx.strokeStyle = "#111722";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(0, 3, 10, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
+  drawUnusedBagCount();
+  ctx.restore();
+}
 
-  ctx.fillStyle = "#111722";
+// The scrap counter badge that sits on the bin. Shared by both the PNG and the fallback
+// code-drawn bin so the number can never end up drawn twice or not at all.
+// The scrap count, drawn as a brass plate riveted onto the front of the bin rather than a
+// flat badge floating over it. Sold by three things: it sits low on the body where a real
+// label would, it uses the bin's own brass palette with a lit top edge and a shadowed
+// bottom edge (so it reads as raised metal catching the same light), and the digits are
+// engraved -- a dark cut with a one-pixel highlight under it, not solid ink on a disc.
+function drawUnusedBagCount() {
+  const text = `${state.unusedScrap + state.pendingBagScrap}`;
   ctx.font = "1000 12px Inter, system-ui, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(`${state.unusedScrap + state.pendingBagScrap}`, 0, 3);
-  ctx.restore();
+
+  // Plate widens with the digit count so a 4-figure total doesn't overflow it.
+  const w = Math.max(26, ctx.measureText(text).width + 14);
+  const h = 15;
+  const y = 8;
+
+  // Body of the plate: vertical brass gradient, bright at the top like the bin's bands.
+  const plate = ctx.createLinearGradient(0, y - h / 2, 0, y + h / 2);
+  plate.addColorStop(0, "#f6d489");
+  plate.addColorStop(0.45, "#e0ac52");
+  plate.addColorStop(1, "#a9762f");
+  ctx.fillStyle = plate;
+  ctx.strokeStyle = "#3a2412";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  roundedRectPath(ctx, -w / 2, y - h / 2, w, h, 3);
+  ctx.fill();
+  ctx.stroke();
+
+  // Lit top bevel, so the plate looks like it stands proud of the bin surface.
+  ctx.strokeStyle = "rgba(255, 245, 214, 0.55)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(-w / 2 + 3, y - h / 2 + 1);
+  ctx.lineTo(w / 2 - 3, y - h / 2 + 1);
+  ctx.stroke();
+
+  // Two rivets, matching the studs on the bin's metal bands.
+  ctx.fillStyle = "#f7e3ae";
+  ctx.strokeStyle = "rgba(58, 36, 18, 0.75)";
+  ctx.lineWidth = 0.75;
+  for (const rx of [-w / 2 + 4, w / 2 - 4]) {
+    ctx.beginPath();
+    ctx.arc(rx, y, 1.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // Engraved digits: dark cut plus a lighter line just below it, which is what sells
+  // "stamped into metal" rather than "printed on top".
+  ctx.fillStyle = "rgba(255, 240, 200, 0.4)";
+  ctx.fillText(text, 0, y + 1);
+  ctx.fillStyle = "#2a1a0c";
+  ctx.fillText(text, 0, y);
 }
 
 function drawBullet(bullet) {
@@ -2336,10 +2618,49 @@ function drawBullet(bullet) {
     drawFlamePuffProjectile(bullet, speed);
   } else if (bullet.weaponName === "Grenade Launcher") {
     drawGrenadeProjectile(bullet, speed);
+  } else if (bullet.weaponName === "Shuriken") {
+    drawShurikenProjectile(bullet, speed);
   } else {
     drawSparkProjectile(bullet, speed);
   }
   ctx.restore();
+}
+
+// A four-pointed star that spins fast in flight. drawBullet has already rotated to the
+// travel direction, so the spin is added on top of that -- and because it is driven by wall
+// clock rather than the aim angle, it keeps whirling identically on the way out and on the
+// way back (when the travel direction reverses).
+function drawShurikenProjectile(bullet, speed) {
+  const r = bullet.radius;
+  // Minis spin faster than the parent star, which keeps them reading as separate lighter
+  // objects rather than shrunken copies of the weapon.
+  ctx.rotate(performance.now() / 1000 * (bullet.isMiniShuriken ? 34 : 22));
+
+  // Motion blur disc: reads as "spinning too fast to see" and thickens the tiny sprite.
+  ctx.fillStyle = bullet.isMiniShuriken ? "rgba(240, 240, 255, 0.1)" : "rgba(240, 240, 255, 0.16)";
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 2.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#dfe3ef";
+  ctx.strokeStyle = "rgba(24, 28, 38, 0.85)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 0; i < 4; i += 1) {
+    const a = (i / 4) * Math.PI * 2;
+    const b = a + Math.PI / 4;
+    ctx.lineTo(Math.cos(a) * r * 2.6, Math.sin(a) * r * 2.6);   // point
+    ctx.lineTo(Math.cos(b) * r * 0.9, Math.sin(b) * r * 0.9);   // inner notch
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Hub.
+  ctx.fillStyle = "rgba(40, 46, 60, 0.9)";
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.42, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 function drawSparkProjectile(bullet, speed) {
@@ -2682,6 +3003,53 @@ function drawEnemyBullet(bullet) {
     return;
   }
 
+  // Thistle: a barbed thorn. Deliberately nothing like the Spitter's glob -- hard angular
+  // silhouette instead of a soft blob, green instead of cyan, and it spins as it flies, so
+  // the two are separable at a glance even in a crowded arena.
+  if (bullet.kind === "thorn") {
+    const spin = (bullet.spin ?? 0) + performance.now() / 90;
+
+    // Faint motion streak behind it.
+    ctx.strokeStyle = "rgba(127, 174, 92, 0.3)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-9, 0);
+    ctx.lineTo(-24, 0);
+    ctx.stroke();
+
+    ctx.rotate(spin * 0.6);
+    // Four-point barb: long fore/aft spikes, short side barbs. Sharp, not round.
+    ctx.fillStyle = "#8fce62";
+    ctx.strokeStyle = "#1e3318";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(11, 0);
+    ctx.lineTo(2, 3.2);
+    ctx.lineTo(0, 8);
+    ctx.lineTo(-2.4, 3.2);
+    ctx.lineTo(-9, 0);
+    ctx.lineTo(-2.4, -3.2);
+    ctx.lineTo(0, -8);
+    ctx.lineTo(2, -3.2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Pale woody core so it reads as plant matter rather than metal.
+    ctx.fillStyle = "rgba(226, 245, 190, 0.75)";
+    ctx.beginPath();
+    ctx.moveTo(5, 0);
+    ctx.lineTo(-1, 1.6);
+    ctx.lineTo(-4, 0);
+    ctx.lineTo(-1, -1.6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  // Spitter: a wet cyan glob. Keeps the soft rounded silhouette, now with a proper tapered
+  // tail so it reads as thrown fluid rather than a plain dot.
   ctx.fillStyle = "rgba(102, 199, 216, 0.24)";
   ctx.beginPath();
   ctx.ellipse(-18, 0, 16, 4, 0, 0, Math.PI * 2);
@@ -2797,6 +3165,9 @@ function roundedRectPath(targetCtx, x, y, width, height, radius) {
   targetCtx.quadraticCurveTo(x, y, x + r, y);
 }
 
+// Keeps its own save/restore: several callers (coins, crates, drops) rely on their fillStyle
+// being untouched afterwards, and leaking the shadow colour into them would tint real art.
+// The cost is one state push per shadow, which is not where the late-wave time actually goes.
 function drawShadow(x, y, rx, ry) {
   ctx.save();
   ctx.fillStyle = "rgba(0, 0, 0, 0.22)";

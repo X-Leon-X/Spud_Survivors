@@ -20,6 +20,66 @@
 
 const CHANGELOG = [
   {
+    version: "0.12.0",
+    date: "2026-08-07",
+    title: "New things to fight, and new things to fight them with",
+    notes: [
+      "Five new enemies join the arena.",
+      "Husk splits into two Nibblers when it dies, so clearing it is never quite the end of it.",
+      "Thistle takes root inside the arena and warns you in red before it starts firing.",
+      "Blight Sac bursts into a lingering poison pool. Do not stand in it.",
+      "Gravebloom summons reinforcements, but hitting it hard enough interrupts the summon.",
+      "Clown implodes into smaller clowns, twice over. Seven of them, all told.",
+      "Five new weapons: Potato Masher, Seed Shotgun, Thorn Lasher, Frost Bow and Shuriken.",
+      "Frost Bow slows what it hits, which is the only way to buy yourself space.",
+      "Three new items: Fun Hat, Flint and Steel, and the famously lensless Useful Glasses.",
+      "Every new enemy moves in its own way, from the Husk's dry rattle to the Clown's manic bounce.",
+      "Weapons animate when they fire. The slingshot snaps, the Frost Bow re-cocks, the shotgun lurches.",
+      "Weapons hit slightly harder across the board, and shop prices went up to match.",
+      "Late game enemy health still compounds, just more slowly, instead of flattening out.",
+      "Spitter shots travel slower, so they are easier to see coming and step around.",
+      "Around 15% fewer Spitters and Ember Globs. Waves are the same size, just less ranged fire.",
+      "Big performance fix: late waves with hundreds of enemies no longer chug.",
+      "Another one: the Drummer's buff links were eating a whole frame on their own in big crowds.",
+      "You are no longer shoved around when something hits you. Where you stand is entirely your call.",
+      "Poison finally hurts. Blight Sac pools and touch poison were being reduced to almost nothing by armour and invulnerability frames.",
+      "Standing in a poison pool is no longer shrugged off just because something else hit you a moment earlier.",
+      "The compendium opens in the top right instead of blacking out the whole screen, so you can still see your loadout.",
+      "Shrank the Flint and Steel card art, which was covering its own text.",
+      "The Monster Compendium is open for business. Every enemy gets a full field entry with art, stats and field notes.",
+      "Entries unlock the first time you meet a creature, and the book remembers what you have found between runs.",
+      "Ember Glob fireballs set you alight properly. The burn now grows with the wave instead of ticking for a flat 3 forever.",
+      "The Husk now bursts into three Nibblers instead of two, so killing one really does make things worse.",
+      "The Thistle is a lot sturdier. It is a woody, rooted plant that cannot dodge, so it should take some clearing.",
+      "Touching a Blight Sac now poisons you, not just standing in the pool it leaves behind.",
+      "Every enemy projectile looks different now. The Thistle fires a spinning green thorn instead of reusing the Spitter's glob.",
+      "Time machine: the patch notes now have Play buttons that launch older builds of the game, art and all.",
+      "Enemies now push each other apart instead of piling into the same spot, so a crowd looks and behaves like a crowd of bodies.",
+      "Big enemies shoulder through the swarm; small ones get jostled aside.",
+      "Getting shot at makes sense now. Bullets that hit you during your brief invulnerability are no longer swallowed whole.",
+      "A wall of incoming fire costs you several hits instead of one, but still cannot delete you in an instant.",
+      "The shop is far less repetitive. Items you have not been offered in a while push their way to the front.",
+      "Rare items actually turn up now. The Tin Dragon Flamethrower could previously go an entire run without ever appearing.",
+      "Luck matters much more for what the shop offers you.",
+      "The Slot Machine gets ONE spin, ever. No rerolls, so the result is the result.",
+      "Its effects are about three times bigger to match. A good spin can carry a run, a bad one really hurts.",
+      "The reels now actually spin and land one at a time before showing you the damage.",
+      "More performance work: the Drummer buff links were still eating a huge chunk of every frame in big crowds.",
+      "The Shuriken is now really thrown. Your hand is empty while it is in the air, and it cannot be thrown again until you catch it.",
+      "It also sheds mini stars at the far end of its arc. Extra projectiles add more of those instead of duplicating the weapon.",
+      "The scrap count now looks like a brass plate riveted to the bin instead of a sticker floating on it.",
+      "Moved the compendium button to the top right, under the scrap counter.",
+      "The arena has a real ground texture now instead of a flat gradient.",
+      "New scrap bin art, and its lid actually opens when you bag your leftover scrap.",
+      "Nimble Socks are now Nimble Boots, which is what they were always drawn as.",
+      "Waves 2 and 3 are a lot busier, so the opening is less of a slow crawl.",
+      "That means more scrap early, and a real build by the time wave 4 arrives. Every other wave is untouched.",
+      "The Slot Machine is a real gamble now. You do not know what it does until you spin it.",
+      "Every spin rolls two effects, and each one can be good or bad. Spin again, or pay to throw it away.",
+      "The Shuriken is thrown instead of fired. It pierces, then loops back to your hand, cutting through everything again on the way."
+    ]
+  },
+  {
     version: "0.11.1",
     date: "2026-08-07",
     title: "Updates show up, and the run stays winnable",
@@ -37,7 +97,7 @@ const CHANGELOG = [
     date: "2026-08-07",
     title: "Carve through the swarm",
     notes: [
-      "Enemies die much faster. Trash should pop, not soak up a full second each.",
+      "Enemies die faster. For more dopamine, obviously.",
       "Way more of them, too: roughly triple the spawn rate, and the arena holds far more at once.",
       "Nibblers, Skitters and Orbiters now make up the bulk of a wave.",
       "Bruisers are leaner but shrug off knockback, so they still plant their feet and walk at you.",
@@ -45,7 +105,7 @@ const CHANGELOG = [
       "New art: seven enemies, five weapons and three items are drawn and ready to be built.",
       "New berry bush and health apple sprites in the arena.",
       "Bigger character portrait in the shop, and Items is now a proper Inventory of icons.",
-      "Hover any inventory item to see what it is.",
+      "Hover over any inventory item to see what it is.",
       "Melee weapons stop standing idle and break nearby crates when no enemy is in reach.",
       "Every wave now has at least three bushes.",
       "Cleaned the leftover glow and drop shadows off the older weapon art."
@@ -166,19 +226,56 @@ function escapeChangelogText(value) {
 function renderChangelog() {
   const list = document.getElementById("changelogList");
   if (!list) return;
-  list.innerHTML = CHANGELOG.map((entry, index) => {
+  const entries = CHANGELOG.map((entry, index) => {
     const notes = entry.notes.map((note) => `<li>${escapeChangelogText(note)}</li>`).join("");
+    // A "Play" button appears only on versions that were actually DEPLOYED and are still
+    // hosted (see PLAYABLE_BUILDS). Versions 0.1.0-0.8.0 were written into this changelog
+    // retroactively and never existed as their own build, so they get no button rather than
+    // a dead one.
+    const build = typeof PLAYABLE_BUILDS !== "undefined"
+      ? PLAYABLE_BUILDS.find((b) => b.version === entry.version)
+      : null;
+    const playBtn = index === 0
+      ? `<span class="changelog-current">playing now</span>`
+      : build
+        ? `<a class="changelog-play" href="${buildUrl(build)}" title="Play v${escapeChangelogText(entry.version)} as it shipped">Play</a>`
+        : "";
     return `
       <div class="changelog-entry${index === 0 ? " latest" : ""}">
         <div class="changelog-head">
           <span class="changelog-version">v${escapeChangelogText(entry.version)}</span>
           <span class="changelog-title">${escapeChangelogText(entry.title)}</span>
           <span class="changelog-date">${escapeChangelogText(entry.date)}</span>
+          ${playBtn}
         </div>
         <ul>${notes}</ul>
       </div>
     `;
   }).join("");
+
+  // The eight builds that predate the changelog have no version number, so they are listed
+  // separately by date rather than being faked into the version history.
+  const older = typeof PLAYABLE_BUILDS !== "undefined"
+    ? PLAYABLE_BUILDS.filter((b) => !b.version)
+    : [];
+  const olderHtml = older.length
+    ? `
+      <div class="changelog-entry changelog-archive">
+        <div class="changelog-head">
+          <span class="changelog-version">Earlier</span>
+          <span class="changelog-title">Builds from before the patch notes existed</span>
+        </div>
+        <div class="changelog-archive-list">
+          ${older.map((b) => `
+            <a class="changelog-play" href="${buildUrl(b)}" title="${escapeChangelogText(b.label)}">
+              ${escapeChangelogText(buildDisplayName(b))}
+            </a>`).join("")}
+        </div>
+      </div>
+    `
+    : "";
+
+  list.innerHTML = entries + olderHtml;
 }
 
 function initChangelogControls() {

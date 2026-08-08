@@ -243,7 +243,7 @@ function buildUpgradeNumberLines(item) {
     case "glass_charm":
       return [`${formatStatChange("damagePercent", 18)}. ${formatStatChange("maxHp", -8)}. ${formatStatChange("armor", -2)}.`];
     case "slot_machine":
-      return ["Unique item. Starts with a random spin result when bought. Spin rerolls one buff and one downside, each from 4% to 10%."];
+      return ["Unique item. You will not know what it gives until you spin it, and you get exactly ONE spin. It rolls TWO large effects, each independently a buff or a downside, from 14 to 32. Two buffs, two downsides, or one of each. No rerolls."];
     case "extra_arm":
       return [`Weapon slots: ${maxWeaponSlots()} -> ${maxWeaponSlots() + 1}. ${formatStatChange("damagePercent", 6)}.`];
     case "royal_whetstone":
@@ -363,7 +363,9 @@ function formatOwnedEffectLines(itemGroup) {
     lines.push(`Current item effect: +${effects.extraWeaponSlots} weapon slot${effects.extraWeaponSlots === 1 ? "" : "s"}.`);
   }
   if (itemGroup.id === "slot_machine") {
-    lines.push(formatSlotMachineRoll(itemGroup.slotRoll));
+    // Pass the owned item too: the spinning animation reads spinStart/spinning off it.
+    const owned = state.items.find((it) => it.id === itemGroup.id && it.tier === itemGroup.tier);
+    lines.push(formatSlotMachineRoll(itemGroup.slotRoll, owned));
   }
   return lines;
 }
@@ -571,19 +573,25 @@ function showOwnedItemDetails(itemGroup) {
 function getOwnedItemActions(itemGroup) {
   if (itemGroup.id === "slot_machine") {
     const throwCost = slotMachineThrowAwayCost();
-    return [
-      {
-        label: "Spin",
+    const owned = state.items.find((it) => it.id === itemGroup.id && it.tier === itemGroup.tier);
+    const actions = [];
+    // Spin is offered exactly once. After that the button disappears entirely rather than
+    // sitting there greyed out, so there is no lingering suggestion of a reroll.
+    if (owned && !owned.spun) {
+      actions.push({
+        label: owned.spinning ? "Spinning..." : "Spin",
         className: "combine",
+        disabled: Boolean(owned.spinning),
         onClick: () => spinSlotMachine(itemGroup)
-      },
-      {
-        label: `Throw Away -${throwCost}`,
-        className: "recycle",
-        disabled: state.scrap < throwCost,
-        onClick: () => throwAwaySlotMachine(itemGroup, throwCost)
-      }
-    ];
+      });
+    }
+    actions.push({
+      label: `Throw Away -${throwCost}`,
+      className: "recycle",
+      disabled: state.scrap < throwCost || Boolean(owned?.spinning),
+      onClick: () => throwAwaySlotMachine(itemGroup, throwCost)
+    });
+    return actions;
   }
   const recycle = Math.max(1, Math.floor(calculateShopCost(itemGroup.baseCost, itemGroup.tier) * state.recycleRate));
   const canMerge = itemGroup.count >= 2 && itemGroup.tier < MAX_WEAPON_RANK;
@@ -602,16 +610,49 @@ function getOwnedItemActions(itemGroup) {
   ];
 }
 
+// ONE spin per machine, permanently. `spun` is the lock: once set the Spin button is gone
+// for good, so the result you get is the result you live with. That is the whole point of
+// the item -- a reroll button would turn a gamble into a slot-machine-shaped shopping trip.
 function spinSlotMachine(itemGroup) {
   const item = state.items.find((owned) => owned.id === itemGroup.id && owned.tier === itemGroup.tier);
-  if (!item) return;
-  item.slotRoll = rollSlotMachineEffect();
+  if (!item || item.spun || item.spinning) return;
+
+  // Roll immediately but keep it hidden: the reels animate for SLOT_SPIN_DURATION and only
+  // then reveal. Rolling up front means the outcome can't be influenced by when the timer
+  // happens to fire, and the stats apply the moment the animation lands.
+  const result = rollSlotMachineEffect();
+  item.spinning = true;
+  item.spinStart = performance.now();
   state.openActionMenu = { type: "item", key: `${item.id}:${item.tier}` };
-  syncDerivedStats();
+  playSfx("buy");
   renderShop();
+  refreshSlotMachineDetails(item);
+
+  const tick = () => {
+    if (!state.items.includes(item)) return;          // thrown away mid-spin
+    const elapsed = performance.now() - item.spinStart;
+    if (elapsed < SLOT_SPIN_DURATION) {
+      refreshSlotMachineDetails(item);
+      requestAnimationFrame(tick);
+      return;
+    }
+    item.spinning = false;
+    item.spun = true;
+    item.slotRoll = result;
+    syncDerivedStats();
+    playSfx(result.effects.every((e) => e.good) ? "crit" : "hit");
+    renderShop();
+    refreshSlotMachineDetails(item);
+    updateHud();
+  };
+  requestAnimationFrame(tick);
+}
+
+// Repaints just the detail panel for this machine, so the spinning reels animate without
+// tearing down and rebuilding the whole shop grid every frame.
+function refreshSlotMachineDetails(item) {
   const group = groupItems(state.items).find((owned) => owned.id === item.id && owned.tier === item.tier);
   if (group) showOwnedItemDetails(group);
-  updateHud();
 }
 
 function throwAwaySlotMachine(itemGroup, cost) {
@@ -845,7 +886,9 @@ function recordUpgrade(item) {
       unique: Boolean(item.unique),
       baseCost: item.baseCost,
       description: item.description,
-      slotRoll: item.id === "slot_machine" ? rollSlotMachineEffect() : undefined
+      // Bought unspun on purpose: you don't learn what the machine gives until you pull the
+      // lever, and until then it grants nothing at all.
+      slotRoll: item.id === "slot_machine" ? unspunSlotMachineRoll() : undefined
     });
   }
   syncDerivedStats();

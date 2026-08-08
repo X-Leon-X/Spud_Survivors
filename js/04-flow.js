@@ -75,6 +75,11 @@ function freshState() {
     crates: [],
     crateDrops: [],
     fortuneCookies: [],
+    poisonPools: [],
+    // Shop variety tracking: shopSeen maps upgrade id -> the shop number it last appeared
+    // in, and shopRollCount is that counter. Drives upgradeFreshnessBonus.
+    shopSeen: {},
+    shopRollCount: 0,
     bulbs: [],
     bullets: [],
     swings: [],
@@ -166,6 +171,9 @@ function endWave() {
   state.crates.length = 0;
   state.crateDrops.length = 0;
   state.fortuneCookies.length = 0;
+  // Poison pools are wave-scoped: a pool left by a Blight Sac must not survive into the
+  // next wave and chip the player before anything has even spawned.
+  state.poisonPools.length = 0;
   state.bulbs.length = 0;
   state.bullets.length = 0;
   state.swings.length = 0;
@@ -243,14 +251,19 @@ function rollShop() {
       cost: calculateShopCost(item.baseCost, item.tier)
     };
   }
-  return choices.filter(Boolean);
+  const rolled = choices.filter(Boolean);
+  markShopOffers(rolled);
+  return rolled;
 }
 
 function calculateShopCost(baseCost, tier = 1) {
   const shopPrice = 1 - Math.min(0.55, Math.max(0, effectiveStat("luck")) * 0.0015 + state.shopDiscount);
   const wave = Math.max(1, state.wave);
   const rarityMultiplier = rarities[tier]?.cost ?? 1;
-  const waveMultiplier = 1 + (wave - 1) * 0.085 + Math.max(0, wave - 7) * 0.035 + Math.max(0, wave - 13) * 0.055;
+  // Prices raised ~15% across the board (and the per-wave slope steepened slightly) to pair
+  // with the weapon damage bump in weaponStatProfiles: weapons hit harder, so each purchase
+  // has to be a bigger commitment or scrap stops being a meaningful constraint.
+  const waveMultiplier = 1.15 + (wave - 1) * 0.095 + Math.max(0, wave - 7) * 0.04 + Math.max(0, wave - 13) * 0.06;
   const earlyDiscount = wave === 1 ? 0.78 : wave === 2 ? 0.86 : wave <= 4 ? 0.94 : 1;
   return Math.max(1, Math.round(baseCost * rarityMultiplier * waveMultiplier * earlyDiscount * shopPrice));
 }
@@ -319,11 +332,38 @@ function weightedUpgradeChoice(pool) {
 }
 
 function upgradeOfferWeight(upgrade) {
-  if (upgrade.id === "split") return 0.28;
-  if (upgrade.id === "dodge") return 0.45;
-  if (upgrade.key === "dodge") return 0.45;
-  if (upgrade.unique) return 0.55;
-  return 1;
+  let weight = 1;
+  if (upgrade.id === "split") weight = 0.28;
+  else if (upgrade.id === "dodge") weight = 0.45;
+  else if (upgrade.key === "dodge") weight = 0.45;
+  else if (upgrade.unique) weight = 0.55;
+  return weight * upgradeFreshnessBonus(upgrade);
+}
+
+// "Pity" weighting, so the shop stops showing you the same four things. Every item tracks
+// how many shops have passed since you last saw it; the longer it has been missing, the
+// heavier it rolls. Items you just saw are damped instead, which is what actually breaks up
+// repetition -- rarity tiers alone can't, because a common item competes only with other
+// commons and the same handful kept winning.
+//
+// Capped so this biases the roll without overriding rarity: a legendary is still a
+// legendary, it just cannot stay invisible for an entire run.
+const SHOP_FRESHNESS_CAP = 3.5;
+function upgradeFreshnessBonus(upgrade) {
+  const lastSeen = state.shopSeen?.[upgrade.id];
+  if (lastSeen === undefined) return SHOP_FRESHNESS_CAP;   // never offered: maximum pity
+  const gap = (state.shopRollCount ?? 0) - lastSeen;
+  if (gap <= 1) return 0.35;                               // seen in the last shop: damped
+  return Math.min(SHOP_FRESHNESS_CAP, 0.6 + gap * 0.42);
+}
+
+// Records which items a shop actually offered, so the freshness weighting above has data.
+function markShopOffers(choices) {
+  state.shopRollCount = (state.shopRollCount ?? 0) + 1;
+  state.shopSeen = state.shopSeen ?? {};
+  for (const choice of choices) {
+    if (choice) state.shopSeen[choice.id] = state.shopRollCount;
+  }
 }
 
 function rollWeaponOfferTier(baseTier, targetTier) {
@@ -358,11 +398,17 @@ function shouldRollWeaponSlot(slot) {
 }
 
 function rollRarity() {
-  const luckMultiplier = 1 + Math.max(0, effectiveStat("luck")) / 100;
-  const tier5 = rarityChance(11, 0.055, 2.8, luckMultiplier);
-  const tier4 = rarityChance(7, 0.55, 16, luckMultiplier);
-  const tier3 = rarityChance(4, 2.4, 38, luckMultiplier);
-  const tier2 = rarityChance(2, 7.5, 72, luckMultiplier);
+  // Luck matters MORE than it used to (x1.4 exponent-ish via the doubled divisor effect on
+  // the multiplier below), but the base rates are what actually decide whether you ever see
+  // a legendary. The old tier-5 curve reached only ~0.55% per slot by wave 20 and was then
+  // split across 5 legendaries -- measured over 6,000 shops, the Flamethrower appeared ZERO
+  // times. These rates start earlier, climb faster and cap higher so rare items are rare,
+  // not absent, even at 0 luck.
+  const luckMultiplier = 1 + Math.max(0, effectiveStat("luck")) / 70;
+  const tier5 = rarityChance(9, 0.42, 9, luckMultiplier);
+  const tier4 = rarityChance(6, 1.5, 24, luckMultiplier);
+  const tier3 = rarityChance(3, 3.4, 42, luckMultiplier);
+  const tier2 = rarityChance(2, 8.5, 72, luckMultiplier);
   const roll = Math.random() * 100;
   if (roll < tier5) return 5;
   if (roll < tier5 + tier4) return 4;
