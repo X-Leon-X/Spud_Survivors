@@ -43,6 +43,12 @@
         var REPO = "X-Leon-X/Spud_Survivors";
         var params = new URLSearchParams(location.search);
         var sha = (params.get("sha") || "").trim();
+        // Primeval mode: run the oldest code with its PNG art suppressed, so the game falls
+        // back to the hand-drawn canvas art it used before the art pass. That era predates
+        // the repository (the root commit already shipped PNGs), so there is no commit to
+        // load for it -- but the fallback renderer is still in that code, and blocking the
+        // images is exactly the "no art files present" case it was written to handle.
+        var primeval = params.get("primeval") === "1";
         var detail = document.getElementById("tmDetail");
         var status = document.getElementById("tmStatus");
 
@@ -105,7 +111,8 @@
             // A small bar so it is obvious you are not on the current version.
             var bar = document.createElement("div");
             bar.className = "tm-bar";
-            bar.innerHTML = '<strong>Older build</strong><span>' + sha +
+            bar.innerHTML = '<strong>' + (primeval ? "Primeval" : "Older build") + '</strong><span>' + sha +
+              (primeval ? ' &middot; art disabled' : '') +
               '</span><a href="' + SELF_DIR + 'index.html">Back to current version</a>';
             document.body.appendChild(bar);
 
@@ -120,6 +127,30 @@
             var baseEl = document.createElement("base");
             baseEl.href = base;
             document.head.appendChild(baseEl);
+
+            // Primeval: stop every PNG from loading, which makes the old build take its own
+            // "no art file for this key" path and draw the original canvas art instead.
+            // This patches Image on THIS page only. The real game never loads this file, and
+            // a normal (non-primeval) build never enters this branch, so neither the modern
+            // game nor any other time-machine build is affected.
+            if (primeval) {
+              var NativeImage = window.Image;
+              window.Image = function () {
+                var img = new NativeImage();
+                // Report failure asynchronously, mirroring a real 404: the old loader listens
+                // for "error" and marks the key unavailable, which is the fallback trigger.
+                Object.defineProperty(img, "src", {
+                  get: function () { return ""; },
+                  set: function () {
+                    setTimeout(function () {
+                      img.dispatchEvent(new Event("error"));
+                    }, 0);
+                  }
+                });
+                return img;
+              };
+              window.Image.prototype = NativeImage.prototype;
+            }
 
             // Load the old build's scripts strictly in order; they depend on each other.
             (function next(i) {

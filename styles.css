@@ -3072,6 +3072,18 @@ button:active:not(:disabled) {
   min-width: 46px;
 }
 
+/* Primeval sits below the oldest inferred version and is not a version of its own, so it
+   gets a divider rather than being read as another entry in the version list. */
+.changelog-primeval-row {
+  border-top: 1px solid rgba(255, 247, 231, 0.12);
+  margin-top: 6px;
+  padding-top: 6px;
+}
+
+.changelog-primeval-row .changelog-archive-version {
+  color: rgba(146, 212, 134, 0.75);
+}
+
 /* --- Monster Compendium ---------------------------------------------------------------
    Two-pane bestiary: enemy list on the left, the selected entry on the right. Sits above
    the shop/reward panels (z-index 20) since it opens from a button on top of them. */

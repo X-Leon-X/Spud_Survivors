@@ -36,7 +36,14 @@ const PLAYABLE_BUILDS = [
   { sha: "e75acf5", version: null, approxVersion: "0.6.0", date: "2026-07-26", label: "Animated portraits, faster ramp" },
   { sha: "a4bb8b6", version: null, approxVersion: "0.6.0", date: "2026-07-26", label: "Brotato-inspired title screen" },
   { sha: "a2ef97e", version: null, approxVersion: "0.5.0", date: "2026-07-25", label: "Better crops, replaced old art" },
-  { sha: "1c6c1be", version: null, approxVersion: "0.1.0", date: "2026-07-24", label: "Player sprites + muzzle flash" }
+  { sha: "1c6c1be", version: null, approxVersion: "0.1.0", date: "2026-07-24", label: "Player sprites + muzzle flash" },
+  // Primeval: the repository's ROOT commit (zero parents, nothing precedes it) run with its
+  // PNG art suppressed, so it falls back to the hand-drawn canvas art the game used before
+  // the art pass. That pre-art era is real but predates version control entirely: the root
+  // commit already shipped the PNGs, so there is no commit that looks like this. The
+  // fallback renderer in that code is period-correct though, which is what makes it work.
+  // `primeval: true` is what the loader keys off (see time-machine.html).
+  { sha: "8bbd89b", version: null, approxVersion: null, primeval: true, date: "2026-07-24", label: "Before the art pass: original code-drawn look" }
 ];
 
 // The current build is always playable and is what you are running right now.
@@ -53,6 +60,7 @@ function buildDateLabel(build) {
 
 // Human label for a build button.
 function buildDisplayName(build) {
+  if (build.primeval) return "Primeval";
   if (build.version) return `v${build.version}`;
   const [, month, day] = build.date.split("-");
   const monthName = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(month) - 1];
@@ -72,7 +80,9 @@ function buildBaseUrl(build) {
   return `https://cdn.jsdelivr.net/gh/${BUILD_REPO}@${build.sha}`;
 }
 
-// The local loader page, with the target commit in the query string.
+// The local loader page, with the target commit in the query string. Primeval adds a flag
+// the loader uses to block that build's PNGs so it draws its original canvas art instead.
 function buildUrl(build) {
-  return `time-machine.html?sha=${encodeURIComponent(build.sha)}`;
+  const primeval = build.primeval ? "&primeval=1" : "";
+  return `time-machine.html?sha=${encodeURIComponent(build.sha)}${primeval}`;
 }

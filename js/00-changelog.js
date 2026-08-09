@@ -20,6 +20,16 @@
 
 const CHANGELOG = [
   {
+    version: "0.12.3",
+    date: "2026-08-09",
+    title: "Scrap drops show what they are worth, and a look at the beginning",
+    notes: [
+      "Enemies that drop several scrap now scatter it as a small pile of coins instead of one, so a big kill looks like a big payout.",
+      "The total is exactly the same, it is just easier to see at a glance which kills were worth the most.",
+      "Added Primeval to the time machine, under the oldest version. It runs the very first build with its art switched off, so you get the hand-drawn shapes the game was made of before any of the art existed."
+    ]
+  },
+  {
     version: "0.12.2",
     date: "2026-08-09",
     title: "A much bigger achievement list, progress bars, and a fixed Shuriken",
@@ -295,10 +305,14 @@ function renderChangelog() {
     : [];
   const grouped = new Map();
   for (const b of older) {
+    // Primeval is not a version and is not dated alongside the others -- it gets its own row
+    // at the bottom rather than being grouped under an inferred version number.
+    if (b.primeval) continue;
     const key = b.approxVersion ?? "";
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key).push(b);
   }
+  const primevalBuilds = older.filter((b) => b.primeval);
   const olderHtml = older.length
     ? `
       <div class="changelog-entry changelog-archive">
@@ -314,6 +328,15 @@ function renderChangelog() {
                 <a class="changelog-play changelog-play-small" href="${buildUrl(b)}" title="${escapeChangelogText(b.label)}">
                   ${escapeChangelogText(buildDateLabel(b))}
                 </a>`).join("")}
+            </div>
+          </div>`).join("")}
+        ${primevalBuilds.map((b) => `
+          <div class="changelog-archive-group changelog-primeval-row">
+            <span class="changelog-archive-version">Primeval</span>
+            <div class="changelog-archive-list">
+              <a class="changelog-play changelog-play-small" href="${buildUrl(b)}" title="${escapeChangelogText(b.label)}">
+                Play
+              </a>
             </div>
           </div>`).join("")}
       </div>

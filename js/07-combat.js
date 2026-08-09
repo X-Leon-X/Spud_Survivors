@@ -1168,6 +1168,43 @@ function damageTree(tree, damage) {
   tree.hp -= damage;
 }
 
+// A drop worth several scrap becomes several coins scattered around the drop point, so the
+// pile reads as "that was worth a lot" at a glance. Coins are picked up individually and the
+// pickup code only cares about `value`, so splitting is purely presentational.
+//
+// Capped at MAX_SCRAP_COINS: a late-wave Bruiser can drop double digits, and one sprite per
+// scrap would be a heap of overlapping coins to draw and magnet for no extra readability.
+// Past the cap the coins carry a larger value each, with the remainder on the last one so
+// the total is always exact.
+const MAX_SCRAP_COINS = 5;
+
+function spawnScrapDrop(x, y, total) {
+  const value = Math.max(0, Math.round(total));
+  if (value <= 0) return;
+  const count = Math.min(MAX_SCRAP_COINS, value);
+  const per = Math.floor(value / count);
+  for (let i = 0; i < count; i += 1) {
+    // Last coin carries whatever the division left over, so no scrap is ever lost.
+    const coinValue = i === count - 1 ? value - per * (count - 1) : per;
+    // A single coin sits exactly on the drop point (unchanged from before). Multiple coins
+    // scatter around it: an even ring with a little jitter so it looks dropped, not placed.
+    let ox = 0;
+    let oy = 0;
+    if (count > 1) {
+      const angle = (i / count) * Math.PI * 2 + rand(-0.3, 0.3);
+      const spread = rand(9, 18);
+      ox = Math.cos(angle) * spread;
+      oy = Math.sin(angle) * spread * 0.7;   // squashed: the arena is viewed at an angle
+    }
+    state.coins.push({
+      x: clamp(x + ox, 12, W - 12),
+      y: clamp(y + oy, 12, H - 12),
+      radius: 8,
+      value: coinValue
+    });
+  }
+}
+
 // A thrown weapon is only back in your hand once its star is gone. EVERY removal path must
 // go through this, not just the end-of-throw one: a shuriken that hit a tree or a crate was
 // being spliced out with `airborne` still set, which stranded that slot for the rest of the
@@ -2077,7 +2114,7 @@ function breakTree(index) {
   const tree = state.trees[index];
   state.trees.splice(index, 1);
   const scrap = 1 + Math.floor(state.wave / 5);
-  state.coins.push({ x: tree.x, y: tree.y, radius: 8, value: scrap });
+  spawnScrapDrop(tree.x, tree.y, scrap);
   playSfx("tree");
   burst(tree.x, tree.y, "#92d486", 18);
   // Trees always drop fruit now; crates spawn on their own in the arena instead.
@@ -2251,12 +2288,7 @@ function killEnemy(index) {
   const waveBonus = Math.random() < Math.min(0.5, state.wave * 0.025) ? 1 : 0;
   const luckBonus = Math.random() * 100 < Math.min(70, effectiveStat("luck") * 0.55) ? 1 : 0;
   const value = enemy.scrap + waveBonus + luckBonus;
-  state.coins.push({
-    x: enemy.x,
-    y: enemy.y,
-    radius: 8,
-    value
-  });
+  spawnScrapDrop(enemy.x, enemy.y, value);
   // Fortune cookie: a flat 1% drop from ANY enemy, deliberately NOT luck-scaled so the
   // rate stays predictable. PLACEHOLDER — collecting it currently grants nothing; the
   // effect is still undecided, so this only wires up the drop, art and pickup.
