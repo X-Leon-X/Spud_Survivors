@@ -134,8 +134,18 @@ function startGame() {
   updateHud();
 }
 
+const CHARACTER_ACHIEVEMENTS = {
+  chunk: "chunky",
+  zip: "zoooom",
+  sprout: "balanced"
+};
+
 function applyCharacter(character) {
   state.character = character;
+  const characterAchievement = CHARACTER_ACHIEVEMENTS[character?.id];
+  if (characterAchievement && typeof unlockAchievement === "function") {
+    unlockAchievement(characterAchievement);
+  }
   for (const [key, amount] of Object.entries(character.stats)) {
     state.player.stats[key] += amount;
   }
@@ -530,6 +540,11 @@ function renderBodyRewardChoices() {
     const card = rewardCard(choice.name, choice.description, choice.tier, "Grow", choice.part, "mutation", choice);
     card.querySelector("button").addEventListener("click", () => {
       addStat(choice.key, choice.amount);
+      if (typeof unlockAchievement === "function") {
+        unlockAchievement("mutated");
+        // Tier 5 is the Legendary band on a body-part reward card.
+        if (choice.tier === 5) unlockAchievement("built_different");
+      }
       state.bodyRewardChoices = [];
       continueRewards();
     });

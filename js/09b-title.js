@@ -351,6 +351,7 @@ function initTitleInteractions() {
       ev.stopPropagation();
       if (state.mode !== "title") return;
       const oRect = oSpan.getBoundingClientRect();
+      if (typeof markEasterEgg === "function") markEasterEgg("titleO");
       // Fire on the FULL-BLEED slime layer, not #titleStage: the roaming slimes are the
       // only enemies left on the title screen and they live on that bigger canvas.
       if (typeof fireSlimeShotFromElement === "function") fireSlimeShotFromElement(oSpan);

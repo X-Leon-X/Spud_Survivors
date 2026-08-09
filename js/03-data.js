@@ -606,7 +606,7 @@ const upgradeProfiles = {
   },
   shuriken: {
     lore: "A flat little throwing star stamped out of scrap tin.",
-    properties: "Thrown rather than fired. It pierces through a few enemies, then boomerangs back to your hand and damages them again on the return trip. Range matters more than usual, since a longer throw sweeps more of the arena on both passes.",
+    properties: "Thrown rather than fired. It pierces through a few enemies, then vanishes at the end of its throw while the weapon reloads. Range matters more than usual, since a longer throw sweeps more of the arena before it is spent.",
     stats: ["Adds Shuriken", "+1 Ranged Damage", "+2% Crit Chance", "Pierces, then returns", "Hits again on the way back"]
   },
   damage: {
@@ -843,10 +843,10 @@ const weaponProfiles = {
   },
   "Shuriken": {
     lore: "A flat little throwing star stamped out of scrap tin.",
-    properties: "Thrown, not fired. It pierces through enemies, and once it runs out of range or targets it loops back to your hand, cutting through everything a second time on the way. Each hit is light, but a good throw connects twice.",
-    role: "Piercing boomerang",
+    properties: "Thrown, not fired. It pierces through everything in its path, then vanishes once it runs out of range while the weapon reloads. Each hit is light, so it pays to line up a throw through as many enemies as possible.",
+    role: "Piercing throw",
     scaling: "Scales mainly with Ranged Damage and Crit Chance, then Damage %, Attack Speed and Range.",
-    attack: "Throws the star itself, leaving your hand empty until it comes back. It sheds mini stars at the far end of its arc, then returns and can be thrown again."
+    attack: "Throws the star itself, leaving your hand empty while it flies. It sheds mini stars at the far end of its throw, then the weapon reloads and a fresh star appears in your hand."
   }
 };
 
@@ -1118,8 +1118,8 @@ const weaponStatProfiles = {
   },
   "Shuriken": {
     attackType: "projectile",
-    // Thrown, not fired: it flies out, pierces, then boomerangs back to the player's hand,
-    // damaging enemies again on the way home (see updateReturningBullet in 07-combat.js).
+    // Thrown, not fired: it flies out, pierces, then vanishes at the end of its throw,
+    // then the weapon reloads (see updateReturningBullet in 07-combat.js).
     returns: true,
     tags: ["Ranged"],
     baseDamage: [5, 9, 16, 29, 51],

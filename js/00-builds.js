@@ -44,6 +44,13 @@ function currentBuildLabel() {
   return `v${GAME_VERSION} (current)`;
 }
 
+// Just the date part ("Jul 26"), used where the version is already shown alongside.
+function buildDateLabel(build) {
+  const [, month, day] = build.date.split("-");
+  const monthName = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(month) - 1];
+  return `${monthName} ${Number(day)}`;
+}
+
 // Human label for a build button.
 function buildDisplayName(build) {
   if (build.version) return `v${build.version}`;

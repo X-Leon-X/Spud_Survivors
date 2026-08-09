@@ -101,13 +101,16 @@ function freshRunStats() {
   return {
     kills: 0,
     scrapEarned: 0,
+    wastedApples: 0,
     timePlayed: 0,
     damageBySource: {},
     // Kept separate from damageBySource: that map is damage the player DEALT, and mixing
     // harm they received into it would inflate their own weapon totals.
     damageTakenBySource: {},
     // Per-wave (not per-run) counter reset in startWave, used to detect an untouched wave.
-    damageTakenThisWave: 0
+    damageTakenThisWave: 0,
+    // Apples eaten while already on full HP - the healing is wasted, which is the joke.
+    wastedApples: 0
   };
 }
 
@@ -124,6 +127,7 @@ function trackDamageTaken(source, amount) {
   const key = source ?? "Unknown";
   stats.damageTakenBySource[key] = (stats.damageTakenBySource[key] ?? 0) + amount;
   stats.damageTakenThisWave = (stats.damageTakenThisWave ?? 0) + amount;
+  if (typeof unlockAchievement === "function") unlockAchievement("ouch");
 }
 
 function trackScrap(amount) {

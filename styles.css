@@ -3041,6 +3041,37 @@ button:active:not(:disabled) {
   margin-left: 0;
 }
 
+/* The time machine is a small side feature, not the point of the patch notes, so its
+   buttons stay deliberately understated rather than competing with the notes themselves. */
+.changelog-play-small {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  padding: 1px 6px;
+  opacity: 0.72;
+}
+
+.changelog-play-small:hover {
+  opacity: 1;
+}
+
+/* Pre-changelog builds sit under the version they most likely were, so the date reads as
+   context for a known version instead of a bare date with nothing to anchor it. */
+.changelog-archive-group {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.changelog-archive-version {
+  color: rgba(255, 247, 231, 0.45);
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 46px;
+}
+
 /* --- Monster Compendium ---------------------------------------------------------------
    Two-pane bestiary: enemy list on the left, the selected entry on the right. Sits above
    the shop/reward panels (z-index 20) since it opens from a button on top of them. */
@@ -3369,6 +3400,60 @@ button:active:not(:disabled) {
 
 .achievement-row.locked .achievement-row-desc {
   color: rgba(255, 247, 231, 0.35);
+}
+
+/* Progress bar on locked rows that can show measurable progress (kills, wave, scrap...).
+   Dark track, gold fill, matching the panel's existing star/accent colour. */
+.achievement-bar {
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 3px;
+  display: block;
+  height: 5px;
+  margin-top: 6px;
+  overflow: hidden;
+  width: 190px;
+  max-width: 100%;
+}
+
+.achievement-bar-fill {
+  background: #f2c45f;
+  border-radius: 3px;
+  display: block;
+  height: 100%;
+  min-width: 0;
+}
+
+.achievement-bar-text {
+  color: rgba(255, 247, 231, 0.45);
+  font-size: 11px;
+  margin-top: 3px;
+}
+
+/* Progress code copy/paste row, pinned under the achievement list. */
+.achievements-transfer {
+  border-top: 1px solid rgba(255, 247, 231, 0.12);
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.achievements-transfer-button {
+  background: rgba(255, 247, 231, 0.08);
+  border: 1px solid rgba(255, 247, 231, 0.18);
+  border-radius: 6px;
+  color: rgba(255, 247, 231, 0.8);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 6px 12px;
+}
+
+.achievements-transfer-button:hover {
+  background: rgba(242, 196, 95, 0.16);
+  border-color: rgba(242, 196, 95, 0.45);
+  color: #f2c45f;
 }
 
 /* --- Achievement toasts -----------------------------------------------------------------

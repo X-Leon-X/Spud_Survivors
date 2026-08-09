@@ -2630,11 +2630,29 @@ function drawBullet(bullet) {
 // travel direction, so the spin is added on top of that -- and because it is driven by wall
 // clock rather than the aim angle, it keeps whirling identically on the way out and on the
 // way back (when the travel direction reverses).
+// Held and thrown must be the SAME object at the SAME size: the star you see flying is
+// literally the weapon that left your hand, so the thrown one draws from the weapon art at
+// the held sprite's boxSize (44, see drawArenaWeapon) rather than from a separate vector
+// shape scaled off the projectile's collision radius, which rendered it about half size.
+// Minis keep the old vector star, deliberately smaller, since they ARE separate objects.
+const SHURIKEN_HELD_BOX = 44;
+
 function drawShurikenProjectile(bullet, speed) {
   const r = bullet.radius;
   // Minis spin faster than the parent star, which keeps them reading as separate lighter
   // objects rather than shrunken copies of the weapon.
   ctx.rotate(performance.now() / 1000 * (bullet.isMiniShuriken ? 34 : 22));
+
+  const heldArt = bullet.isMiniShuriken ? null : weaponArenaArt("Shuriken");
+  if (heldArt) {
+    // Motion blur disc sized to the real sprite so it still reads as spinning.
+    ctx.fillStyle = "rgba(240, 240, 255, 0.16)";
+    ctx.beginPath();
+    ctx.arc(0, 0, SHURIKEN_HELD_BOX * 0.42, 0, Math.PI * 2);
+    ctx.fill();
+    drawWeaponArtFitted(ctx, "Shuriken", heldArt, SHURIKEN_HELD_BOX);
+    return;
+  }
 
   // Motion blur disc: reads as "spinning too fast to see" and thickens the tiny sprite.
   ctx.fillStyle = bullet.isMiniShuriken ? "rgba(240, 240, 255, 0.1)" : "rgba(240, 240, 255, 0.16)";

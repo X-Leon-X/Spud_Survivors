@@ -25,12 +25,6 @@ const EARLY_WAVE_SPAWN_RATE = { 2: 1.18, 3: 1.22 };
 // only weakens the 1-2 enemy case and makes the game easier, never harder.
 const ENEMY_CONTACT_COOLDOWN = 0.48;
 
-// Returning-projectile tuning (the Shuriken). The floor stops a slow throw from crawling
-// home; the timeout is a safety net so a returning bullet can never leak if it somehow
-// never reaches the player.
-const RETURN_MIN_SPEED = 430;
-const RETURN_TIMEOUT = 4;
-
 const TURRET_ARM_TIME = 5;
 const GRAVEBLOOM_CAST_TIME = 2.4;
 const GRAVEBLOOM_INTERRUPT_DAMAGE_FRACTION = 0.22; // taking >=22% of max HP during the cast cancels it
@@ -112,6 +106,7 @@ function update(dt) {
   if (state.player.hp <= 0) {
     state.mode = "gameover";
     if (typeof checkAchievements === "function") checkAchievements();
+    if (typeof unlockAchievement === "function") unlockAchievement("rip");
     playSfx("gameover");
     addShake(12);
     burst(state.player.x, state.player.y, "#ff8fa3", 26);
@@ -1173,6 +1168,14 @@ function damageTree(tree, damage) {
   tree.hp -= damage;
 }
 
+// A thrown weapon is only back in your hand once its star is gone. EVERY removal path must
+// go through this, not just the end-of-throw one: a shuriken that hit a tree or a crate was
+// being spliced out with `airborne` still set, which stranded that slot for the rest of the
+// run and looked like "sometimes it doesn't come back".
+function releaseThrownWeapon(bullet) {
+  if (bullet?.thrownBy) bullet.thrownBy.airborne = false;
+}
+
 function updateBullets(dt) {
   for (let i = state.bullets.length - 1; i >= 0; i -= 1) {
     const bullet = state.bullets[i];
@@ -1200,6 +1203,7 @@ function updateBullets(dt) {
     }
 
     if (hit) {
+      releaseThrownWeapon(bullet);
       state.bullets.splice(i, 1);
       continue;
     }
@@ -1224,6 +1228,7 @@ function updateBullets(dt) {
     }
 
     if (hit) {
+      releaseThrownWeapon(bullet);
       state.bullets.splice(i, 1);
       continue;
     }
@@ -1249,11 +1254,10 @@ function updateBullets(dt) {
       }
     }
 
-    // Returning projectiles (the Shuriken) don't die at max range or max pierce -- they turn
-    // around and fly back to the player, damaging anything on the way home, and only vanish
-    // once caught. updateReturningBullet handles the turn and the catch, and reports whether
-    // the bullet is finished. It must run BEFORE the expiry check below, since "reached max
-    // range" is exactly the moment it should start coming back rather than despawn.
+    // Thrown projectiles (the Shuriken) own their whole lifetime: updateReturningBullet
+    // decides when the throw is spent, sheds the mini stars and hands the weapon back so it
+    // can reload. It must run BEFORE the generic expiry check below, since that would
+    // despawn the star without ever clearing `airborne`, stranding the slot permanently.
     if (bullet.returns) {
       if (updateReturningBullet(bullet, dt, hit)) {
         state.bullets.splice(i, 1);
@@ -1268,64 +1272,33 @@ function updateBullets(dt) {
     }
 
     if (hit || expired) {
+      releaseThrownWeapon(bullet);
       state.bullets.splice(i, 1);
     }
   }
 }
 
-// Drives a thrown-and-returning projectile (the Shuriken). Two phases:
-//   outbound - flies normally until it hits its range limit, its pierce cap, or the arena
-//              edge, at which point it flips to returning.
-//   returning - homes on the player's CURRENT position (so it still comes back if you move),
-//              re-arming its hit list so it can damage the same enemies on the way home.
+// Drives a thrown projectile (the Shuriken). It flies out, pierces, and is done: at its
+// range limit, pierce cap or the arena edge it vanishes and the weapon reloads. It is NOT
+// a boomerang and never travels back, so there is no return phase to leak or strand.
 // Returns true when the bullet is finished and should be removed.
 function updateReturningBullet(bullet, dt, hitSomething) {
-  const player = state.player;
+  bullet.travelled = (bullet.travelled ?? 0) + Math.hypot(bullet.vx, bullet.vy) * dt;
+  const outOfRange = bullet.travelled >= (bullet.maxTravel ?? Infinity);
+  const outOfPierce = bullet.hitEnemies ? bullet.hitEnemies.size > (bullet.pierce ?? 0) : false;
+  const offArena = bullet.x < 0 || bullet.x > W || bullet.y < 0 || bullet.y > H;
+  if (!(outOfRange || outOfPierce || offArena || bullet.life <= 0)) return false;
 
-  if (!bullet.returning) {
-    bullet.travelled = (bullet.travelled ?? 0) + Math.hypot(bullet.vx, bullet.vy) * dt;
-    const outOfRange = bullet.travelled >= (bullet.maxTravel ?? Infinity);
-    const outOfPierce = bullet.hitEnemies ? bullet.hitEnemies.size > (bullet.pierce ?? 0) : false;
-    const offArena = bullet.x < 0 || bullet.x > W || bullet.y < 0 || bullet.y > H;
-    if (outOfRange || outOfPierce || offArena || bullet.life <= 0) {
-      bullet.returning = true;
-      // Clear the hit list so the trip home can hit the same enemies again -- that's the
-      // payoff for a weapon whose damage is spread across two passes.
-      bullet.hitEnemies?.clear();
-      // At the turnaround the star sheds mini stars outward. This is where extra-projectile
-      // stats cash out for a thrown weapon.
-      spawnShurikenSplit(bullet);
-    }
-    return false;
-  }
-
-  // Homing return. Steer toward the player rather than following a fixed vector, so the
-  // shuriken always finds its way back even while you're kiting.
-  const dx = player.x - bullet.x;
-  const dy = player.y - bullet.y;
-  const distance = Math.hypot(dx, dy) || 1;
-  const speed = Math.max(RETURN_MIN_SPEED, Math.hypot(bullet.vx, bullet.vy));
-  bullet.vx = (dx / distance) * speed;
-  bullet.vy = (dy / distance) * speed;
-
-  // Caught: the star is back in the player's hand. Clearing `airborne` is what re-arms the
-  // weapon -- fireEquippedWeapons refuses to throw while it is set, so this is the moment
-  // the weapon becomes throwable again (subject to its normal cooldown).
-  if (distance <= player.radius + bullet.radius + 6) {
-    if (bullet.thrownBy) bullet.thrownBy.airborne = false;
-    return true;
-  }
-
-  // Safety net: never let a returning bullet live forever if something odd happens (the
-  // player dying mid-flight, say). Generous enough that a normal return always completes.
-  // CRITICAL: this must clear `airborne` too. If the star is dropped here without re-arming
-  // the weapon, that slot can never fire again for the rest of the run.
-  bullet.returnTime = (bullet.returnTime ?? 0) + dt;
-  if (bullet.returnTime > RETURN_TIMEOUT) {
-    if (bullet.thrownBy) bullet.thrownBy.airborne = false;
-    return true;
-  }
-  return false;
+  // End of the throw. The star does NOT boomerang: it simply vanishes at the edge of its
+  // range and the weapon spends its normal cooldown "reloading", then reappears in the
+  // hand ready to be thrown again. Clearing `airborne` is what puts it back in the hand;
+  // fireEquippedWeapons refuses to throw while it is set, and the weapon's own cooldown
+  // (already ticking since the throw) is what gates the next one.
+  if (bullet.thrownBy) bullet.thrownBy.airborne = false;
+  // At the far end it sheds mini stars outward, which is where extra-projectile stats cash
+  // out for a thrown weapon.
+  spawnShurikenSplit(bullet);
+  return true;
 }
 
 // At the top of its arc the thrown star sheds MINI stars sideways. The main star keeps
@@ -2181,6 +2154,7 @@ function breakCrate(index) {
   const crate = state.crates[index];
   crate.broken = true;
   crate.brokenTimer = 0.5;              // show the broken sprite briefly before the pop
+  if (typeof unlockAchievement === "function") unlockAchievement("loot_box");
   playSfx("tree");
   burst(crate.x, crate.y, "#c79a5a", 16);
   addFloater(crate.x, crate.y - crate.radius, "CRATE");
@@ -2249,11 +2223,19 @@ function collectCrateDrop(drop) {
 
 function breakBulb(index) {
   const bulb = state.bulbs[index];
+  const wasFull = state.player.hp >= state.player.maxHp;
   state.bulbs.splice(index, 1);
   heal(bulb.heal);
   playSfx("heal");
   burst(bulb.x, bulb.y, "#ff8fa3", 15);
   addFloater(bulb.x, bulb.y - bulb.radius, `+${bulb.heal} HP`);
+  if (typeof unlockAchievement === "function") unlockAchievement("food");
+  if (wasFull && state.runStats) {
+    state.runStats.wastedApples = (state.runStats.wastedApples ?? 0) + 1;
+    if (state.runStats.wastedApples >= 5 && typeof unlockAchievement === "function") {
+      unlockAchievement("wasted");
+    }
+  }
 }
 
 function killEnemy(index) {

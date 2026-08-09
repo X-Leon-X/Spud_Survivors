@@ -206,3 +206,26 @@ function markEnemyDiscovered(name) {
 function compendiumDiscoveredCount() {
   return enemyTypes.filter((t) => isEnemyDiscovered(t.name)).length;
 }
+
+// --- Export/import accessors -----------------------------------------------------------
+// Used by the achievements panel's progress-code copy/paste (js/09-main.js) so that code
+// never reaches into enemiesSeen or the compendium's localStorage key directly.
+function getCompendiumProgressForExport() {
+  return enemiesSeen;
+}
+
+// Unions `obj` into enemiesSeen (only truthy keys), then persists via the normal save path.
+// Returns how many entries were genuinely NEW, so the caller can report what an import
+// actually did. Never removes a discovery: an import can only ever add.
+function mergeCompendiumProgress(obj) {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return 0;
+  let added = 0;
+  for (const [name, seen] of Object.entries(obj)) {
+    if (seen && !enemiesSeen[name]) {
+      enemiesSeen[name] = true;
+      added += 1;
+    }
+  }
+  if (added > 0) saveCompendiumProgress();
+  return added;
+}

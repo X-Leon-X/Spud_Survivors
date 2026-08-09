@@ -617,6 +617,8 @@ function spinSlotMachine(itemGroup) {
   const item = state.items.find((owned) => owned.id === itemGroup.id && owned.tier === itemGroup.tier);
   if (!item || item.spun || item.spinning) return;
 
+  if (typeof unlockAchievement === "function") unlockAchievement("gambler");
+
   // Roll immediately but keep it hidden: the reels animate for SLOT_SPIN_DURATION and only
   // then reveal. Rolling up front means the outcome can't be influenced by when the timer
   // happens to fire, and the stats apply the moment the animation lands.
@@ -785,6 +787,7 @@ function mergeOwnedItem(itemId, tier) {
     baseCost: Math.round(first.baseCost * 1.35)
   };
   state.items.splice(insertAt, 0, merged);
+  if (typeof unlockAchievement === "function") unlockAchievement("merger");
   playSfx("merge");
   state.openActionMenu = { type: "item", key: `${itemId}:${tier + 1}` };
   syncDerivedStats();

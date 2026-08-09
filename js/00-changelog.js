@@ -20,6 +20,25 @@
 
 const CHANGELOG = [
   {
+    version: "0.12.2",
+    date: "2026-08-09",
+    title: "A much bigger achievement list, progress bars, and a fixed Shuriken",
+    notes: [
+      "\"Culling\" is now \"Squal Wipe\", and \"Getting Warm\" is now \"Locking In\". Same achievements, new names.",
+      "Removed the Endurance achievement, it overlapped too much with the wave-based ones to earn its own slot.",
+      "The achievement list is far longer now, with new goals covering eating, dying, mutating, merging, gambling, character choice, rare gear and more.",
+      "Locked achievements now hide their name behind ??? and show you the exact requirement instead, so the list reads as a to-do list rather than a spoiler.",
+      "Locked achievements that track a number (kills, waves, scrap, max HP) now show a progress bar with your current total.",
+      "Added two hidden secrets to discover. They give nothing away until you find them.",
+      "Added Copy progress code and Paste progress code buttons to the achievements panel, so you can back up or move your achievements and compendium progress to another browser or device.",
+      "Pasting a code only ever adds to what you already have, so importing can never wipe your own progress.",
+      "The thrown Shuriken is now the same size as the one in your hand. It was being drawn at about half size.",
+      "The Shuriken is no longer a boomerang. It flies out, cuts through what it can, then vanishes at the end of its range while the weapon reloads and a fresh star appears in your hand.",
+      "Fixed the Shuriken sometimes never coming back at all. Throwing it into a tree or a crate left that weapon slot empty for the rest of the run.",
+      "Time machine buttons are smaller and tuck out of the way, and older builds now sit next to the version they most likely were instead of in a separate list of dates."
+    ]
+  },
+  {
     version: "0.12.1",
     date: "2026-08-09",
     title: "Grenade Launcher rework, achievements, and a time machine that tells the truth",
@@ -253,7 +272,7 @@ function renderChangelog() {
     const playBtn = index === 0
       ? `<span class="changelog-current">playing now</span>`
       : build
-        ? `<a class="changelog-play" href="${buildUrl(build)}" title="Play v${escapeChangelogText(entry.version)} as it shipped">Play</a>`
+        ? `<a class="changelog-play changelog-play-small" href="${buildUrl(build)}" title="Play v${escapeChangelogText(entry.version)} as it shipped">Play</a>`
         : "";
     return `
       <div class="changelog-entry${index === 0 ? " latest" : ""}">
@@ -268,11 +287,18 @@ function renderChangelog() {
     `;
   }).join("");
 
-  // The eight builds that predate the changelog have no version number, so they are listed
-  // separately by date rather than being faked into the version history.
+  // The eight builds that predate the changelog carry an inferred approxVersion (matched
+  // from their commit date). They are grouped under the version they most likely were, so
+  // a date sits next to the closest version number instead of in a separate date-only list.
   const older = typeof PLAYABLE_BUILDS !== "undefined"
     ? PLAYABLE_BUILDS.filter((b) => !b.version)
     : [];
+  const grouped = new Map();
+  for (const b of older) {
+    const key = b.approxVersion ?? "";
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(b);
+  }
   const olderHtml = older.length
     ? `
       <div class="changelog-entry changelog-archive">
@@ -280,12 +306,16 @@ function renderChangelog() {
           <span class="changelog-version">Earlier</span>
           <span class="changelog-title">Builds from before the patch notes existed</span>
         </div>
-        <div class="changelog-archive-list">
-          ${older.map((b) => `
-            <a class="changelog-play" href="${buildUrl(b)}" title="${escapeChangelogText(b.label)}">
-              ${escapeChangelogText(buildDisplayName(b))}
-            </a>`).join("")}
-        </div>
+        ${Array.from(grouped.entries()).map(([approx, builds]) => `
+          <div class="changelog-archive-group">
+            <span class="changelog-archive-version">${approx ? `~v${escapeChangelogText(approx)}` : "unknown"}</span>
+            <div class="changelog-archive-list">
+              ${builds.map((b) => `
+                <a class="changelog-play changelog-play-small" href="${buildUrl(b)}" title="${escapeChangelogText(b.label)}">
+                  ${escapeChangelogText(buildDateLabel(b))}
+                </a>`).join("")}
+            </div>
+          </div>`).join("")}
       </div>
     `
     : "";

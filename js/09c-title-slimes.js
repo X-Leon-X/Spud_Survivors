@@ -140,6 +140,7 @@ function initFooterSlimeSpawner() {
 
     // Two per click so it feels generous, and it's obvious the letter did something.
     for (let i = 0; i < 2; i += 1) spawnTitleSlime(cv, { fromX, fromY });
+    if (typeof markEasterEgg === "function") markEasterEgg("footerO");
     playSfx("coin");
     span.classList.remove("footer-o-pop");
     void span.offsetWidth;

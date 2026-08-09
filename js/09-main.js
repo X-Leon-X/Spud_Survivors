@@ -387,17 +387,139 @@ function renderAchievements() {
   achievementsCount.textContent = `${found} / ${entries.length} unlocked`;
 
   achievementsList.innerHTML = entries.map((entry) => {
-    const label = entry.unlocked ? escapeChangelogText(entry.name) : escapeChangelogText(entry.name);
-    const detail = entry.unlocked ? escapeChangelogText(entry.description) : escapeChangelogText(entry.hint);
+    // What a row is allowed to reveal is decided in ONE place (achievementDisplay), so the
+    // secret-vs-locked-vs-unlocked rules can never drift between here and anywhere else.
+    const shown = achievementDisplay(entry);
+    // Bars are a nudge toward things you can still earn, so unlocked rows get none --
+    // achievementProgress already returns null for those.
+    const progress = entry.unlocked ? null : achievementProgress(entry);
+    const bar = progress
+      ? `<span class="achievement-bar" role="presentation">
+          <span class="achievement-bar-fill" style="width:${(progress.ratio * 100).toFixed(1)}%"></span>
+        </span>
+        <span class="achievement-bar-text">${progress.current} / ${progress.goal}</span>`
+      : "";
     return `<div class="achievement-row${entry.unlocked ? "" : " locked"}">
       <span class="achievement-row-mark">${entry.unlocked ? "&#9733;" : "&#9734;"}</span>
       <span class="achievement-row-text">
-        <span class="achievement-row-name">${label}</span>
-        <span class="achievement-row-desc">${detail}</span>
+        <span class="achievement-row-name">${escapeChangelogText(shown.name)}</span>
+        <span class="achievement-row-desc">${escapeChangelogText(shown.sub)}</span>
+        ${bar}
       </span>
     </div>`;
   }).join("");
 }
+
+// --- Progress transfer --------------------------------------------------------------------
+// A single opaque code carries achievements + compendium between browsers/devices, since
+// both live in localStorage and would otherwise be trapped on one machine.
+const PROGRESS_CODE_PREFIX = "SPUD1-";
+
+function buildProgressCode() {
+  const payload = {
+    achievements: unlockedAchievements,
+    compendium: typeof getCompendiumProgressForExport === "function" ? getCompendiumProgressForExport() : {}
+  };
+  // btoa is latin1-only; encodeURIComponent/unescape widens it to any UTF-8 the payload
+  // might contain (enemy names are ASCII today, but the code must not break if that changes).
+  return PROGRESS_CODE_PREFIX + btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+}
+
+// Clipboard API needs a secure context (https/localhost) and this game is often opened as a
+// file:// page, so the textarea + execCommand path is a real fallback here, not legacy cruft.
+function copyTextToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).then(
+      () => showMessage("Progress code copied", "", 1600),
+      () => fallbackCopyText(text)
+    );
+    return;
+  }
+  fallbackCopyText(text);
+}
+
+function fallbackCopyText(text) {
+  try {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand("copy");
+    area.remove();
+    showMessage(ok ? "Progress code copied" : "Could not copy automatically", "", 1600);
+  } catch {
+    showMessage("Could not copy automatically", "", 1600);
+  }
+}
+
+function exportProgressCode() {
+  playSfx("click");
+  copyTextToClipboard(buildProgressCode());
+}
+
+// Import is a UNION, never a replace: pasting an older or partial code must not be able to
+// delete progress the player already has on this machine.
+function importProgressCode() {
+  playSfx("click");
+  const raw = window.prompt("Paste your progress code:");
+  if (raw === null) return;                      // cancelled - say nothing, change nothing
+  const code = raw.trim();
+  if (!code.startsWith(PROGRESS_CODE_PREFIX)) {
+    showMessage("Invalid code", "That doesn't look like a progress code.", 2200);
+    return;
+  }
+
+  let payload = null;
+  try {
+    payload = JSON.parse(decodeURIComponent(escape(atob(code.slice(PROGRESS_CODE_PREFIX.length)))));
+  } catch {
+    showMessage("Invalid code", "That progress code is damaged.", 2200);
+    return;
+  }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    showMessage("Invalid code", "That progress code is damaged.", 2200);
+    return;
+  }
+
+  let merged = 0;
+  const incomingAchievements = payload.achievements;
+  if (incomingAchievements && typeof incomingAchievements === "object" && !Array.isArray(incomingAchievements)) {
+    for (const [id, value] of Object.entries(incomingAchievements)) {
+      if (id === "_eggs") {
+        // Reserved sub-object, not an achievement id - merged key by key so a code missing
+        // one egg can't unset an egg already found here.
+        if (value && typeof value === "object" && !Array.isArray(value)) {
+          const eggs = unlockedAchievements._eggs && typeof unlockedAchievements._eggs === "object"
+            ? unlockedAchievements._eggs
+            : {};
+          for (const [egg, found] of Object.entries(value)) {
+            if (found && !eggs[egg]) { eggs[egg] = true; merged += 1; }
+          }
+          unlockedAchievements._eggs = eggs;
+        }
+        continue;
+      }
+      if (value && !unlockedAchievements[id]) {
+        unlockedAchievements[id] = value;
+        merged += 1;
+      }
+    }
+    saveAchievements();
+  }
+
+  if (typeof mergeCompendiumProgress === "function") {
+    merged += mergeCompendiumProgress(payload.compendium);
+  }
+
+  renderAchievements();
+  showMessage("Progress restored", merged > 0 ? `${merged} new unlock(s) added.` : "Nothing new to add.", 2200);
+}
+
+document.getElementById("achievementsExport")?.addEventListener("click", exportProgressCode);
+document.getElementById("achievementsImport")?.addEventListener("click", importProgressCode);
 
 if (achievementsButton) {
   achievementsButton.addEventListener("click", openAchievements);
