@@ -348,6 +348,51 @@ canvas {
   width: 66%;
 }
 
+/* Achievements button: same chip idiom as the compendium button, stacked directly beneath
+   it (right:16px matches; top adds one 44px chip + gap). */
+.achievements-button.hidden {
+  display: none;
+}
+
+.achievements-button {
+  align-items: center;
+  background: linear-gradient(180deg, rgba(34, 42, 57, 0.86), rgba(22, 27, 37, 0.78));
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  box-shadow: none;
+  cursor: pointer;
+  display: flex;
+  height: 44px;
+  justify-content: center;
+  opacity: 0.85;
+  padding: 0;
+  position: absolute;
+  right: 16px;
+  top: 118px;
+  transition: opacity 150ms ease, transform 120ms ease;
+  width: 44px;
+  z-index: 25;
+}
+
+.achievements-button:hover,
+.achievements-button:focus-visible {
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
+.achievements-button:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.achievements-icon {
+  color: #f2c45f;
+  font-size: 22px;
+  line-height: 1;
+  pointer-events: none;
+}
+
 .compendium-wip-badge {
   background: var(--red);
   border-radius: 999px;
@@ -3203,4 +3248,191 @@ button:active:not(:disabled) {
 @media (max-width: 760px) {
   .compendium-body { grid-template-columns: 1fr; }
   .compendium-list { border-right: none; border-bottom: 1px solid rgba(255, 247, 231, 0.12); max-height: 150px; }
+}
+
+/* --- Achievements -----------------------------------------------------------------------
+   Single-pane checklist, same anchored-panel idiom as the compendium above (no backdrop,
+   opens over the shop, click the button again / Close to dismiss). */
+.achievements-panel {
+  position: absolute;
+  top: 118px;
+  right: 16px;
+  bottom: 16px;
+  z-index: 60;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.achievements-panel.hidden { display: none; }
+
+.achievements-inner {
+  background: var(--panel);
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+  color: var(--cream);
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
+  width: min(420px, calc(100vw - 32px));
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.achievements-head {
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 247, 231, 0.14);
+  display: flex;
+  gap: 14px;
+  padding: 14px 18px;
+}
+
+.achievements-head h2 { margin: 2px 0 0; font-size: 20px; }
+
+.achievements-count {
+  color: #f2c45f;
+  font-size: 12px;
+  font-weight: 800;
+  margin-left: auto;
+}
+
+.achievements-close {
+  background: rgba(255, 247, 231, 0.1);
+  border: 1px solid rgba(255, 247, 231, 0.3);
+  border-radius: 6px;
+  color: var(--cream);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 6px 14px;
+}
+
+.achievements-close:hover { background: rgba(255, 247, 231, 0.2); }
+
+.achievements-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.achievements-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.achievement-row {
+  align-items: flex-start;
+  background: rgba(255, 247, 231, 0.05);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  display: flex;
+  gap: 10px;
+  padding: 8px 10px;
+}
+
+.achievement-row.locked {
+  color: rgba(255, 247, 231, 0.35);
+}
+
+.achievement-row-mark {
+  color: #f2c45f;
+  flex: 0 0 auto;
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.achievement-row.locked .achievement-row-mark {
+  color: rgba(255, 247, 231, 0.3);
+}
+
+.achievement-row-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.achievement-row-name {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.achievement-row.locked .achievement-row-name {
+  font-style: italic;
+}
+
+.achievement-row-desc {
+  color: rgba(255, 247, 231, 0.6);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.achievement-row.locked .achievement-row-desc {
+  color: rgba(255, 247, 231, 0.35);
+}
+
+/* --- Achievement toasts -----------------------------------------------------------------
+   Fixed, stacked, and entirely non-interactive so a burst of unlocks can never eat a click
+   meant for the game underneath. */
+#achievementToastContainer {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  pointer-events: none;
+}
+
+.achievement-toast {
+  background: var(--panel-strong, #273449);
+  border: 1px solid #f2c45f;
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  color: var(--cream, #fff7e7);
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  max-width: 320px;
+  opacity: 0;
+  padding: 10px 16px;
+  pointer-events: none;
+  text-align: center;
+  transform: translateY(-12px);
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.achievement-toast-show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.achievement-toast-label {
+  color: #f2c45f;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.achievement-toast-name {
+  font-size: 15px;
+  margin-top: 2px;
+}
+
+.achievement-toast-desc {
+  color: rgba(255, 247, 231, 0.7);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+@media (max-width: 760px) {
+  /* Stacks below the compendium button's mobile position (top:96px, 44px tall + gap). */
+  .achievements-button {
+    right: 10px;
+    top: 148px;
+  }
 }

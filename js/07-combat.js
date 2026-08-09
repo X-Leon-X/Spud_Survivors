@@ -111,6 +111,7 @@ function update(dt) {
 
   if (state.player.hp <= 0) {
     state.mode = "gameover";
+    if (typeof checkAchievements === "function") checkAchievements();
     playSfx("gameover");
     addShake(12);
     burst(state.player.x, state.player.y, "#ff8fa3", 26);
@@ -2260,6 +2261,7 @@ function killEnemy(index) {
   state.enemies.splice(index, 1);
   state.waveKills += 1;
   state.runStats.kills += 1;
+  if (typeof checkAchievements === "function") checkAchievements();
   playSfx("kill");
   addShake(Math.min(3, 0.8 + enemy.radius * 0.05));
   spawnRing(enemy.x, enemy.y, enemy.color, enemy.radius * 2.2);

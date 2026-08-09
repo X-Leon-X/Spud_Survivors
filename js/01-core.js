@@ -27,6 +27,7 @@ const ui = {
   characterCards: document.getElementById("characterCards"),
   classBonusList: document.getElementById("classBonusList"),
   compendiumButton: document.getElementById("compendiumButton"),
+  achievementsButton: document.getElementById("achievementsButton"),
   shop: document.getElementById("shop"),
   shopCards: document.getElementById("shopCards"),
   shopScrap: document.getElementById("shopScrapText"),

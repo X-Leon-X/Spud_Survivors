@@ -46,10 +46,14 @@
         var detail = document.getElementById("tmDetail");
         var status = document.getElementById("tmStatus");
 
+        // Captured before the <base> tag is injected below, so it points at THIS page's own
+        // directory rather than being rebased onto the old build's commit-pinned base URL.
+        var SELF_DIR = location.href.replace(/[^/]*$/, "");
+
         // Only allow a plain hex commit sha, so a crafted URL can't point this at anything else.
         if (!/^[0-9a-f]{7,40}$/i.test(sha)) {
           document.querySelector("#tmStatus h1").textContent = "No build selected";
-          detail.innerHTML = 'Pick a build from the version panel. <a href="index.html">Back to the game</a>';
+          detail.innerHTML = 'Pick a build from the version panel. <a href="' + SELF_DIR + 'index.html">Back to the game</a>';
           return;
         }
 
@@ -57,7 +61,7 @@
 
         function fail(msg) {
           document.querySelector("#tmStatus h1").textContent = "Could not load that build";
-          detail.innerHTML = msg + '<br><br><a href="index.html">Back to the current version</a>';
+          detail.innerHTML = msg + '<br><br><a href="' + SELF_DIR + 'index.html">Back to the current version</a>';
         }
 
         fetch(base + "index.html")
@@ -102,8 +106,20 @@
             var bar = document.createElement("div");
             bar.className = "tm-bar";
             bar.innerHTML = '<strong>Older build</strong><span>' + sha +
-              '</span><a href="index.html">Back to current version</a>';
+              '</span><a href="' + SELF_DIR + 'index.html">Back to current version</a>';
             document.body.appendChild(bar);
+
+            // The old build's scripts (e.g. 00-assets.js) reference art with relative paths
+            // like "assets/items/armor.png" from INSIDE JavaScript, not in any src/href
+            // attribute, so the earlier regex rewrite never sees them and they would otherwise
+            // resolve against THIS page's URL instead of the old commit. A <base> tag makes
+            // every unqualified relative URL on the page -- including those built by JS at
+            // runtime -- resolve against the commit-pinned base instead. This must be injected
+            // before the old build's scripts run, and after SELF_DIR/the links above are fixed,
+            // since a <base> tag rebases everything on the page from this point on.
+            var baseEl = document.createElement("base");
+            baseEl.href = base;
+            document.head.appendChild(baseEl);
 
             // Load the old build's scripts strictly in order; they depend on each other.
             (function next(i) {

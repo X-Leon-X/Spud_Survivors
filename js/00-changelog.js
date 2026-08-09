@@ -20,8 +20,23 @@
 
 const CHANGELOG = [
   {
+    version: "0.12.1",
+    date: "2026-08-09",
+    title: "Grenade Launcher rework, achievements, and a time machine that tells the truth",
+    notes: [
+      "Grenade Launcher explosions are much bigger, with a far larger blast radius at every rank.",
+      "Explosion damage multiplier is up substantially, so the blast itself hits a lot harder.",
+      "Fire rate is slower to compensate, cooldown is longer at every rank.",
+      "Shop cost is up to match the stronger payoff.",
+      "Time machine now shows old builds with their own art instead of today's, fixing older builds looking wrong when replayed.",
+      "Older time machine builds are now labelled with the version they most likely were, marked with a tilde where that had to be worked out from the date.",
+      "Added an Achievements panel with a dozen things to chase across a run, from your first kill to clearing a wave without taking a scratch.",
+      "Achievements pop a toast the moment you earn them and stay unlocked across runs."
+    ]
+  },
+  {
     version: "0.12.0",
-    date: "2026-08-07",
+    date: "2026-08-08",
     title: "New things to fight, and new things to fight them with",
     notes: [
       "Five new enemies join the arena.",

@@ -105,7 +105,9 @@ function freshRunStats() {
     damageBySource: {},
     // Kept separate from damageBySource: that map is damage the player DEALT, and mixing
     // harm they received into it would inflate their own weapon totals.
-    damageTakenBySource: {}
+    damageTakenBySource: {},
+    // Per-wave (not per-run) counter reset in startWave, used to detect an untouched wave.
+    damageTakenThisWave: 0
   };
 }
 
@@ -121,6 +123,7 @@ function trackDamageTaken(source, amount) {
   if (!stats || !(amount > 0)) return;
   const key = source ?? "Unknown";
   stats.damageTakenBySource[key] = (stats.damageTakenBySource[key] ?? 0) + amount;
+  stats.damageTakenThisWave = (stats.damageTakenThisWave ?? 0) + amount;
 }
 
 function trackScrap(amount) {

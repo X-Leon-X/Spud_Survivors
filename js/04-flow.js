@@ -149,6 +149,7 @@ function startWave() {
   state.waveTime = state.waveDuration;
   state.spawnTimer = 0;
   state.waveKills = 0;
+  if (state.runStats) state.runStats.damageTakenThisWave = 0;
   state.rerollCount = 0;
   state.rerollCost = firstRerollPrice();
   state.player.hp = Math.min(state.player.maxHp, state.player.hp + 8);
@@ -165,6 +166,12 @@ function startWave() {
 
 function endWave() {
   state.mode = "bagging";
+  // waveKills > 0 confirms this wave was actually played (as opposed to a stray call before
+  // anything spawned), the same way startWave/killEnemy already use it elsewhere.
+  if (state.runStats && state.runStats.damageTakenThisWave === 0 && state.waveKills > 0) {
+    if (typeof unlockAchievement === "function") unlockAchievement("untouched_wave");
+  }
+  if (typeof checkAchievements === "function") checkAchievements();
   state.enemies.length = 0;
   state.enemyDeaths.length = 0;
   state.trees.length = 0;

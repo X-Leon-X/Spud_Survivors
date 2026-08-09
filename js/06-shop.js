@@ -930,6 +930,7 @@ function updateHud() {
   ui.bag.closest(".stat").classList.toggle("hidden", state.mode === "playing" || state.mode === "menu");
   // The compendium button keeps the bag chip's visibility rule so it stays out of combat.
   ui.compendiumButton?.classList.toggle("hidden", state.mode === "playing" || state.mode === "menu");
+  ui.achievementsButton?.classList.toggle("hidden", state.mode === "playing" || state.mode === "menu");
   ui.hpFill.style.width = `${clamp(state.player.hp / state.player.maxHp, 0, 1) * 100}%`;
   ui.hpText.textContent = `${Math.max(0, Math.round(state.player.hp))} / ${Math.round(state.player.maxHp)}`;
   if (state.mode === "shop") {

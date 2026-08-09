@@ -37,7 +37,7 @@ If all 6 weapon slots are filled, shop weapon buys are disabled. Crate weapons c
 | Forked Slingshot | 1 | 31 | Ranged / Primitive weapon | +1 Ranged Damage and +1% Crit Chance on pickup; heavy stone shots | Slower control weapon with strong knockback |
 | Scrap Revolver | 2 | 52 | Ranged weapon | +2 Ranged Damage and +2% Crit Chance on pickup; heavy crit shots | Slower, high-value rounds with strong crit scaling |
 | Tin Dragon Flamethrower | 5 | 160 | Elemental weapon | +3 Elemental Damage and +4% Damage on pickup; flame puffs with burn | Legendary short-range crowd burner |
-| Grenade Launcher | 3 | 145 | Ranged / Explosive weapon | +1 Ranged Damage on pickup; grenade explosions | Mid-game explosive weapon; clunky at low ranks, huge at Rank V |
+| Grenade Launcher | 3 | 225 | Ranged / Explosive weapon | +1 Ranged Damage on pickup; grenade explosions | Mid-game explosive weapon; big, reliable blasts at every rank, enormous at Rank V |
 
 ## Weapon Mods / Weapon Upgrades
 

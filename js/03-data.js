@@ -104,10 +104,10 @@ const upgrades = [
     id: "grenade_launcher",
     name: "Grenade Launcher",
     badge: "W",
-    description: "A slow mid-game explosive weapon that becomes terrifying at high ranks.",
-    // Cheap for a rare on purpose: its single-target DPS is the worst in the game until
-    // high ranks, so the cost buys the explosion radius and late-rank payoff, not damage now.
-    baseCost: 40,
+    description: "A slow explosive weapon with big, reliable blasts at every rank.",
+    // Priced for a much larger blast radius and full-damage explosions at every rank,
+    // traded against a slower fire rate than other rares.
+    baseCost: 62,
     tier: 3,
     minWave: 6,
     loadoutType: "weapon",
@@ -581,8 +581,8 @@ const upgradeProfiles = {
   },
   grenade_launcher: {
     lore: "A chunky tube launcher made from crate hinges and a scavenged firing pin.",
-    properties: "Launches slow grenades that explode in an area. It belongs in mid and late game shops, not the starter weapon pool.",
-    stats: ["Adds Grenade Launcher", "+1 Ranged Damage", "Explodes in an area", "Mid-game weapon"]
+    properties: "Launches slow grenades that explode in a large area with heavy explosion damage. It belongs in mid and late game shops, not the starter weapon pool.",
+    stats: ["Adds Grenade Launcher", "+1 Ranged Damage", "Explodes in a large area", "Mid-game weapon"]
   },
   potato_masher: {
     lore: "A dense mash-tool head bolted to a scrap-pipe handle.",
@@ -808,7 +808,7 @@ const weaponProfiles = {
   },
   "Grenade Launcher": {
     lore: "A chunky tube launcher made from crate hinges and a scavenged firing pin.",
-    properties: "A slow explosive weapon for mid and late game. It is clunky at lower ranks, while legendary rank becomes a massive area-damage payoff.",
+    properties: "A slow explosive weapon for mid and late game. It hits with big, reliable blasts at every rank, scaling up to an enormous area-damage payoff at legendary rank.",
     role: "Explosive crowd clear",
     scaling: "Scales with Ranged Damage, Damage %, Crit Chance, Attack Speed, and explosion radius.",
     attack: "Launches a wobbling grenade that explodes on impact or when it reaches max range."
@@ -998,7 +998,7 @@ const weaponStatProfiles = {
     tags: ["Ranged", "Explosive"],
     baseDamage: [5, 13, 35, 81, 194],
     scaling: { rangedDamage: 0.42 },
-    cooldown: [3.2, 2.75, 2.25, 1.75, 1.2],
+    cooldown: [3.6, 3.1, 2.5, 1.9, 1.5],
     range: [295, 330, 375, 430, 540],
     critChance: [1, 3, 6, 10, 18],
     critMultiplier: 2.2,
@@ -1009,8 +1009,8 @@ const weaponStatProfiles = {
     projectileScale: 1,
     spread: 0.08,
     damageFalloff: 1,
-    explosionRadius: [44, 58, 76, 98, 135],
-    explosionDamageMultiplier: [0.6, 0.75, 0.9, 1.1, 1.35],
+    explosionRadius: [60, 88, 120, 155, 190],
+    explosionDamageMultiplier: [0.85, 1.1, 1.35, 1.6, 1.9],
     color: "#7d4f34",
     impactColor: "#ff9c3d"
   },

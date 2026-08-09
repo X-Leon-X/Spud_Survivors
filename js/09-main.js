@@ -359,6 +359,51 @@ if (compendiumButton) {
 }
 document.getElementById("compendiumClose")?.addEventListener("click", closeCompendium);
 
+// --- Achievements ------------------------------------------------------------------------
+// A checklist of run milestones. Progress lives in js/03c-achievements.js; this panel just
+// reads and renders it, same split as the compendium above.
+const achievementsButton = ui.achievementsButton;
+const achievementsPanel = document.getElementById("achievementsPanel");
+const achievementsList = document.getElementById("achievementsList");
+const achievementsCount = document.getElementById("achievementsCount");
+
+function openAchievements() {
+  if (!achievementsPanel) return;
+  playSfx("click");
+  achievementsPanel.classList.remove("hidden");
+  renderAchievements();
+}
+
+function closeAchievements() {
+  if (!achievementsPanel) return;
+  playSfx("click");
+  achievementsPanel.classList.add("hidden");
+}
+
+function renderAchievements() {
+  if (!achievementsList) return;
+  const entries = achievementEntries();
+  const found = achievementUnlockedCount();
+  achievementsCount.textContent = `${found} / ${entries.length} unlocked`;
+
+  achievementsList.innerHTML = entries.map((entry) => {
+    const label = entry.unlocked ? escapeChangelogText(entry.name) : escapeChangelogText(entry.name);
+    const detail = entry.unlocked ? escapeChangelogText(entry.description) : escapeChangelogText(entry.hint);
+    return `<div class="achievement-row${entry.unlocked ? "" : " locked"}">
+      <span class="achievement-row-mark">${entry.unlocked ? "&#9733;" : "&#9734;"}</span>
+      <span class="achievement-row-text">
+        <span class="achievement-row-name">${label}</span>
+        <span class="achievement-row-desc">${detail}</span>
+      </span>
+    </div>`;
+  }).join("");
+}
+
+if (achievementsButton) {
+  achievementsButton.addEventListener("click", openAchievements);
+}
+document.getElementById("achievementsClose")?.addEventListener("click", closeAchievements);
+
 state = freshState();
 initSettingsControls();
 renderCharacterSelect();

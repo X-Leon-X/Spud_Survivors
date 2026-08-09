@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Spud Survivors</title>
-    <link rel="stylesheet" href="styles.css?v=0.12.0">
+    <link rel="stylesheet" href="styles.css?v=0.12.1">
   </head>
   <body>
     <main class="game-shell">
@@ -41,6 +41,10 @@
           <img src="assets/ui/compendium.png" alt="" class="compendium-icon">
         </button>
 
+        <button id="achievementsButton" class="achievements-button" type="button" title="Achievements" aria-label="Achievements">
+          <span class="achievements-icon" aria-hidden="true">&#9733;</span>
+        </button>
+
         <div id="compendiumPanel" class="compendium-panel hidden" role="dialog" aria-label="Monster Compendium">
           <div class="compendium-inner">
             <div class="compendium-head">
@@ -54,6 +58,22 @@
             <div class="compendium-body">
               <div id="compendiumList" class="compendium-list"></div>
               <div id="compendiumDetail" class="compendium-detail"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="achievementsPanel" class="achievements-panel hidden" role="dialog" aria-label="Achievements">
+          <div class="achievements-inner">
+            <div class="achievements-head">
+              <div>
+                <span class="label">Milestones</span>
+                <h2>Achievements</h2>
+              </div>
+              <span id="achievementsCount" class="achievements-count"></span>
+              <button id="achievementsClose" type="button" class="achievements-close">Close</button>
+            </div>
+            <div class="achievements-body">
+              <div id="achievementsList" class="achievements-list"></div>
             </div>
           </div>
         </div>
@@ -267,24 +287,25 @@
       </aside>
     </main>
 
-    <script src="js/01-core.js?v=0.12.0"></script>
-    <script src="js/00-audio.js?v=0.12.0"></script>
-    <script src="js/00-builds.js?v=0.12.0"></script>
-    <script src="js/00-changelog.js?v=0.12.0"></script>
-    <script src="js/00-gravestone.js?v=0.12.0"></script>
-    <script src="js/00-fx.js?v=0.12.0"></script>
-    <script src="js/00-assets.js?v=0.12.0"></script>
-    <script src="js/02-stats.js?v=0.12.0"></script>
-    <script src="js/03-data.js?v=0.12.0"></script>
-    <script src="js/03b-compendium.js?v=0.12.0"></script>
-    <script src="js/04-flow.js?v=0.12.0"></script>
-    <script src="js/05-icons.js?v=0.12.0"></script>
-    <script src="js/06-shop.js?v=0.12.0"></script>
-    <script src="js/07-combat.js?v=0.12.0"></script>
-    <script src="js/08-render.js?v=0.12.0"></script>
-    <script src="js/09-main.js?v=0.12.0"></script>
-    <script src="js/09b-title.js?v=0.12.0"></script>
-    <script src="js/09c-title-slimes.js?v=0.12.0"></script>
-    <script src="js/09d-devpanel.js?v=0.12.0"></script>
+    <script src="js/01-core.js?v=0.12.1"></script>
+    <script src="js/00-audio.js?v=0.12.1"></script>
+    <script src="js/00-builds.js?v=0.12.1"></script>
+    <script src="js/00-changelog.js?v=0.12.1"></script>
+    <script src="js/00-gravestone.js?v=0.12.1"></script>
+    <script src="js/00-fx.js?v=0.12.1"></script>
+    <script src="js/00-assets.js?v=0.12.1"></script>
+    <script src="js/02-stats.js?v=0.12.1"></script>
+    <script src="js/03-data.js?v=0.12.1"></script>
+    <script src="js/03b-compendium.js?v=0.12.1"></script>
+    <script src="js/03c-achievements.js?v=0.12.1"></script>
+    <script src="js/04-flow.js?v=0.12.1"></script>
+    <script src="js/05-icons.js?v=0.12.1"></script>
+    <script src="js/06-shop.js?v=0.12.1"></script>
+    <script src="js/07-combat.js?v=0.12.1"></script>
+    <script src="js/08-render.js?v=0.12.1"></script>
+    <script src="js/09-main.js?v=0.12.1"></script>
+    <script src="js/09b-title.js?v=0.12.1"></script>
+    <script src="js/09c-title-slimes.js?v=0.12.1"></script>
+    <script src="js/09d-devpanel.js?v=0.12.1"></script>
   </body>
 </html>
