@@ -421,12 +421,25 @@ function rollRarity() {
   // split across 5 legendaries -- measured over 6,000 shops, the Flamethrower appeared ZERO
   // times. These rates start earlier, climb faster and cap higher so rare items are rare,
   // not absent, even at 0 luck.
-  const luckMultiplier = 1 + Math.max(0, effectiveStat("luck")) / 70;
-  const tier5 = rarityChance(9, 0.42, 9, luckMultiplier);
-  const tier4 = rarityChance(6, 1.5, 24, luckMultiplier);
-  const tier3 = rarityChance(3, 3.4, 42, luckMultiplier);
-  const tier2 = rarityChance(2, 8.5, 72, luckMultiplier);
-  const roll = Math.random() * 100;
+  const luck = Math.max(0, effectiveStat("luck"));
+  const luckMultiplier = 1 + luck / 70;
+  // Caps raised well above the old 9%/24%: they used to saturate by roughly 150 luck, so
+  // every value past that rolled identically and stacking luck did literally nothing.
+  // The tier-5 cap itself creeps up with luck, so stacking it past the point where the
+  // curve pins keeps paying instead of flatlining (600 and 900 luck used to be identical).
+  const tier5Cap = 34 + Math.min(26, luck / 24);
+  const tier5 = rarityChance(9, 0.42, tier5Cap, luckMultiplier, luck);
+  const tier4 = rarityChance(6, 1.5, 46, luckMultiplier, luck);
+  const tier3 = rarityChance(3, 3.4, 52, luckMultiplier, luck);
+  const tier2 = rarityChance(2, 8.5, 72, luckMultiplier, luck);
+
+  // These are independent curves, so at high luck/wave they can sum past 100. Rolling them
+  // sequentially against a flat 0-100 then silently truncated whichever bands fell off the
+  // end (tier 1 and 2 first), which made the stated rates a lie. Normalising keeps the
+  // RATIOS the curves describe while guaranteeing the bands always fit.
+  const tier1 = Math.max(0, 100 - (tier5 + tier4 + tier3 + tier2));
+  const total = tier5 + tier4 + tier3 + tier2 + tier1;
+  const roll = Math.random() * total;
   if (roll < tier5) return 5;
   if (roll < tier5 + tier4) return 4;
   if (roll < tier5 + tier4 + tier3) return 3;
@@ -434,9 +447,21 @@ function rollRarity() {
   return 1;
 }
 
-function rarityChance(minWave, perWave, cap, luckMultiplier) {
-  if (state.wave < minWave) return 0;
-  return Math.min(cap, Math.max(0, perWave * (state.wave - minWave + 1)) * luckMultiplier);
+// Luck erodes the wave gate instead of being blocked by it. The gate used to be absolute:
+// tier 4 was impossible before wave 6 and tier 5 before wave 9, so ANY amount of luck rolled
+//0% for them (verified at 900 luck: hundreds of rerolls could never produce a tier 4). A
+// gate you cannot influence makes luck feel broken, so every 60 luck now pulls each gate one
+// wave earlier, down to a floor that keeps wave 1 from handing out legendaries.
+function effectiveMinWave(minWave, luck) {
+  const shift = Math.floor(Math.max(0, luck) / 60);
+  // Floor of 2 for the top tiers: wave 1 should never open with a legendary, however lucky.
+  return Math.max(minWave <= 3 ? 1 : 2, minWave - shift);
+}
+
+function rarityChance(minWave, perWave, cap, luckMultiplier, luck) {
+  const gate = effectiveMinWave(minWave, luck);
+  if (state.wave < gate) return 0;
+  return Math.min(cap, Math.max(0, perWave * (state.wave - gate + 1)) * luckMultiplier);
 }
 
 function showShop() {
@@ -514,6 +539,8 @@ function showStartMenu() {
   setPaused(false);
   ui.startMenu.classList.remove("hidden");
   renderCharacterSelect();
+  // Defined in js/09-main.js, which loads after this file, so guard rather than assume.
+  if (typeof refreshProgressCodeFields === "function") refreshProgressCodeFields();
   updateHud();
 }
 

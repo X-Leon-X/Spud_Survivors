@@ -50,6 +50,22 @@ function togglePause() {
 function showSummary() {
   const stats = state.runStats;
   ui.summary.classList.remove("hidden");
+  // Rebuilt here rather than once at boot: anything unlocked during the run has to be in
+  // the code, and this is the screen where a player is most likely to save it.
+  refreshProgressCodeFields();
+
+  // Cloud sync, only if signed in. Deliberately NOT awaited and errors are swallowed: a
+  // slow or failed request must never delay or break the summary screen.
+  if (typeof isLoggedIn === "function" && isLoggedIn()) {
+    accountRecordRun({
+      character: state.character?.name ?? null,
+      wave: state.wave,
+      kills: stats.kills,
+      scrap: stats.scrapEarned,
+      timePlayed: stats.timePlayed
+    }).catch(() => {});
+    accountPushProgress().catch(() => {});
+  }
   ui.summaryTitle.textContent = `${state.character?.name ?? "Spud"} went down`;
 
   const rows = [
@@ -412,7 +428,7 @@ function renderAchievements() {
 
 // --- Progress transfer --------------------------------------------------------------------
 // A single opaque code carries achievements + compendium between browsers/devices, since
-// both live in localStorage and would otherwise be trapped on one machine.
+// both live in session storage and would otherwise be lost when the session ends.
 const PROGRESS_CODE_PREFIX = "SPUD1-";
 
 function buildProgressCode() {
@@ -427,6 +443,25 @@ function buildProgressCode() {
 
 // Clipboard API needs a secure context (https/localhost) and this game is often opened as a
 // file:// page, so the textarea + execCommand path is a real fallback here, not legacy cruft.
+// Show the code as selectable TEXT, not just something the clipboard button fires into the
+// void. The clipboard API fails silently in plenty of real situations (no secure context,
+// permission denied, an odd browser), and a player who cannot see the code has no way to
+// save their progress and no way to tell that copying failed.
+function refreshProgressCodeFields() {
+  const code = buildProgressCode();
+  for (const id of ["startProgressCode", "summaryProgressCode"]) {
+    const field = document.getElementById(id);
+    if (field) field.value = code;
+  }
+}
+
+// Clicking the field selects the whole code, so "click, ctrl-C" works even when the button
+// does not. The code is one long unbroken string, so a manual drag-select is painful.
+for (const id of ["startProgressCode", "summaryProgressCode"]) {
+  document.getElementById(id)?.addEventListener("focus", (event) => event.target.select());
+  document.getElementById(id)?.addEventListener("click", (event) => event.target.select());
+}
+
 function copyTextToClipboard(text) {
   if (navigator.clipboard?.writeText) {
     navigator.clipboard.writeText(text).then(
@@ -515,11 +550,27 @@ function importProgressCode() {
   }
 
   renderAchievements();
+  // The compendium can gain entries from a code too, so refresh it as well. Both renderers
+  // no-op when their panel isn't built, which is the case when importing from character
+  // select, so this is safe from either screen.
+  if (typeof renderCompendium === "function") renderCompendium();
+  // The visible code now represents MORE than it did a moment ago, so re-render it or the
+  // player could copy a stale code that silently drops what they just imported.
+  refreshProgressCodeFields();
   showMessage("Progress restored", merged > 0 ? `${merged} new unlock(s) added.` : "Nothing new to add.", 2200);
 }
 
 document.getElementById("achievementsExport")?.addEventListener("click", exportProgressCode);
 document.getElementById("achievementsImport")?.addEventListener("click", importProgressCode);
+
+// The same two actions on the character select screen. Progress only lasts for the browser
+// session now, so this is where it matters most: it is the screen you see at the start of a
+// fresh session, and the last one you see before starting a run that would otherwise be lost.
+// Copy has to live here too, not just in the achievements panel, or there is no way to save
+// progress from the one screen where you would think to.
+document.getElementById("startCopyProgress")?.addEventListener("click", exportProgressCode);
+document.getElementById("startPasteProgress")?.addEventListener("click", importProgressCode);
+document.getElementById("summaryCopyProgress")?.addEventListener("click", exportProgressCode);
 
 if (achievementsButton) {
   achievementsButton.addEventListener("click", openAchievements);

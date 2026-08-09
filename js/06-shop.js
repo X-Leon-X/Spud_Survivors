@@ -788,6 +788,7 @@ function mergeOwnedItem(itemId, tier) {
   };
   state.items.splice(insertAt, 0, merged);
   if (typeof unlockAchievement === "function") unlockAchievement("merger");
+  if (typeof checkAchievements === "function") checkAchievements();
   playSfx("merge");
   state.openActionMenu = { type: "item", key: `${itemId}:${tier + 1}` };
   syncDerivedStats();
@@ -814,6 +815,12 @@ function combineWeapon(name, tier) {
   state.weapons.splice(matches[0], 1);
   const merged = { ...first, tier: tier + 1, fireCooldown: Math.min(first.fireCooldown ?? 0, 0.15) };
   state.weapons.splice(insertAt, 0, merged);
+  // Weapons merge here, items merge in mergeOwnedItem. Both are "merging something", so both
+  // unlock it -- this path was missed originally, so merging weapons never counted.
+  if (typeof unlockAchievement === "function") unlockAchievement("merger");
+  // Merging is the usual way a weapon reaches Legendary, so re-check ownership right here
+  // rather than waiting for the next kill.
+  if (typeof checkAchievements === "function") checkAchievements();
   playSfx("merge");
   state.openActionMenu = { type: "weapon", index: insertAt };
   syncDerivedStats();
@@ -895,6 +902,11 @@ function recordUpgrade(item) {
     });
   }
   syncDerivedStats();
+  // Ownership-based achievements (Flint and Steel, Tanky, Legendary) are evaluated by
+  // reading state rather than fired from an event, so they need a poke whenever ownership
+  // or stats change. Without this they sat until the next kill, which made buying the thing
+  // that earns them look like it did nothing.
+  if (typeof checkAchievements === "function") checkAchievements();
 }
 
 function addWeapon(name, tier) {
@@ -902,6 +914,11 @@ function addWeapon(name, tier) {
     return false;
   }
   state.weapons.push({ name, tier, fireCooldown: rand(0.05, 0.35) });
+  // Every route to a new weapon (shop buy, crate drop) funnels through here, so this is the
+  // one place that catches "you now own a Legendary". checkAchievements only runs on kills,
+  // wave end and death, which meant a Legendary bought in the shop went unrewarded until
+  // the next kill, or never at all if the run ended first.
+  if (typeof checkAchievements === "function") checkAchievements();
   return true;
 }
 

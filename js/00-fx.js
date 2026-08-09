@@ -9,12 +9,40 @@ const fx = {
 
 let paused = false;
 
-function addShake(amount) {
+// Shake ACCUMULATES, and the per-kill shake fires once per enemy. Late waves kill well over
+// a hundred enemies a second, which outruns the decay and pins the screen at the ceiling for
+// the whole wave: measured at 150 kills/sec it sat at 13.9 of a possible 16, permanently.
+// Early waves were never the problem (below ~20 kills/sec the decay keeps up and shake sits
+// near zero), so the ceiling is what scales, not the individual amounts. Big one-off hits
+// (taking damage, dying, explosions) still read clearly because they ask for a lot at once.
+const SHAKE_CAP_EARLY = 16;
+const SHAKE_CAP_LATE = 6.5;
+
+function shakeCap() {
+  const wave = Math.max(1, state?.wave ?? 1);
+  // Full range until wave 6, then ease down to the late-wave ceiling by wave 16.
+  const t = Math.min(1, Math.max(0, (wave - 6) / 10));
+  return SHAKE_CAP_EARLY + (SHAKE_CAP_LATE - SHAKE_CAP_EARLY) * t;
+}
+
+// Two ceilings, because two different things use shake. The ambient cap tames the constant
+// churn of hundreds of kills a second. A one-off event (taking a hit, dying, an explosion)
+// is the whole point of shake and must still read as distinct from that churn, so a single
+// big request is allowed above the ambient ceiling -- it just decays back under it fast.
+function shakeBurstCap() {
+  return Math.max(shakeCap(), 11);
+}
+
+function addShake(amount, burst = false) {
   if (!gameSettings.screenShake) return;
-  fx.shake = Math.min(16, fx.shake + amount);
+  const cap = burst ? shakeBurstCap() : shakeCap();
+  fx.shake = Math.min(cap, fx.shake + amount);
 }
 
 function decayFx(dt) {
+  // Clamp here too, not just in addShake: shake built up under a higher cap (or before the
+  // wave advanced) would otherwise ride above the current ceiling until it decayed past it.
+  fx.shake = Math.min(fx.shake, shakeCap());
   fx.shake = Math.max(0, fx.shake - dt * 30 - fx.shake * dt * 6);
   fx.playerFlash = Math.max(0, fx.playerFlash - dt * 3.2);
 }

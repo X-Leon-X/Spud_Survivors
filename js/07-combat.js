@@ -108,7 +108,7 @@ function update(dt) {
     if (typeof checkAchievements === "function") checkAchievements();
     if (typeof unlockAchievement === "function") unlockAchievement("rip");
     playSfx("gameover");
-    addShake(12);
+    addShake(12, true);
     burst(state.player.x, state.player.y, "#ff8fa3", 26);
     spawnRing(state.player.x, state.player.y, "#ff8fa3", 90, 0.5);
     // Bong + gravestone first, then the summary — showing the stats immediately would
@@ -1116,7 +1116,7 @@ function explodeBullet(bullet) {
   const radius = bullet.explosionRadius ?? 0;
   if (radius <= 0) return;
   const multiplier = bullet.explosionDamageMultiplier ?? 1;
-  addShake(Math.min(9, 3 + radius * 0.04));
+  addShake(Math.min(9, 3 + radius * 0.04), true);
   playSfx("explosion");
   spawnRing(bullet.x, bullet.y, bullet.impactColor ?? "#ff9c3d", radius * 1.4, 0.34);
   burst(bullet.x, bullet.y, bullet.impactColor ?? "#ff9c3d", Math.max(18, Math.round(radius * 0.35)));
@@ -2129,7 +2129,10 @@ function dropTreeFruit(tree) {
     radius: 15,
     hp: 1,
     maxHp: 1,
-    heal: 9 + state.wave,
+    // Scales harder than the old flat "9 + wave": late waves hit for far more and max HP
+    // grows too, so a fixed-ish heal quietly became a rounding error. The percentage term
+    // keeps fruit meaningful on a big health pool without making it dominant early.
+    heal: Math.round(9 + state.wave * 2.2 + (state.player?.maxHp ?? 80) * 0.04),
     bob: Math.random() * Math.PI * 2
   });
 }

@@ -363,7 +363,8 @@ function damagePlayer(rawDamage, sourceX, sourceY, sourceName, opts = {}) {
   player.hurtTimer = 0.16;
   addFloater(player.x, player.y - player.radius - 8, `-${damage}`, { color: "#ff8fa3", size: 17 });
   playSfx("hurt");
-  addShake(Math.min(11, 3.5 + damage * 0.3));
+  // Burst: getting hit must stay legible even in a late-wave crowd.
+  addShake(Math.min(11, 3.5 + damage * 0.3), true);
   fx.playerFlash = Math.min(1, 0.4 + damage * 0.02);
   return true;
 }

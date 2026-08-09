@@ -20,6 +20,37 @@
 
 const CHANGELOG = [
   {
+    version: "0.13.0",
+    date: "2026-08-09",
+    title: "Accounts, luck that finally works, and achievements you can actually earn",
+    notes: [
+      "You can now make an account. It is completely optional, and the game plays exactly the same without one.",
+      "An account keeps your achievements and compendium across devices, and remembers your finished runs.",
+      "Sign up with an email and a password from the character select screen. You will get a confirmation email before you can log in.",
+      "Forgot your password? There is a recovery link on the same screen that emails you a reset.",
+      "Logging in merges your cloud progress with whatever you have on this device, so signing in can never wipe what you just earned.",
+      "The account panel says plainly what an account stores and how to have it deleted. Play without one and nothing ever leaves your device.",
+      "Luck was doing almost nothing past a certain point. Every rarity chance hit a ceiling at around 150 luck, so 900 luck rolled exactly the same as 150.",
+      "Rare tiers were also locked behind wave numbers that luck could not touch at all. Epic mutations were flatly impossible before wave 6 and Legendary before wave 9, no matter how lucky you were.",
+      "Luck now pulls those gates earlier, so a big luck build starts seeing Epic and Legendary well before it used to instead of waiting for the wave counter.",
+      "The rarity ceilings are much higher, and the Legendary ceiling itself climbs with luck, so stacking luck keeps paying off instead of flatlining.",
+      "Fixed rarity chances adding up to more than 100%, which was quietly eating the lower tiers and making the real odds different from the intended ones.",
+      "Fruit heals a lot more, and keeps up as the waves go on. It used to grow so slowly that it was worth less and less of your health bar the longer a run went.",
+      "\"Squal Wipe\" was a typo and is now \"Squad Wipe\". If you already earned it, it stays earned.",
+      "Achievements and the compendium now last for your current session. Refreshing the page keeps them, but closing the tab or coming back later starts you fresh.",
+      "Copy code and Paste code buttons now sit on the character select screen. Copy your code before you leave to carry your progress into the next session, or onto another device.",
+      "Pasting a code still only ever adds to what you have, so bringing progress in can never wipe what you just earned.",
+      "Screen shake calms down in late waves. Killing hundreds of enemies a second was keeping the screen permanently rattling, which was exhausting to look at.",
+      "Getting hit, dying and explosions still shake the screen properly, so the moments that matter stand out from the noise instead of blending into it.",
+      "Your progress code is now shown as text you can actually see and select, on both the character select and the run summary screens. Before it only ever went to the clipboard, so if copying quietly failed there was no way to tell.",
+      "The run summary now shows your code straight after a run ends, which is the moment you are most likely to want it.",
+      "Clicking the code selects all of it, so you can copy it by hand if the button does not work in your browser.",
+      "Merging two weapons now counts for Merger. Only merging items did, so the most obvious way to merge something was the one way that never registered it.",
+      "Getting a Legendary weapon now unlocks Legendary right away, whether you bought it, found it in a crate or merged your way up to it. It used to wait for your next kill, and if the run ended first you never got it at all.",
+      "Flint and Steel and Tanky had the same delay and now unlock the moment you earn them."
+    ]
+  },
+  {
     version: "0.12.3",
     date: "2026-08-09",
     title: "Scrap drops show what they are worth, and a look at the beginning",

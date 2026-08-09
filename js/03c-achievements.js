@@ -1,7 +1,7 @@
 "use strict";
 
 // achievements.js - a checklist of little goals to chase across a run. Persists across runs
-// (localStorage, its own key, same idiom as the compendium) so unlocking is permanent even
+// (session storage, its own key, same idiom as the compendium) so unlocks survive a refresh even
 // though the stats that drive most of it (kills, scrap, wave) are reset every run.
 //
 // checkAchievements() is meant to be called cheaply and often from a few hook points
@@ -10,7 +10,9 @@
 
 const ACHIEVEMENTS = [
   { id: "first_blood", name: "First Blood", description: "Landed your first kill.", hint: "First kill", goal: 1, progressKey: "kills" },
-  { id: "squal_wipe", name: "Squal Wipe", description: "Reached 100 kills in a single run.", hint: "Reach 100 kills in one run", goal: 100, progressKey: "kills" },
+  // id stays `squal_wipe` despite the display name changing to "Squad Wipe": the id is the
+  // storage key, so renaming it would silently re-lock this for anyone who has it.
+  { id: "squal_wipe", name: "Squad Wipe", description: "Reached 100 kills in a single run.", hint: "Reach 100 kills in one run", goal: 100, progressKey: "kills" },
   { id: "harvest_season", name: "Harvest Season", description: "Reached 500 kills in a single run.", hint: "Reach 500 kills in one run", goal: 500, progressKey: "kills" },
   { id: "locking_in", name: "Locking In", description: "Reached wave 5.", hint: "Reach wave 5", goal: 5, progressKey: "wave" },
   { id: "wave_10", name: "Double Digits", description: "Reached wave 10.", hint: "Reach wave 10", goal: 10, progressKey: "wave" },
@@ -39,12 +41,16 @@ const ACHIEVEMENTS = [
   { id: "easter_egg_2", name: "Two Tuff Easter Eggs", description: "Discovered both easter eggs.", hint: "Discover both easter eggs", goal: 1, progressKey: null, secret: true }
 ];
 
+// sessionStorage, NOT localStorage: unlocks last for this browser session (a refresh keeps
+// them, a new tab or a later visit starts clean). Moving progress forward is a deliberate
+// act -- copy the code, paste it on the character select screen -- rather than something
+// that happens invisibly. See exportProgressCode/importProgressCode in js/09-main.js.
 const ACHIEVEMENTS_KEY = "spud-survivors-achievements";
 let unlockedAchievements = loadAchievements();
 
 function loadAchievements() {
   try {
-    const stored = JSON.parse(localStorage.getItem(ACHIEVEMENTS_KEY));
+    const stored = JSON.parse(sessionStorage.getItem(ACHIEVEMENTS_KEY));
     // Guard the shape: a corrupt or hand-edited value must not break the panel.
     return stored && typeof stored === "object" && !Array.isArray(stored) ? stored : {};
   } catch {
@@ -54,7 +60,7 @@ function loadAchievements() {
 
 function saveAchievements() {
   try {
-    localStorage.setItem(ACHIEVEMENTS_KEY, JSON.stringify(unlockedAchievements));
+    sessionStorage.setItem(ACHIEVEMENTS_KEY, JSON.stringify(unlockedAchievements));
   } catch {
     // storage unavailable (private mode / file restrictions) - progress just won't persist
   }
@@ -190,7 +196,7 @@ function checkAchievements() {
 }
 
 // --- Easter eggs -----------------------------------------------------------------------
-// Discovered eggs live in the SAME unlockedAchievements object/localStorage key, under the
+// Discovered eggs live in the SAME unlockedAchievements object/storage key, under the
 // reserved "_eggs" sub-key ({titleO: true, footerO: true}). This is NOT an achievement id
 // and must never be iterated as one -- achievementUnlockedCount()/achievementEntries() only
 // ever walk the ACHIEVEMENTS array, so they are safe by construction, but any future code

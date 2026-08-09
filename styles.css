@@ -658,6 +658,169 @@ h1 {
   padding: 12px;
 }
 
+/* Progress code row on character select. Matches the class-bonus panel so it reads as part
+   of the screen rather than a warning banner, but sits directly under the characters since
+   it is the last thing you can act on before a run starts. */
+.progress-transfer {
+  align-items: center;
+  background: rgba(13, 18, 27, 0.64);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  margin-top: 14px;
+  padding: 12px;
+}
+
+.progress-transfer-text {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+#progressTransferHint {
+  color: rgba(255, 247, 231, 0.55);
+  font-size: 11px;
+  line-height: 1.45;
+  margin: 4px 0 0;
+}
+
+.progress-transfer-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+/* The code shown as real, selectable text. Monospace and text-overflow rather than wrapping:
+   it is one long unbroken string, and a wrapped block of base64 is much harder to check by
+   eye when someone is copying it down manually. */
+.progress-code-field {
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(255, 247, 231, 0.16);
+  border-radius: 5px;
+  color: rgba(255, 247, 231, 0.72);
+  cursor: text;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  margin-top: 6px;
+  padding: 5px 8px;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+
+.progress-code-field:focus {
+  border-color: rgba(242, 196, 95, 0.5);
+  color: #fff7e7;
+  outline: none;
+}
+
+/* --- Account panel (character select) ---------------------------------------------------
+   Styled as a quiet, optional extra rather than a gate: the game is fully playable signed
+   out, so this must never look like something you have to deal with before pressing play. */
+.account-panel {
+  background: rgba(13, 18, 27, 0.64);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  margin-top: 14px;
+  padding: 12px;
+}
+
+.account-head {
+  align-items: baseline;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.account-status {
+  color: rgba(255, 247, 231, 0.45);
+  font-size: 11px;
+}
+
+.account-status.is-signed-in {
+  color: #92d486;
+}
+
+.account-hint {
+  color: rgba(255, 247, 231, 0.45);
+  font-size: 11px;
+  line-height: 1.45;
+  margin: 4px 0 10px;
+}
+
+.account-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.account-field {
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(255, 247, 231, 0.16);
+  border-radius: 5px;
+  color: #fff7e7;
+  flex: 1 1 180px;
+  font-family: inherit;
+  font-size: 12px;
+  min-width: 0;
+  padding: 6px 9px;
+}
+
+.account-field:focus {
+  border-color: rgba(242, 196, 95, 0.5);
+  outline: none;
+}
+
+.account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Recovery and log out are secondary to the main action next to them. */
+.account-link {
+  background: none;
+  border-color: transparent;
+  color: rgba(255, 247, 231, 0.45);
+  text-decoration: underline;
+}
+
+.account-link:hover {
+  background: none;
+  border-color: transparent;
+}
+
+.account-message {
+  font-size: 11px;
+  line-height: 1.45;
+  margin: 10px 0 0;
+  min-height: 1em;
+  color: rgba(255, 247, 231, 0.6);
+}
+
+.account-message.is-error { color: #ff8fa3; }
+.account-message.is-good { color: #92d486; }
+
+/* Sits under the sign-up form on purpose: the moment someone is about to hand over an email
+   is the moment it is worth telling them what happens to it. Quiet, but never hidden. */
+.account-privacy {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 247, 231, 0.38);
+  font-size: 10px;
+  line-height: 1.5;
+  margin: 10px 0 0;
+  padding-top: 9px;
+}
+
+.account-privacy a {
+  color: rgba(242, 196, 95, 0.7);
+}
+
+.account-privacy a:hover {
+  color: #f2c45f;
+}
+
 .class-bonus-list {
   display: grid;
   gap: 8px;
