@@ -744,64 +744,93 @@ function showCrateReward(item) {
   ui.rewardCards.appendChild(takeCard);
 }
 
-// Decides whether a rarity colour needs the light background chip (.fortune-rarity-dark) to
-// stay readable on the pale fortune-paper slip. Data-driven off fortune.rarity.color via
-// perceptual luminance, rather than special-casing "clown" -- any future dark rarity colour
-// gets the chip automatically.
-function isDarkRarityColor(hexColor) {
+// The slip is now WHITE (#fefefe), so the readability problem has FLIPPED versus the old pale
+// parchment: it is the LIGHT rarity colours that wash out on white, while dark ones are perfectly
+// readable. ONE general mechanism handles it -- any colour too light for white gets a soft gray
+// chip behind the word plus a hairline dark ring and a fine dark text-shadow (.fortune-rarity-light
+// in styles.css), which anchors the word without altering the rarity colour itself.
+// Measured luminance of the seven rarity colours against the 0.55 threshold:
+//   unique    #f2c45f 0.777 -> chip      legendary #ff9c3d 0.685 -> chip
+//   uncommon  #74d3a4 0.695 -> chip      common    #9aa7b8 0.647 -> chip
+//   epic      #ba7eff 0.622 -> chip      rare      #58aaff 0.609 -> chip
+//   clown     #5a1f24 0.193 -> bare (near-black red; plenty of contrast on white already)
+// So six of seven take the chip and clown alone goes bare, which is exactly the inverse of the
+// old pale-slip behaviour. The threshold is data-driven, so any future rarity colour is handled.
+function isLightRarityColor(hexColor) {
   const hex = String(hexColor).replace("#", "");
   if (hex.length !== 6) return false;
   const r = parseInt(hex.slice(0, 2), 16);
   const g = parseInt(hex.slice(2, 4), 16);
   const b = parseInt(hex.slice(4, 6), 16);
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance < 0.45;
+  return luminance > 0.55;
 }
 
 // ---- Fortune crack timing. These MUST stay in step with the @keyframes/animation declarations
 // in styles.css (.fortune-stage.fortune-cracking* and its children):
-//   phase 1  anticipation/squeeze   0 -> 170ms   (cookieSqueeze / cookieSqueezeClown, stage)
-//   snap     sfx + crumb burst      @ 170ms
-//   phase 2  asymmetric split       170 -> 640ms (cookieSnapLeft/Right, halves)
-//   phase 2b slip unfurl            190 -> 690ms (fortuneSlipUnfurl, slip)
-// Total ~690ms of animation; the reveal fires on the LAST half animation (cookieSnapRight*).
-const CRACK_SQUEEZE_MS = 170;
+//   phase 1  anticipation/squeeze   0 -> 210ms   (cookieSqueeze / cookieSqueezeClown, stage)
+//            includes two stress jolts (micro counter-rotations) before the release
+//   snap     sfx + crack flash + crumb burst  @ 210ms
+//   phase 1b jagged crack line flash 210 -> 320ms (cookieCrackFlash, .fortune-crack-line)
+//   phase 2  asymmetric 3D split     210 -> 680ms (cookieSnapLeft/Right, halves)
+//   phase 2b slip unfurl             230 -> 730ms (fortuneSlipUnfurl, slip)
+// Total ~730ms of animation; the reveal fires on the LAST half animation (cookieSnapRight*).
+const CRACK_SQUEEZE_MS = 210;
 const CRACK_SNAP_MS = CRACK_SQUEEZE_MS;
-const CRACK_TOTAL_MS = 690;
+const CRACK_TOTAL_MS = 730;
 const CRUMB_LIFE_MS = 760;
+// The jagged white crack line lives only for its flash; removed slightly after it ends.
+const CRACK_FLASH_MS = 110;
 
 function prefersReducedMotion() {
   return typeof window.matchMedia === "function"
     && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-// Spawns 7-10 crumb divs at the seam of the cracked cookie. Each is randomized inline (size,
-// tan tone, seam offset, horizontal drift via the --dx custom property, spin via --spin, and a
-// small stagger) so no two bursts look alike; the CSS keyframes do pop-up-then-accelerating-fall.
-// Every crumb is removed by ONE cleanup timeout keyed off the longest possible life.
+// Spawns a debris burst at the seam of the cracked cookie: 7-10 small crumbs PLUS 2-3 larger
+// chunks. Each is randomized inline (size, tan tone, seam offset, horizontal drift via the --dx
+// custom property, spin via --spin, and a small stagger) so no two bursts look alike; the CSS
+// keyframes do pop-up-then-accelerating-fall. The chunks are the realism beat -- a snapping
+// cookie sheds a couple of visible shards, not just dust -- so they are bigger (7-10px), spin
+// far less, and fall harder/faster (.fortune-chunk shortens the duration and steepens the drop).
+// Every particle is removed by ONE cleanup timeout keyed off the longest possible life.
 function spawnCookieCrumbs(stage, isClown) {
   const layer = document.createElement("div");
   layer.className = "fortune-crumbs";
 
   const tones = ["#d9a45b", "#cf9850", "#c08a45", "#b5813e", "#a8763a", "#e0b06a"];
-  const count = 7 + Math.floor(Math.random() * 4); // 7-10
+  const smallCount = 7 + Math.floor(Math.random() * 4); // 7-10
+  const chunkCount = 2 + Math.floor(Math.random() * 2); // 2-3
   // Clown cookies throw debris further and faster.
   const spread = isClown ? 52 : 30;
 
-  for (let i = 0; i < count; i += 1) {
+  for (let i = 0; i < smallCount + chunkCount; i += 1) {
+    const isChunk = i >= smallCount;
     const crumb = document.createElement("div");
-    crumb.className = "fortune-crumb";
-    const size = 3 + Math.random() * 3; // 3-6px
+    crumb.className = isChunk ? "fortune-crumb fortune-chunk" : "fortune-crumb";
+    const size = isChunk ? 7 + Math.random() * 3 : 3 + Math.random() * 3; // 7-10px / 3-6px
     crumb.style.width = `${size.toFixed(1)}px`;
     crumb.style.height = `${(size * (0.72 + Math.random() * 0.5)).toFixed(1)}px`;
     crumb.style.background = tones[Math.floor(Math.random() * tones.length)];
     // Seam-relative start: the seam is the horizontal centre of the stage.
-    crumb.style.left = `calc(50% + ${(Math.random() * 14 - 7).toFixed(1)}px)`;
-    crumb.style.top = `${(46 + Math.random() * 22).toFixed(1)}px`;
-    crumb.style.setProperty("--dx", `${((Math.random() * 2 - 1) * spread).toFixed(1)}px`);
-    crumb.style.setProperty("--pop", `${(-10 - Math.random() * 12).toFixed(1)}px`);
-    crumb.style.setProperty("--spin", `${((Math.random() * 2 - 1) * (isClown ? 540 : 260)).toFixed(0)}deg`);
-    crumb.style.animationDelay = `${Math.floor(Math.random() * 70)}ms`;
+    crumb.style.left = `calc(50% + ${(Math.random() * 16 - 8).toFixed(1)}px)`;
+    crumb.style.top = `${(70 + Math.random() * 30).toFixed(1)}px`;
+    // Chunks carry more mass: wider throw, but a lazier pop and much less spin.
+    crumb.style.setProperty(
+      "--dx",
+      `${((Math.random() * 2 - 1) * spread * (isChunk ? 1.25 : 1)).toFixed(1)}px`
+    );
+    crumb.style.setProperty(
+      "--pop",
+      isChunk
+        ? `${(-6 - Math.random() * 8).toFixed(1)}px`
+        : `${(-10 - Math.random() * 12).toFixed(1)}px`
+    );
+    crumb.style.setProperty(
+      "--spin",
+      `${((Math.random() * 2 - 1) * (isClown ? 540 : 260) * (isChunk ? 0.28 : 1)).toFixed(0)}deg`
+    );
+    crumb.style.animationDelay = `${Math.floor(Math.random() * (isChunk ? 40 : 70))}ms`;
     layer.appendChild(crumb);
   }
 
@@ -835,7 +864,8 @@ function showFortuneReward(fortune) {
 
   // The cookie sprite is drawn as TWO halves of one background image (left half / right half,
   // offset by background-position) so the crack animation can pull them apart and leave them
-  // flanking the fortune paper: half | paper | half.
+  // flanking the fortune paper: half | paper | half. The stage is the HERO of a full-width
+  // panel (.fortune-card spans the whole reward grid), so the halves are 90x180 each.
   const stage = document.createElement("div");
   stage.className = "fortune-stage";
 
@@ -908,8 +938,9 @@ function showFortuneReward(fortune) {
     stage.classList.add("fortune-cracking");
     if (isClown) stage.classList.add("fortune-cracking-clown");
 
-    // Blank pale sliver that grows between the halves during the split; it is replaced by the
-    // real .fortune-paper at reveal time, so the player never sees an empty gap.
+    // Blank white sliver that unrolls HORIZONTALLY out from between the halves during the split;
+    // it is replaced by the real .fortune-paper at reveal time (same box, so the swap is
+    // invisible), so the player never sees an empty gap.
     const slip = document.createElement("div");
     slip.className = "fortune-slip";
     stage.insertBefore(slip, cookieRight);
@@ -921,13 +952,21 @@ function showFortuneReward(fortune) {
       if (typeof playSfx === "function") playSfx("tree");
     }, CRACK_SNAP_MS);
 
-    // Crumb burst: real breakage throws debris. Spawned at the snap, gravity-fallen, then
-    // removed wholesale by a single cleanup timeout so repeated fortune panels never accumulate
-    // orphan nodes. Skipped entirely under reduced motion (no particles at all).
+    // Crumb burst + crack flash: real breakage throws debris AND the fracture itself is visible
+    // for an instant. Both are spawned at the snap and removed by their own cleanup timeouts, so
+    // repeated fortune panels never accumulate orphan nodes. Skipped entirely under reduced
+    // motion (no particles, no flash at all).
     if (!prefersReducedMotion()) {
       window.setTimeout(() => {
         if (!stage.isConnected) return;
         spawnCookieCrumbs(stage, isClown);
+        // The fracture line: a thin white zigzag (clip-path polygon, see .fortune-crack-line in
+        // styles.css) that snaps across the seam and fades in ~110ms. Purely decorative and
+        // pointer-events: none, so it can never intercept the Continue click that follows.
+        const crackLine = document.createElement("div");
+        crackLine.className = "fortune-crack-line";
+        stage.appendChild(crackLine);
+        window.setTimeout(() => crackLine.remove(), CRACK_FLASH_MS + 90);
       }, CRACK_SNAP_MS);
     }
 
@@ -962,8 +1001,8 @@ function showFortuneReward(fortune) {
 
       const rarityTag = document.createElement("div");
       rarityTag.className = "fortune-rarity";
-      if (isDarkRarityColor(fortune.rarity.color)) {
-        rarityTag.classList.add("fortune-rarity-dark");
+      if (isLightRarityColor(fortune.rarity.color)) {
+        rarityTag.classList.add("fortune-rarity-light");
       }
       rarityTag.textContent = fortune.rarity.label;
       rarityTag.style.color = fortune.rarity.color;

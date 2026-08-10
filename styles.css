@@ -3736,31 +3736,37 @@ button:active:not(:disabled) {
    ============================================================ */
 
 /* The stage holds the cookie. Unopened it is two halves flush against each other reading as one
-   whole sprite; after the crack it is half | paper | half. */
+   whole sprite; after the crack it is half | slip | half. It is the HERO of a full-width panel,
+   so it is sized generously and always centred.
+   perspective is on the stage (not the halves) so the two halves tip outward in a SHARED 3D
+   space during the snap -- that is what makes the break read as volume rather than a flat swing. */
 .fortune-stage {
   align-items: center;
   animation: cookieIdleBob 2600ms ease-in-out infinite;
   display: flex;
   gap: 0;
   justify-content: center;
-  margin: 6px 0 2px;
-  /* Anchor for the absolutely-positioned crumb layer, and the crumbs must be free to fall past
-     the cookie without being clipped. */
+  margin: 10px 0 6px;
+  min-height: 190px;
+  perspective: 620px;
+  /* Anchor for the absolutely-positioned crumb layer and crack flash, and the crumbs must be
+     free to fall past the cookie without being clipped. */
   position: relative;
 }
 
-/* Both halves are the SAME 512x512 sprite scaled to 120x120, each showing one 60px-wide slice
-   via background-position, so side by side they render the intact cookie. */
+/* Both halves are the SAME 512x512 sprite scaled to 180x180, each showing one 90px-wide slice
+   via background-position, so side by side they render the intact cookie. The pair must stay in
+   step: width = background-size / 2, and the right half's background-position-x = -width. */
 .fortune-half {
   background-image: url("assets/items/fortune_cookie.png");
   background-repeat: no-repeat;
-  background-size: 120px 120px;
+  background-size: 180px 180px;
   flex: 0 0 auto;
-  height: 120px;
-  /* auto, not pixelated: the source is 512px scaled DOWN to 120px, and the rest of the UI
+  height: 180px;
+  /* auto, not pixelated: the source is 512px scaled DOWN to 180px, and the rest of the UI
      scales art smoothly (image-rendering: auto elsewhere in this file). */
   image-rendering: auto;
-  width: 60px;
+  width: 90px;
 }
 
 .fortune-half-left {
@@ -3768,7 +3774,7 @@ button:active:not(:disabled) {
 }
 
 .fortune-half-right {
-  background-position: -60px 0;
+  background-position: -90px 0;
 }
 
 @keyframes cookieIdleBob {
@@ -3777,76 +3783,92 @@ button:active:not(:disabled) {
   100% { transform: translateY(0) rotate(0deg); }
 }
 
-/* -- Phase 1: ANTICIPATION (0-170ms). The cookie is squeezed rather than shaken: it compresses
-   horizontally and bulges vertically as pressure builds, with a fine tremble riding on top. The
-   compression peaks just before the end and releases into the snap -- that release is what sells
-   the break. Runs on the stage, so both halves deform together as one still-intact cookie. -- */
+/* -- Phase 1: ANTICIPATION (0-210ms). The cookie is squeezed rather than shaken: it compresses
+   horizontally and bulges vertically as pressure builds. Riding on top are TWO STRESS JOLTS --
+   sharp micro counter-rotations at 52% and 76% where the cookie almost gives, catches, and is
+   squeezed harder. That stutter is what makes the pressure unmistakable before the release.
+   The compression peaks just before the end and releases into the snap -- that release is what
+   sells the break. Runs on the stage, so both halves deform together as one still-intact cookie.
+   Duration/keying must stay in step with CRACK_SQUEEZE_MS in js/04-flow.js. -- */
 @keyframes cookieSqueeze {
   0% { transform: scale(1, 1) rotate(0deg); }
-  25% { transform: scale(0.975, 1.02) rotate(-0.8deg); }
-  45% { transform: scale(0.955, 1.035) rotate(0.7deg); }
-  65% { transform: scale(0.94, 1.05) rotate(-0.9deg); }
-  85% { transform: scale(0.928, 1.062) rotate(0.6deg); }
+  22% { transform: scale(0.972, 1.022) rotate(-0.9deg); }
+  40% { transform: scale(0.948, 1.042) rotate(0.8deg); }
+  /* jolt 1: slips a hair, snaps back the other way */
+  48% { transform: scale(0.938, 1.05) rotate(-2.2deg); }
+  56% { transform: scale(0.93, 1.056) rotate(1.9deg); }
+  68% { transform: scale(0.918, 1.068) rotate(-0.7deg); }
+  /* jolt 2: harder and tighter, right on the edge of failure */
+  76% { transform: scale(0.908, 1.078) rotate(2.6deg); }
+  84% { transform: scale(0.9, 1.086) rotate(-2.3deg); }
+  92% { transform: scale(0.894, 1.092) rotate(0.9deg); }
   /* Release: the squeeze lets go a hair past neutral -- the instant the halves let go. */
-  100% { transform: scale(1.02, 0.985) rotate(0deg); }
+  100% { transform: scale(1.03, 0.978) rotate(0deg); }
 }
 
 @keyframes cookieSqueezeClown {
   0% { transform: scale(1, 1) rotate(0deg); }
-  20% { transform: scale(0.97, 1.03) rotate(-2.4deg); }
-  38% { transform: scale(0.945, 1.05) rotate(2.6deg); }
-  56% { transform: scale(0.925, 1.07) rotate(-2.8deg); }
-  74% { transform: scale(0.905, 1.085) rotate(2.2deg); }
-  88% { transform: scale(0.895, 1.095) rotate(-1.6deg); }
-  100% { transform: scale(1.05, 0.96) rotate(0deg); }
+  20% { transform: scale(0.966, 1.034) rotate(-2.6deg); }
+  38% { transform: scale(0.94, 1.054) rotate(2.8deg); }
+  48% { transform: scale(0.928, 1.064) rotate(-5.2deg); }
+  56% { transform: scale(0.918, 1.072) rotate(4.6deg); }
+  68% { transform: scale(0.902, 1.088) rotate(-2deg); }
+  76% { transform: scale(0.888, 1.1) rotate(5.8deg); }
+  84% { transform: scale(0.878, 1.11) rotate(-5deg); }
+  92% { transform: scale(0.87, 1.118) rotate(2deg); }
+  100% { transform: scale(1.07, 0.948) rotate(0deg); }
 }
 
 .fortune-stage.fortune-cracking {
-  animation: cookieSqueeze 170ms cubic-bezier(0.4, 0, 0.7, 0.2) both;
+  animation: cookieSqueeze 210ms cubic-bezier(0.4, 0, 0.7, 0.2) both;
 }
 
 .fortune-stage.fortune-cracking.fortune-cracking-clown {
   animation-name: cookieSqueezeClown;
 }
 
-/* -- Phase 2: SNAP/SPLIT (170-640ms). The halves are ASYMMETRIC on purpose -- mirrored motion
+/* -- Phase 2: SNAP/SPLIT (210-680ms). The halves are ASYMMETRIC on purpose -- mirrored motion
    reads mechanical, offset angles and distances read like a real break. Each half pops slightly
    UP as it tears free, then falls and settles with a single small overshoot bounce (gravity).
+   NEW: each half also rotates in 3D (rotateY) inside the stage's perspective, so the outer edges
+   tip AWAY from the viewer as the halves swing apart -- the break has depth instead of being a
+   flat scissor. The Y angles are asymmetric too (left settles at 18deg, right at -14deg) and
+   peak slightly past their resting angle mid-swing, as a tumbling piece does.
    animation-fill-mode: both holds the final pose forever, which is what keeps the halves
-   flanking the paper in the final state. -- */
+   flanking the slip in the final state. -- */
 @keyframes cookieSnapLeft {
-  0% { transform: translate(0, 0) rotate(0deg); }
-  /* tear free + pop up */
-  22% { transform: translate(-8px, -5px) rotate(-11deg); }
-  /* fall past the resting line */
-  62% { transform: translate(-14px, 6px) rotate(-19deg); }
+  0% { transform: translate(0, 0) rotate(0deg) rotateY(0deg); }
+  /* tear free + pop up, already tipping outward */
+  22% { transform: translate(-10px, -6px) rotate(-11deg) rotateY(13deg); }
+  /* fall past the resting line, tip past the resting angle */
+  62% { transform: translate(-17px, 7px) rotate(-19deg) rotateY(23deg); }
   /* bounce back up a touch */
-  82% { transform: translate(-12px, 1px) rotate(-16deg); }
-  100% { transform: translate(-12px, 3px) rotate(-17deg); }
+  82% { transform: translate(-15px, 1px) rotate(-16deg) rotateY(16deg); }
+  100% { transform: translate(-15px, 3px) rotate(-17deg) rotateY(18deg); }
 }
 
 @keyframes cookieSnapRight {
-  0% { transform: translate(0, 0) rotate(0deg); }
-  22% { transform: translate(7px, -3px) rotate(8deg); }
-  62% { transform: translate(13px, 4px) rotate(15deg); }
-  82% { transform: translate(11px, -1px) rotate(12deg); }
-  100% { transform: translate(11px, 1px) rotate(13deg); }
+  0% { transform: translate(0, 0) rotate(0deg) rotateY(0deg); }
+  22% { transform: translate(9px, -4px) rotate(8deg) rotateY(-10deg); }
+  62% { transform: translate(16px, 5px) rotate(15deg) rotateY(-18deg); }
+  82% { transform: translate(14px, -1px) rotate(12deg) rotateY(-12deg); }
+  100% { transform: translate(14px, 1px) rotate(13deg) rotateY(-14deg); }
 }
 
 @keyframes cookieSnapLeftClown {
-  0% { transform: translate(0, 0) rotate(0deg); }
-  22% { transform: translate(-12px, -10px) rotate(-19deg); }
-  62% { transform: translate(-21px, 8px) rotate(-32deg); }
-  82% { transform: translate(-17px, 0) rotate(-26deg); }
-  100% { transform: translate(-17px, 4px) rotate(-28deg); }
+  0% { transform: translate(0, 0) rotate(0deg) rotateY(0deg); }
+  22% { transform: translate(-15px, -12px) rotate(-19deg) rotateY(24deg); }
+  62% { transform: translate(-26px, 9px) rotate(-32deg) rotateY(40deg); }
+  82% { transform: translate(-21px, 0) rotate(-26deg) rotateY(28deg); }
+  100% { transform: translate(-21px, 4px) rotate(-28deg) rotateY(32deg); }
 }
 
 @keyframes cookieSnapRightClown {
-  0% { transform: translate(0, 0) rotate(0deg); }
-  22% { transform: translate(11px, -7px) rotate(15deg); }
-  62% { transform: translate(19px, 6px) rotate(27deg); }
-  82% { transform: translate(15px, -2px) rotate(21deg); }
-  100% { transform: translate(15px, 2px) rotate(23deg); }
+  0% { transform: translate(0, 0) rotate(0deg) rotateY(0deg); }
+  22% { transform: translate(14px, -8px) rotate(15deg) rotateY(-19deg); }
+  62% { transform: translate(24px, 7px) rotate(27deg) rotateY(-32deg); }
+  82% { transform: translate(19px, -2px) rotate(21deg) rotateY(-22deg); }
+  100% { transform: translate(19px, 2px) rotate(23deg) rotateY(-26deg); }
 }
 
 /* NOTE: cookieSnapRight / cookieSnapRightClown are the FINAL animations of the sequence and are
@@ -3854,11 +3876,13 @@ button:active:not(:disabled) {
    either keyframe here without updating that array downgrades every reveal to the slow fallback
    timeout. */
 .fortune-stage.fortune-cracking .fortune-half-left {
-  animation: cookieSnapLeft 470ms 170ms cubic-bezier(0.32, 0.86, 0.4, 1) both;
+  animation: cookieSnapLeft 470ms 210ms cubic-bezier(0.32, 0.86, 0.4, 1) both;
+  transform-origin: 100% 50%;
 }
 
 .fortune-stage.fortune-cracking .fortune-half-right {
-  animation: cookieSnapRight 470ms 170ms cubic-bezier(0.32, 0.86, 0.4, 1) both;
+  animation: cookieSnapRight 470ms 210ms cubic-bezier(0.32, 0.86, 0.4, 1) both;
+  transform-origin: 0 50%;
 }
 
 .fortune-stage.fortune-cracking.fortune-cracking-clown .fortune-half-left {
@@ -3889,6 +3913,16 @@ button:active:not(:disabled) {
   will-change: transform, opacity;
 }
 
+/* The 2-3 larger shards among the dust. Heavier: they fall FASTER (shorter duration, steeper
+   ease-in), tumble less (JS scales --spin down to ~28%), and read as chipped edges rather than
+   pebbles thanks to the angular border-radius. */
+.fortune-chunk {
+  animation-duration: 620ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.9, 0.3);
+  border-radius: 22% 42% 26% 46%;
+  box-shadow: inset -1px -1px 0 rgba(80, 48, 16, 0.35);
+}
+
 /* Pop outward/up first, then FALL with an accelerating (ease-in) curve past the cookie, fading
    out on the way down. The horizontal drift is linear-ish across the whole life, as debris does. */
 @keyframes cookieCrumbFall {
@@ -3914,53 +3948,91 @@ button:active:not(:disabled) {
   }
 }
 
-/* The blank sliver that UNFURLS between the halves during the split: it starts folded flat and
-   tipped away, then unrolls to full height with a small overshoot. It is swapped for the real
-   .fortune-paper at reveal, so it only ever exists for the ~500ms of phase 2. */
-.fortune-slip {
-  animation: fortuneSlipUnfurl 500ms 190ms cubic-bezier(0.22, 1.12, 0.36, 1) both;
-  background: linear-gradient(180deg, #fffdf6 0%, #f7f1de 100%);
-  border: 1px solid rgba(17, 23, 34, 0.18);
-  border-radius: 3px;
-  box-shadow: 0 3px 8px rgba(17, 23, 34, 0.22);
-  flex: 0 1 auto;
-  height: 44px;
-  /* The unfurl tips the slip in 3D, so it needs depth and a fixed hinge at the bottom edge. */
-  perspective: 260px;
-  transform-origin: 50% 100%;
-  width: 96px;
+/* -- The fracture flash. A thin white zigzag snapped across the seam at the exact moment the
+   cookie gives, gone in ~110ms. clip-path draws the jag: a narrow band whose top and bottom
+   edges step back and forth, so the lit shape is a lightning-style crack rather than a bar.
+   Spawned and removed in JS (see CRACK_FLASH_MS, js/04-flow.js); pointer-events: none so it can
+   never intercept a click. -- */
+.fortune-crack-line {
+  animation: cookieCrackFlash 110ms ease-out both;
+  background: linear-gradient(90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 248, 230, 0.95) 22%,
+    #fffdf4 50%,
+    rgba(255, 248, 230, 0.95) 78%,
+    rgba(255, 255, 255, 0) 100%);
+  clip-path: polygon(
+    0 42%, 9% 20%, 18% 55%, 27% 24%, 36% 60%, 45% 26%, 54% 58%, 63% 22%,
+    72% 56%, 81% 25%, 90% 58%, 100% 34%,
+    100% 62%, 90% 84%, 81% 50%, 72% 82%, 63% 46%, 54% 80%, 45% 48%, 36% 84%,
+    27% 46%, 18% 80%, 9% 44%, 0 70%);
+  filter: drop-shadow(0 0 4px rgba(255, 226, 158, 0.9));
+  height: 132px;
+  left: 50%;
+  pointer-events: none;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 26px;
+  z-index: 3;
 }
 
+@keyframes cookieCrackFlash {
+  0% { opacity: 0; transform: translate(-50%, -50%) scaleY(0.25); }
+  22% { opacity: 1; transform: translate(-50%, -50%) scaleY(1.06); }
+  55% { opacity: 0.85; transform: translate(-50%, -50%) scaleY(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scaleY(1.04); }
+}
+
+/* The blank sliver that UNROLLS from between the halves during the split. It is a LONG THIN
+   HORIZONTAL strip -- a real fortune slip is pulled out sideways -- so it starts as a sliver at
+   the seam and grows along X, not Y. It is swapped for the real .fortune-paper at reveal, so it
+   only ever exists for the ~500ms of phase 2. Its box must match .fortune-paper's so the swap is
+   seamless. */
+.fortune-slip {
+  animation: fortuneSlipUnfurl 500ms 230ms cubic-bezier(0.22, 1.12, 0.36, 1) both;
+  background: #fefefe;
+  border: 1px solid rgba(17, 23, 34, 0.16);
+  border-radius: 3px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
+  flex: 0 1 auto;
+  height: 62px;
+  /* The unroll tips the strip in 3D around its vertical centre line, so the hinge is the seam. */
+  transform-origin: 50% 50%;
+  width: min(60%, 520px);
+}
+
+/* Horizontal unroll: the strip is squashed to a sliver at the seam and rotated away around Y,
+   then rolls open sideways with a small overshoot before settling flat. */
 @keyframes fortuneSlipUnfurl {
   0% {
     opacity: 0;
-    /* Folded: no height, tipped away from the viewer, slightly skewed as a curled sheet is. */
-    box-shadow: 0 1px 2px rgba(17, 23, 34, 0.4);
-    transform: translateY(10px) scaleY(0.08) rotateX(-72deg) skewX(-6deg);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+    transform: scaleX(0.04) rotateY(-62deg) skewY(-3deg);
   }
   35% {
     opacity: 1;
-    box-shadow: 0 6px 10px rgba(17, 23, 34, 0.34);
-    transform: translateY(2px) scaleY(0.55) rotateX(-34deg) skewX(-3deg);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.42);
+    transform: scaleX(0.5) rotateY(-28deg) skewY(-1.5deg);
   }
   72% {
     opacity: 1;
-    /* Overshoot: unrolls a hair past full height and past flat. */
-    box-shadow: 0 8px 14px rgba(17, 23, 34, 0.24);
-    transform: translateY(-3px) scaleY(1.08) rotateX(7deg) skewX(1deg);
+    /* Overshoot: unrolls a hair past full width and past flat. */
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.36);
+    transform: scaleX(1.05) rotateY(6deg) skewY(0.6deg);
   }
   100% {
     opacity: 1;
-    box-shadow: 0 3px 8px rgba(17, 23, 34, 0.22);
-    transform: translateY(0) scaleY(1) rotateX(0deg) skewX(0deg);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
+    transform: scaleX(1) rotateY(0deg) skewY(0deg);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   /* Collapse every phase to effectively instant. The halves still land on their split pose
-     (fill-mode: both), so the final half | paper | half layout is identical. Crumbs are never
-     spawned at all under reduced motion (JS checks matchMedia before creating them); this rule
-     is only a belt-and-braces guard in case one ever slips through. */
+     (fill-mode: both), so the final half | paper | half layout is identical. Crumbs and the crack
+     flash are never spawned at all under reduced motion (JS checks matchMedia before creating
+     them); these rules are only a belt-and-braces guard in case one ever slips through. */
   .fortune-stage {
     animation: none;
   }
@@ -3969,71 +4041,61 @@ button:active:not(:disabled) {
   .fortune-stage.fortune-cracking.fortune-cracking-clown,
   .fortune-stage.fortune-cracking .fortune-half-left,
   .fortune-stage.fortune-cracking .fortune-half-right,
-  .fortune-slip {
+  .fortune-slip,
+  .fortune-crack-line {
     animation-delay: 0ms;
     animation-duration: 1ms;
   }
 
-  .fortune-crumbs {
+  .fortune-crumbs,
+  .fortune-crack-line {
     display: none;
   }
 }
 
-/* The revealed fortune, printed on a thin paper slip pulled from the cookie. */
+/* The revealed fortune: a LONG THIN HORIZONTAL white strip, like the real slip out of a fortune
+   cookie. White paper, black text, no decoration -- readability is the whole point. Its box
+   deliberately matches .fortune-slip's (same width/height/border/radius/background) so the swap
+   from blank sliver to printed slip is invisible. */
 .fortune-paper {
-  /* Continues the slip's unfurl rather than restarting a fresh pop: it picks the sheet up from a
+  /* Continues the slip's unroll rather than restarting a fresh pop: it picks the strip up from a
      slight remaining tip and settles it flat. */
   animation: fortunePaperIn 280ms cubic-bezier(0.22, 1.1, 0.36, 1) both;
-  perspective: 420px;
-  background: linear-gradient(180deg, #fffdf6 0%, #f7f1de 100%);
-  border: 1px solid rgba(17, 23, 34, 0.18);
+  align-items: center;
+  background: #fefefe;
+  border: 1px solid rgba(17, 23, 34, 0.16);
   border-radius: 3px;
-  box-shadow:
-    0 3px 8px rgba(17, 23, 34, 0.22),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.5);
-  color: #2c2416;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
+  color: #111111;
+  display: flex;
+  /* Sits as the middle child of .fortune-stage between the two 90px halves. It shrinks first, so
+     half | paper | half never overflows the reward aside even at the narrow single-column
+     breakpoint (90 + 90 + a shrunk strip still fits). */
+  flex: 0 1 auto;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 15px;
-  font-style: italic;
-  line-height: 1.4;
-  /* Sits as the middle child of .fortune-stage: the halves are fixed 60px each, the paper takes
-     the rest and shrinks first so half | paper | half never overflows the reward aside. */
-  flex: 1 1 auto;
-  margin: 4px 6px;
-  max-width: 420px;
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 500;
+  height: 62px;
+  justify-content: center;
+  line-height: 1.35;
+  margin: 0;
   min-width: 0;
-  padding: 12px 16px 20px;
+  /* Extra right padding reserves the corner the rarity word sits in, so long fortunes never
+     collide with it. */
+  padding: 10px 74px 10px 18px;
   position: relative;
-}
-
-/* Torn/deckled edge on both short ends of the slip, so it reads as paper, not a card. */
-.fortune-paper::before,
-.fortune-paper::after {
-  background-image: linear-gradient(135deg, transparent 50%, #f7f1de 50%),
-    linear-gradient(-135deg, transparent 50%, #f7f1de 50%);
-  background-position: left top;
-  background-repeat: repeat-x;
-  background-size: 8px 6px;
-  content: "";
-  height: 6px;
-  left: 0;
-  position: absolute;
-  width: 100%;
-}
-
-.fortune-paper::before {
-  top: -1px;
-}
-
-.fortune-paper::after {
-  bottom: -1px;
-  transform: rotate(180deg);
+  text-align: center;
+  width: min(60%, 520px);
+  /* The strip overlaps the parted halves' inner edges, so it reads as one slip sticking out of a
+     cracked cookie rather than three separate objects in a row. */
+  z-index: 2;
 }
 
 @keyframes fortunePaperIn {
-  0% { opacity: 0; transform: translateY(-4px) scaleY(0.94) rotateX(-14deg); }
-  55% { opacity: 1; transform: translateY(1px) scaleY(1.03) rotateX(4deg); }
-  100% { opacity: 1; transform: translateY(0) scaleY(1) rotateX(0deg); }
+  0% { opacity: 0; transform: scaleX(0.96) rotateY(-12deg); }
+  55% { opacity: 1; transform: scaleX(1.02) rotateY(3deg); }
+  100% { opacity: 1; transform: scaleX(1) rotateY(0deg); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4042,28 +4104,36 @@ button:active:not(:disabled) {
   }
 }
 
-/* Rarity word, bottom-right on the paper slip. Colour comes from inline style (data-driven,
-   fortune.rarity.color); this rule only owns layout/weight/case. */
+/* Rarity word, bottom-right ON the strip. Colour comes from inline style (data-driven,
+   fortune.rarity.color); this rule only owns position/layout/weight/case. */
 .fortune-rarity {
+  bottom: 5px;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 11px;
   font-style: normal;
   font-weight: 700;
   letter-spacing: 0.06em;
-  margin-top: 10px;
-  padding: 1px 5px;
-  text-align: right;
+  line-height: 1;
+  margin: 0;
+  padding: 2px 5px;
+  position: absolute;
+  right: 8px;
   text-transform: uppercase;
 }
 
-/* CLOWN's near-black red (#5a1f24) is otherwise unreadable on the pale slip: a light chip
-   behind the word keeps it legible without special-casing every other rarity's colour. */
-.fortune-rarity.fortune-rarity-dark {
-  background: rgba(255, 253, 246, 0.82);
+/* On a WHITE strip it is the LIGHT rarity colours that vanish (common #9aa7b8, uncommon #74d3a4,
+   unique #f2c45f, legendary #ff9c3d, and to a lesser degree rare/epic). ONE general mechanism,
+   applied by luminance in JS (isLightRarityColor, js/04-flow.js): a soft gray chip behind the
+   word plus a hairline dark ring and a fine dark text-shadow. That darkens the surround without
+   altering the rarity colour itself, so every tier stays identifiable and readable. Dark colours
+   (clown #5a1f24) skip it -- they already have plenty of contrast on white. */
+.fortune-rarity.fortune-rarity-light {
+  background: rgba(17, 23, 34, 0.08);
   border-radius: 4px;
-  box-shadow: 0 0 0 1px rgba(17, 23, 34, 0.12);
-  display: inline-block;
-  float: right;
+  box-shadow: 0 0 0 1px rgba(17, 23, 34, 0.22);
+  text-shadow:
+    0 0 1px rgba(17, 23, 34, 0.55),
+    0 1px 0 rgba(17, 23, 34, 0.3);
 }
 
 /* ============================================================
@@ -4091,27 +4161,49 @@ button:active:not(:disabled) {
   gap: 8px;
   justify-content: center;
   text-align: center;
+  /* FULL-WIDTH HERO. .reward-grid is `display: grid` with three columns (and one column at the
+     narrow breakpoint), so 1 / -1 spans every column in both cases: the fortune panel is never a
+     third of the row, it owns the whole reward area with the cookie centred in it. */
+  grid-column: 1 / -1;
+  padding: 18px 20px 16px;
 }
 
-/* Soft gold bloom sitting BEHIND the cookie stage. Rarity-neutral by construction. */
+/* Soft gold bloom sitting BEHIND the cookie stage. Scaled up with the hero. Rarity-neutral by
+   construction. */
 .card.fortune-card .fortune-stage::before {
   background: radial-gradient(circle at 50% 50%, rgba(255, 214, 130, 0.3) 0%, rgba(255, 196, 90, 0.12) 45%, rgba(255, 196, 90, 0) 72%);
   content: "";
-  height: 210px;
+  height: 320px;
   left: 50%;
   pointer-events: none;
   position: absolute;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: 260px;
+  width: 400px;
   z-index: 0;
 }
 
-.card.fortune-card .fortune-half,
+/* All three stage children sit above the bloom. The slip/paper take a higher z-index than the
+   halves so the strip's ends read as passing IN FRONT of the broken inner edges. */
+.card.fortune-card .fortune-half {
+  position: relative;
+  z-index: 1;
+}
+
 .card.fortune-card .fortune-slip,
 .card.fortune-card .fortune-paper {
   position: relative;
-  z-index: 1;
+  z-index: 2;
+}
+
+/* The action row stays a centred cluster rather than stretching across the whole full-width
+   panel. (The intro/hint get the same max-width in their own rules below -- they set a `margin`
+   shorthand there, which would otherwise clobber the auto margins if they were set here.) */
+.card.fortune-card .price.fortune-actions {
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 480px;
+  width: 100%;
 }
 
 .card.fortune-card h2 {
@@ -4123,14 +4215,16 @@ button:active:not(:disabled) {
 .card.fortune-card .fortune-intro {
   color: rgba(243, 231, 210, 0.78);
   font-size: 14px;
-  margin: 0;
+  margin: 0 auto;
+  max-width: 480px;
 }
 
 .card.fortune-card .fortune-hint {
   color: rgba(243, 231, 210, 0.46);
   font-size: 11.5px;
   line-height: 1.35;
-  margin: 2px 0 0;
+  margin: 2px auto 0;
+  max-width: 480px;
 }
 
 .card.fortune-card .price.fortune-actions {

@@ -20,6 +20,17 @@
 
 const CHANGELOG = [
   {
+    version: "0.14.3",
+    date: "2026-08-10",
+    title: "A readable fortune",
+    notes: [
+      "The fortune cookie screen now uses the whole panel, with a much bigger cookie front and center.",
+      "The fortune itself is now a proper slip: a long thin white strip with clear black text, like the real thing. The rarity keeps its own color in the corner.",
+      "The crack got another pass: the cookie visibly strains with two little jolts before it gives, a crack flashes across the seam at the moment it breaks, the halves tip outward in 3D instead of swinging flat, and a few bigger chunks fall with the crumbs.",
+      "The slip now unrolls sideways from between the halves instead of growing upward."
+    ]
+  },
+  {
     version: "0.14.2",
     date: "2026-08-10",
     title: "Crack with feeling",
