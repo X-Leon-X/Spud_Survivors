@@ -20,6 +20,15 @@
 
 const CHANGELOG = [
   {
+    version: "0.13.2",
+    date: "2026-08-10",
+    title: "Staying signed in",
+    notes: [
+      "Fixed syncing failing with a JWT expired error about an hour after logging in. Your login now renews itself quietly in the background instead of going stale.",
+      "If a sync is refused because the login has aged out, it renews and retries once on its own, so you should never have to log in again just to sync."
+    ]
+  },
+  {
     version: "0.13.1",
     date: "2026-08-10",
     title: "Log in from the title screen, progress codes retired",

@@ -39,6 +39,11 @@ function loadAccountSession() {
 }
 
 function saveAccountSession(session) {
+  // Supabase returns expires_in (seconds from now). Convert it to an absolute timestamp on
+  // the way in, because a relative value is meaningless once it has been sat in storage.
+  if (session && session.expires_in && !session.expires_at) {
+    session.expires_at = Date.now() + session.expires_in * 1000;
+  }
   accountSession = session;
   try {
     if (session) localStorage.setItem(ACCOUNT_SESSION_KEY, JSON.stringify(session));
@@ -46,6 +51,53 @@ function saveAccountSession(session) {
   } catch {
     // Storage unavailable: the player simply logs in again next time.
   }
+}
+
+// Access tokens last about an hour. Without this, the first sync after that hour failed with
+// "JWT expired" and stayed broken until the player logged in again by hand -- the refresh
+// token was being stored and then never used. Refreshed a minute early so a request cannot
+// set off with a token that expires mid-flight.
+const ACCOUNT_TOKEN_SKEW_MS = 60 * 1000;
+
+function accountTokenExpired() {
+  if (!accountSession?.expires_at) return false;   // unknown expiry: let the request decide
+  return Date.now() >= accountSession.expires_at - ACCOUNT_TOKEN_SKEW_MS;
+}
+
+let accountRefreshInFlight = null;
+
+async function accountRefreshSession() {
+  const refreshToken = accountSession?.refresh_token;
+  if (!refreshToken) return false;
+  // Collapse concurrent refreshes: pull and push fire together on login, and two refreshes
+  // racing would spend the single-use refresh token twice and log the player out.
+  if (accountRefreshInFlight) return accountRefreshInFlight;
+
+  accountRefreshInFlight = (async () => {
+    try {
+      const response = await fetch(`${ACCOUNT_URL}/auth/v1/token?grant_type=refresh_token`, {
+        method: "POST",
+        headers: { apikey: ACCOUNT_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: refreshToken })
+      });
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : null;
+      if (!response.ok || !data?.access_token) {
+        // The refresh token itself is dead (revoked, or too long since the last visit).
+        // Clear the session so the UI honestly shows a logged-out state.
+        saveAccountSession(null);
+        return false;
+      }
+      saveAccountSession({ ...accountSession, ...data });
+      return true;
+    } catch {
+      return false;                                 // offline: keep the session, try later
+    } finally {
+      accountRefreshInFlight = null;
+    }
+  })();
+
+  return accountRefreshInFlight;
 }
 
 function isLoggedIn() {
@@ -58,7 +110,13 @@ function accountEmail() {
 
 // Shared fetch wrapper. Returns { ok, data, error } instead of throwing, because every
 // caller here has to degrade gracefully rather than interrupt a run.
-async function accountRequest(path, { method = "GET", body, auth = false, headers = {} } = {}) {
+async function accountRequest(path, { method = "GET", body, auth = false, headers = {}, _retried = false } = {}) {
+  // Refresh BEFORE sending if the token is known to be expired, so the common case costs one
+  // round trip instead of failing and retrying.
+  if (auth && accountTokenExpired()) {
+    await accountRefreshSession();
+  }
+
   const finalHeaders = {
     apikey: ACCOUNT_KEY,
     "Content-Type": "application/json",
@@ -75,6 +133,16 @@ async function accountRequest(path, { method = "GET", body, auth = false, header
     });
     const text = await response.text();
     const data = text ? JSON.parse(text) : null;
+
+    // Belt and braces: a token can still be rejected even when the clock said it was fine
+    // (clock skew, or a session revoked server-side). Refresh once and replay the request.
+    // _retried stops this recursing if the refreshed token is rejected too.
+    if (!response.ok && auth && !_retried && (response.status === 401 || data?.code === "PGRST301")) {
+      if (await accountRefreshSession()) {
+        return accountRequest(path, { method, body, auth, headers, _retried: true });
+      }
+    }
+
     if (!response.ok) {
       return { ok: false, data, error: data?.msg || data?.error_description || data?.message || `Request failed (${response.status})` };
     }
@@ -136,9 +204,13 @@ function accountHandleRecoveryLink() {
   const token = params.get("access_token");
   const type = params.get("type");
   if (!token || type !== "recovery") return false;
+  // Carry expires_in through as well, or this session would have no known expiry and would
+  // only ever refresh reactively after a failed request.
+  const expiresIn = Number(params.get("expires_in"));
   saveAccountSession({
     access_token: token,
     refresh_token: params.get("refresh_token"),
+    expires_in: Number.isFinite(expiresIn) && expiresIn > 0 ? expiresIn : undefined,
     user: { email: null }
   });
   history.replaceState(null, "", location.pathname + location.search);
