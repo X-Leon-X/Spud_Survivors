@@ -758,6 +758,57 @@ function isDarkRarityColor(hexColor) {
   return luminance < 0.45;
 }
 
+// ---- Fortune crack timing. These MUST stay in step with the @keyframes/animation declarations
+// in styles.css (.fortune-stage.fortune-cracking* and its children):
+//   phase 1  anticipation/squeeze   0 -> 170ms   (cookieSqueeze / cookieSqueezeClown, stage)
+//   snap     sfx + crumb burst      @ 170ms
+//   phase 2  asymmetric split       170 -> 640ms (cookieSnapLeft/Right, halves)
+//   phase 2b slip unfurl            190 -> 690ms (fortuneSlipUnfurl, slip)
+// Total ~690ms of animation; the reveal fires on the LAST half animation (cookieSnapRight*).
+const CRACK_SQUEEZE_MS = 170;
+const CRACK_SNAP_MS = CRACK_SQUEEZE_MS;
+const CRACK_TOTAL_MS = 690;
+const CRUMB_LIFE_MS = 760;
+
+function prefersReducedMotion() {
+  return typeof window.matchMedia === "function"
+    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+// Spawns 7-10 crumb divs at the seam of the cracked cookie. Each is randomized inline (size,
+// tan tone, seam offset, horizontal drift via the --dx custom property, spin via --spin, and a
+// small stagger) so no two bursts look alike; the CSS keyframes do pop-up-then-accelerating-fall.
+// Every crumb is removed by ONE cleanup timeout keyed off the longest possible life.
+function spawnCookieCrumbs(stage, isClown) {
+  const layer = document.createElement("div");
+  layer.className = "fortune-crumbs";
+
+  const tones = ["#d9a45b", "#cf9850", "#c08a45", "#b5813e", "#a8763a", "#e0b06a"];
+  const count = 7 + Math.floor(Math.random() * 4); // 7-10
+  // Clown cookies throw debris further and faster.
+  const spread = isClown ? 52 : 30;
+
+  for (let i = 0; i < count; i += 1) {
+    const crumb = document.createElement("div");
+    crumb.className = "fortune-crumb";
+    const size = 3 + Math.random() * 3; // 3-6px
+    crumb.style.width = `${size.toFixed(1)}px`;
+    crumb.style.height = `${(size * (0.72 + Math.random() * 0.5)).toFixed(1)}px`;
+    crumb.style.background = tones[Math.floor(Math.random() * tones.length)];
+    // Seam-relative start: the seam is the horizontal centre of the stage.
+    crumb.style.left = `calc(50% + ${(Math.random() * 14 - 7).toFixed(1)}px)`;
+    crumb.style.top = `${(46 + Math.random() * 22).toFixed(1)}px`;
+    crumb.style.setProperty("--dx", `${((Math.random() * 2 - 1) * spread).toFixed(1)}px`);
+    crumb.style.setProperty("--pop", `${(-10 - Math.random() * 12).toFixed(1)}px`);
+    crumb.style.setProperty("--spin", `${((Math.random() * 2 - 1) * (isClown ? 540 : 260)).toFixed(0)}deg`);
+    crumb.style.animationDelay = `${Math.floor(Math.random() * 70)}ms`;
+    layer.appendChild(crumb);
+  }
+
+  stage.appendChild(layer);
+  window.setTimeout(() => layer.remove(), CRUMB_LIFE_MS + 200);
+}
+
 function showFortuneReward(fortune) {
   state.mode = "reward";
   ui.reward.classList.remove("hidden");
@@ -773,7 +824,10 @@ function showFortuneReward(fortune) {
     : "A fortune cookie, still sealed.";
 
   const card = document.createElement("article");
-  card.className = "card";
+  // .fortune-card is the dedicated look (warm dark backdrop, gold radial glow behind the stage,
+  // thin amber border). It is deliberately rarity-NEUTRAL: nothing about the card, glow, border
+  // or button colours varies with fortune.rarity, so the panel leaks nothing before the crack.
+  card.className = "card fortune-card";
 
   const heading = document.createElement("h2");
   heading.textContent = "Fortune Cookie";
@@ -796,20 +850,35 @@ function showFortuneReward(fortune) {
   card.appendChild(stage);
 
   const body = document.createElement("p");
-  body.textContent = "It's still wrapped. Crack it open to read your fortune, or eat it whole without looking.";
+  body.className = "fortune-intro";
+  body.textContent = "Still sealed. What's inside stays secret until you crack it.";
   card.appendChild(body);
 
   const priceRow = document.createElement("div");
-  priceRow.className = "price";
+  priceRow.className = "price fortune-actions";
 
   const crackButton = document.createElement("button");
   crackButton.type = "button";
+  // Primary action: warm gold fill, owns the row.
+  crackButton.className = "fortune-crack-btn";
   crackButton.textContent = "Crack it open";
 
   const eatButton = document.createElement("button");
   eatButton.type = "button";
-  eatButton.className = "recycle";
+  // Secondary/ominous. The old .recycle class is dropped on purpose: its only rule is
+  // `.price button.recycle { background: var(--gold) }`, which would fight the muted eat styling
+  // at equal-ish specificity. Nothing else in the codebase keys off .recycle for this button
+  // (grep: it is only ever used for shop/crate recycle buttons, which are untouched).
+  eatButton.className = "fortune-eat-btn";
   eatButton.textContent = "Eat it whole";
+
+  // Small muted line under the buttons so the cost of the shortcut is unambiguous before the
+  // player commits. Declared here (ahead of the handlers that capture it) and appended to the
+  // card further down, after priceRow; it is removed at reveal, by which point the choice has
+  // already been made.
+  const hint = document.createElement("p");
+  hint.className = "fortune-hint";
+  hint.textContent = "Eating it whole skips the fortune. You will choke (-1 max HP).";
 
   eatButton.addEventListener("click", () => {
     // Eating it whole skips the fortune entirely: no paper, no effect, and you choke on it for
@@ -845,6 +914,23 @@ function showFortuneReward(fortune) {
     slip.className = "fortune-slip";
     stage.insertBefore(slip, cookieRight);
 
+    // The crunch is fired at the SNAP moment (end of the squeeze), not at click: hearing the
+    // break before the cookie has visibly given way is what made the old version feel fake.
+    // "tree" is the existing tree-breaking sfx -- dry and crunchy, no new audio files.
+    window.setTimeout(() => {
+      if (typeof playSfx === "function") playSfx("tree");
+    }, CRACK_SNAP_MS);
+
+    // Crumb burst: real breakage throws debris. Spawned at the snap, gravity-fallen, then
+    // removed wholesale by a single cleanup timeout so repeated fortune panels never accumulate
+    // orphan nodes. Skipped entirely under reduced motion (no particles at all).
+    if (!prefersReducedMotion()) {
+      window.setTimeout(() => {
+        if (!stage.isConnected) return;
+        spawnCookieCrumbs(stage, isClown);
+      }, CRACK_SNAP_MS);
+    }
+
     let revealed = false;
     const revealFortune = () => {
       if (revealed) return; // animationend + timeout fallback must not both fire
@@ -865,6 +951,10 @@ function showFortuneReward(fortune) {
       // back together. Only the intro text goes away here.
       ui.rewardTitle.textContent = "Your Fortune";
       body.remove();
+      hint.remove();
+      // Post-reveal styling hook: dims the heading and lets the paper be the visual hero while
+      // the warm glow stays. Purely presentational -- still no rarity information on the card.
+      card.classList.add("fortune-card-revealed");
 
       const paper = document.createElement("p");
       paper.className = "fortune-paper";
@@ -884,20 +974,23 @@ function showFortuneReward(fortune) {
 
       const continueButton = document.createElement("button");
       continueButton.type = "button";
+      continueButton.className = "fortune-continue-btn";
       continueButton.textContent = "Continue";
       continueButton.addEventListener("click", () => continueRewards());
       priceRow.innerHTML = "";
       priceRow.appendChild(continueButton);
     };
 
-    // animationend BUBBLES, and the crack plays several animations at once (stage shake, both
-    // halves splitting, the slip rising). A plain { once: true } listener would be consumed by
-    // whichever finishes FIRST -- the shake at ~240ms -- revealing the paper before the halves
-    // have parted. So the listener is NOT once-only: it ignores every animationend except the
-    // one named cookieSplitRight (the right half, which runs to the end of the sequence), and
-    // only then reveals. Note this deliberately filters on animation NAME, not on target: the
-    // clown variant swaps the name via animation-name, so both names are accepted.
-    const FINAL_ANIMATIONS = ["cookieSplitRight", "cookieSplitRightClown"];
+    // animationend BUBBLES, and the crack plays several animations at once (stage squeeze, both
+    // halves snapping apart, the slip unfurling, every crumb falling). A plain { once: true }
+    // listener would be consumed by whichever finishes FIRST -- the 170ms squeeze -- revealing
+    // the paper before the halves have parted. So the listener is NOT once-only: it ignores
+    // every animationend except the one named cookieSnapRight (the right half, which runs to the
+    // end of the sequence), and only then reveals. This deliberately filters on animation NAME,
+    // not on target: the clown variant swaps the name via animation-name, so both are accepted.
+    // If these keyframes are ever renamed in styles.css, THIS LIST MUST BE RENAMED WITH THEM --
+    // a mismatch silently downgrades every reveal to the slow timeout fallback.
+    const FINAL_ANIMATIONS = ["cookieSnapRight", "cookieSnapRightClown"];
     function onCrackAnimationEnd(event) {
       if (!FINAL_ANIMATIONS.includes(event.animationName)) return;
       revealFortune();
@@ -906,14 +999,15 @@ function showFortuneReward(fortune) {
 
     // A mis-fired/skipped animationend (tab backgrounded, style recalculated away, etc.) must
     // never leave the player stuck with no Continue button -- the timeout fallback guarantees
-    // the reveal happens regardless. Sized to the full sequence (240ms shake + 460ms split =
-    // 700ms) plus a generous margin.
-    window.setTimeout(revealFortune, 1400);
+    // the reveal happens regardless. Sized to the full sequence (~690ms) plus a generous margin.
+    window.setTimeout(revealFortune, CRACK_TOTAL_MS + 600);
   });
 
   priceRow.appendChild(crackButton);
   priceRow.appendChild(eatButton);
   card.appendChild(priceRow);
+  card.appendChild(hint);
+
   ui.rewardCards.appendChild(card);
 }
 

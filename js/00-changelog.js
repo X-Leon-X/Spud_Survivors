@@ -20,6 +20,17 @@
 
 const CHANGELOG = [
   {
+    version: "0.14.2",
+    date: "2026-08-10",
+    title: "Crack with feeling",
+    notes: [
+      "Cracking a fortune cookie now feels like breaking a real one. It squeezes under pressure, snaps with a crunch, throws crumbs, and the halves tumble apart before settling.",
+      "The paper slip unrolls between the halves instead of just appearing.",
+      "The fortune cookie screen got its own warm look, with a proper glow behind the cookie and clearer buttons. Cracking is the big gold one. Eating it whole is the quiet one, and it now says plainly what it will cost you.",
+      "Nothing about the cookie hints at what rarity is inside until you crack it. That would spoil the fun."
+    ]
+  },
+  {
     version: "0.14.1",
     date: "2026-08-10",
     title: "A proper crack",
