@@ -20,6 +20,20 @@
 
 const CHANGELOG = [
   {
+    version: "0.14.0",
+    date: "2026-08-10",
+    title: "Fortune cookies",
+    notes: [
+      "Fortune cookies you pick up during a wave are now saved instead of doing nothing. They open after the wave, in their own screen just before the shop.",
+      "Crack one open to read your fortune. The slip tells you whether something good or bad is coming and roughly when, but never what it actually is. You find that out when it happens.",
+      "Or eat the whole thing without looking. You will choke on it and lose 1 max HP, and you will never know what the fortune said. Once a cookie is cracked open you cannot eat it.",
+      "Fortunes come in Common, Uncommon, Rare, Epic, Legendary, Unique and something else. The rarity is printed in the corner of the slip. Rarer slips hit harder.",
+      "Whatever a fortune does, it lasts for one wave only, and the game tells you outright when it kicks in.",
+      "Pick up several cookies in a wave and you open them one after another. Every fortune you crack will play out.",
+      "Unique items are now gold everywhere instead of sharing Legendary orange."
+    ]
+  },
+  {
     version: "0.13.2",
     date: "2026-08-10",
     title: "Staying signed in",

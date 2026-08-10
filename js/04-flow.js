@@ -7,7 +7,7 @@ let lastTime = performance.now();
 let messageToken = 0;
 
 function maxWeaponSlots() {
-  return BASE_WEAPON_SLOTS + (state?.extraWeaponSlots ?? 0);
+  return BASE_WEAPON_SLOTS + (state?.extraWeaponSlots ?? 0) + (state?.temp?.extraWeaponSlots ?? 0);
 }
 
 function freshState() {
@@ -33,6 +33,8 @@ function freshState() {
     weaponMods: [],
     pendingCrates: 0,
     pendingCrateItems: [],
+    pendingFortunes: [],
+    armedFortunes: [],
     bodyRewardChoices: [],
     rewardRerollCount: 0,
     detailTipDismissed: false,
@@ -41,6 +43,7 @@ function freshState() {
     recycleRate: 0.35,
     treeOneShot: false,
     extraWeaponSlots: 0,
+    temp: { stats: {}, effects: {}, extraWeaponSlots: 0, weapons: [], flags: {} },
     character: selectedCharacter,
     runStats: freshRunStats(),
     player: {
@@ -172,6 +175,62 @@ function startWave() {
   hideReward();
   playSfx("wave");
   showMessage(`Wave ${state.wave}`, "More scrap. Meaner shapes.", 1100);
+  applyArmedFortunes();
+  applyPeashooterOnlyIfArmed();
+}
+
+// CLOWN consumer: peashooterOnly. Runs AFTER applyArmedFortunes() so the flag it sets (via
+// applyFortune -> FORTUNE_CLOWN_EFFECTS.peashooterOnly.apply, js/03d-fortunes.js) is already on
+// state.temp.flags by the time this checks it. Non-destructive by construction: the real
+// loadout is stashed (never mutated in place) and restored in clearTempModifiers()
+// (js/02-stats.js), which already runs at the top of every endWave() before the temp bucket is
+// wiped -- so even a run that ends mid-wave still gets its weapons back the next time
+// clearTempModifiers() runs (defensive: also guarded so a second consecutive call is a no-op).
+function applyPeashooterOnlyIfArmed() {
+  if (!(typeof tempFlag === "function" && tempFlag("peashooterOnly"))) return;
+  if (state.temp.stashedWeapons) return; // already stashed this wave, don't stash the peashooter itself
+  state.temp.stashedWeapons = state.weapons.slice();
+  state.weapons = [{ name: "Spark Peashooter", tier: 1, fireCooldown: rand(0.05, 0.35) }];
+  syncDerivedStats();
+}
+
+// Fires every fortune the player cracked open last reward screen (state.armedFortunes, filled
+// by showFortuneReward's crack button). Effects are applied via applyFortune() (js/03d-fortunes.js),
+// which both performs the effect through the Layer B temp helpers AND returns an explicit
+// announce string ("this wave only" is already baked into that string, so nothing here repeats
+// the wording). No-op when the array is empty -- most waves never had a cookie cracked.
+function applyArmedFortunes() {
+  if (!state.armedFortunes || state.armedFortunes.length === 0) return;
+  const fortunes = state.armedFortunes.slice();
+  state.armedFortunes.length = 0; // fired; must never fire again on a later wave
+
+  fortunes.forEach((fortune, index) => {
+    const announceText = typeof applyFortune === "function" ? applyFortune(fortune) : "";
+    if (!announceText) return;
+    // Stagger so 2-3 armed fortunes don't stack into one unreadable blob: the "Wave N" toast
+    // already owns t=0-1100ms, so the first fortune toast starts right after it, and any
+    // further fortunes fall back to a floater above the player instead of queuing more toasts
+    // (which would just keep overwriting each other via showMessage's shared token).
+    if (index === 0) {
+      window.setTimeout(() => {
+        if (state.mode === "playing") showMessage("Fortune Fulfilled", announceText, 1600);
+      }, 1150);
+    } else {
+      window.setTimeout(() => {
+        if (state.mode === "playing" && typeof addFloater === "function") {
+          addFloater(state.player.x, state.player.y - state.player.radius - 26, announceText, {
+            color: "#f2c45f",
+            size: 14,
+            life: 2.4,
+            riseSpeed: 30,
+            driftX: rand(-6, 6),
+            fadePower: 1.3,
+            scaleOut: 0.18
+          });
+        }
+      }, 1150 + index * 900);
+    }
+  });
 }
 
 function endWave() {
@@ -182,6 +241,12 @@ function endWave() {
     if (typeof unlockAchievement === "function") unlockAchievement("untouched_wave");
   }
   if (typeof checkAchievements === "function") checkAchievements();
+  // Temp weapons/slots are wave-scoped: remove them (and their bonus slots) together, before
+  // anything else touches state.weapons or maxWeaponSlots(), so nothing is left stranded
+  // outside the slice window. syncDerivedStats() below (via finishWaveTransition, or directly
+  // if the bag-collection early-return skips it here) settles state.extraWeaponSlots/stats
+  // afterward the same way the rest of this function already relies on it to.
+  clearTempModifiers();
   state.enemies.length = 0;
   state.enemyDeaths.length = 0;
   state.trees.length = 0;
@@ -629,6 +694,10 @@ function continueRewards() {
     showCrateReward(rollUpgradeOffer(new Set(), 0, true));
     return;
   }
+  if (state.pendingFortunes?.length > 0) {
+    showFortuneReward(state.pendingFortunes.shift());
+    return;
+  }
   showShop();
 }
 
@@ -675,6 +744,136 @@ function showCrateReward(item) {
   ui.rewardCards.appendChild(takeCard);
 }
 
+// Decides whether a rarity colour needs the light background chip (.fortune-rarity-dark) to
+// stay readable on the pale fortune-paper slip. Data-driven off fortune.rarity.color via
+// perceptual luminance, rather than special-casing "clown" -- any future dark rarity colour
+// gets the chip automatically.
+function isDarkRarityColor(hexColor) {
+  const hex = String(hexColor).replace("#", "");
+  if (hex.length !== 6) return false;
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance < 0.45;
+}
+
+function showFortuneReward(fortune) {
+  state.mode = "reward";
+  ui.reward.classList.remove("hidden");
+  ui.rewardActions.classList.add("hidden");
+  ui.rewardEyebrow.textContent = "Fortune Cookie";
+  ui.rewardTitle.textContent = "Unopened";
+  ui.rewardLuck.textContent = effectiveStat("luck");
+  ui.rewardCards.innerHTML = "";
+
+  const remaining = state.pendingFortunes.length;
+  ui.rewardText.textContent = remaining > 0
+    ? `${remaining} more fortune cookie${remaining === 1 ? "" : "s"} to open.`
+    : "A fortune cookie, still sealed.";
+
+  const card = document.createElement("article");
+  card.className = "card";
+
+  const heading = document.createElement("h2");
+  heading.textContent = "Fortune Cookie";
+  card.appendChild(heading);
+
+  const body = document.createElement("p");
+  body.textContent = "It's still wrapped. Crack it open to read your fortune, or eat it whole without looking.";
+  card.appendChild(body);
+
+  const priceRow = document.createElement("div");
+  priceRow.className = "price";
+
+  const crackButton = document.createElement("button");
+  crackButton.type = "button";
+  crackButton.textContent = "Crack it open";
+
+  const eatButton = document.createElement("button");
+  eatButton.type = "button";
+  eatButton.className = "recycle";
+  eatButton.textContent = "Eat it whole";
+
+  eatButton.addEventListener("click", () => {
+    // Eating it whole skips the fortune entirely: no paper, no effect, and you choke on it for
+    // 1 max HP. addStat already calls syncDerivedStats, which recomputes player.maxHp and
+    // clamps current hp down to it, so no manual clamp is needed here.
+    addStat("maxHp", -1);
+    playSfx("hurt");
+    showMessage("You choke on it", "-1 max HP, and no fortune", 1200);
+    continueRewards();
+  });
+
+  crackButton.addEventListener("click", () => {
+    // Both buttons must be dead before anything else happens: no double-crack, no eating a
+    // cookie that is already mid-crack. Disable AND remove so a queued click on a button that
+    // is still in the DOM for one more frame can't slip through.
+    crackButton.disabled = true;
+    eatButton.disabled = true;
+    eatButton.remove();
+    crackButton.remove();
+
+    if (!state.armedFortunes) state.armedFortunes = [];
+    state.armedFortunes.push(fortune); // pushed exactly once, right here, before the animation
+
+    const isClown = fortune.rarity?.key === "clown";
+    card.classList.add("fortune-cracking");
+    if (isClown) card.classList.add("fortune-cracking-clown");
+
+    let revealed = false;
+    const revealFortune = () => {
+      if (revealed) return; // animationend + timeout fallback must not both fire
+      // The player may have already moved on (panel replaced, reward advanced) by the time this
+      // runs -- state.mode !== "reward" or the card no longer being in the live document both
+      // mean it's stale, so bail instead of writing into a detached/reused node.
+      // NOTE: `revealed` is latched only on a SUCCESSFUL reveal, never on a stale bail. Latching
+      // it here would be irreversible: the buttons are already gone, so if the primary trigger
+      // bailed on a transient stale read the fallback could never retry and the player would be
+      // stuck on a fortune panel with no Continue button -- a soft-locked run.
+      if (state.mode !== "reward" || !card.isConnected) return;
+      revealed = true;
+
+      card.classList.remove("fortune-cracking", "fortune-cracking-clown");
+      ui.rewardTitle.textContent = "Your Fortune";
+      body.remove();
+
+      const paper = document.createElement("p");
+      paper.className = "fortune-paper";
+      paper.textContent = fortune.paperText;
+
+      const rarityTag = document.createElement("div");
+      rarityTag.className = "fortune-rarity";
+      if (isDarkRarityColor(fortune.rarity.color)) {
+        rarityTag.classList.add("fortune-rarity-dark");
+      }
+      rarityTag.textContent = fortune.rarity.label;
+      rarityTag.style.color = fortune.rarity.color;
+      paper.appendChild(rarityTag);
+      card.appendChild(paper);
+
+      const continueButton = document.createElement("button");
+      continueButton.type = "button";
+      continueButton.textContent = "Continue";
+      continueButton.addEventListener("click", () => continueRewards());
+      priceRow.innerHTML = "";
+      priceRow.appendChild(continueButton);
+    };
+
+    // animationend is the primary trigger (matches the played animation exactly), but a
+    // mis-fired/skipped animationend (tab backgrounded, style recalculated away, etc.) must
+    // never leave the player stuck with no Continue button -- the timeout fallback guarantees
+    // the reveal happens regardless.
+    card.addEventListener("animationend", revealFortune, { once: true });
+    window.setTimeout(revealFortune, 900);
+  });
+
+  priceRow.appendChild(crackButton);
+  priceRow.appendChild(eatButton);
+  card.appendChild(priceRow);
+  ui.rewardCards.appendChild(card);
+}
+
 function takeCrateReward(item) {
   recordUpgrade(item);
   applyImmediatePurchaseEffect(item);
@@ -717,7 +916,7 @@ function crateReplacementPanel(item) {
 
 function rewardCard(title, description, tier, buttonText, badgeText = tier, artKind = "tier", artData = null) {
   const card = document.createElement("article");
-  card.className = `card tier-${tier}`;
+  card.className = `card tier-${tier}${isUniqueUpgrade(artData) ? " unique" : ""}`;
   const rewardLabel = artData ? rarityNameFor(artData) : rarities[tier].name;
   card.innerHTML = `
     ${rewardArtHtml(artKind, badgeText, tier, artData)}

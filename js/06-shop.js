@@ -45,7 +45,7 @@ function renderShop() {
   for (const item of state.shopChoices) {
     const card = document.createElement("article");
     card._item = item;
-    card.className = `card tier-${item.tier}`;
+    card.className = `card tier-${item.tier}${isUniqueUpgrade(item) ? " unique" : ""}`;
     const ownedText = getOwnedText(item);
     const typeText = item.weaponName ? "Weapon" : "Item";
     const rarityText = rarityNameFor(item);
@@ -63,7 +63,7 @@ function renderShop() {
         <span class="type-bubble">${typeText}</span>
       </div>
       <div class="card-meta">
-        <span class="rarity-chip tier-${item.tier}">${rarityText}</span>
+        <span class="rarity-chip tier-${item.tier}${isUniqueUpgrade(item) ? " unique" : ""}">${rarityText}</span>
         <span class="tier-line">${tierTextFor(item)}</span>
         ${ownedText ? `<span>${ownedText}</span>` : ""}
       </div>
@@ -514,6 +514,7 @@ function showShopDetails(item) {
     meta: getUpgradeMeta(item, typeText, [`${item.cost} scrap`]),
     actions: [],
     tier: item.tier,
+    unique: isUniqueUpgrade(item),
     tip: ""
   });
 }
@@ -566,6 +567,7 @@ function showOwnedItemDetails(itemGroup) {
     meta: [rarityNameFor(itemGroup), "Item", tierTextFor(itemGroup)],
     actions: [],
     tier: itemGroup.tier,
+    unique: isUniqueUpgrade(itemGroup),
     tip: ""
   });
 }
@@ -687,10 +689,16 @@ function appendActionDropdown(parent, actions) {
   parent.appendChild(menu);
 }
 
-function setDetailPanel({ title, text, meta, actions, tip = "", tier = 0 }) {
+function setDetailPanel({ title, text, meta, actions, tip = "", tier = 0, unique = false }) {
   ui.detailTitle.textContent = title;
   ui.detailText.textContent = text;
-  ui.detailActions.closest(".detail-panel")?.setAttribute("data-tier", tier ? String(Math.min(MAX_WEAPON_RANK, Math.max(1, tier))) : "0");
+  const detailPanelEl = ui.detailActions.closest(".detail-panel");
+  detailPanelEl?.setAttribute("data-tier", tier ? String(Math.min(MAX_WEAPON_RANK, Math.max(1, tier))) : "0");
+  if (unique) {
+    detailPanelEl?.setAttribute("data-unique", "1");
+  } else {
+    detailPanelEl?.removeAttribute("data-unique");
+  }
   ui.detailMeta.innerHTML = "";
   for (const value of meta) {
     const span = document.createElement("span");
@@ -698,6 +706,7 @@ function setDetailPanel({ title, text, meta, actions, tip = "", tier = 0 }) {
     const rarityTier = getRarityTierByName(value);
     if (rarityTier) {
       span.classList.add("rarity-chip", `tier-${rarityTier}`);
+      if (value === "Unique") span.classList.add("unique");
     } else if (String(value).startsWith("Tier ")) {
       span.classList.add("tier-line");
     }
@@ -1073,7 +1082,7 @@ function renderLoadout() {
       const menuKey = `${group.id}:${group.tier}`;
       const cell = document.createElement("button");
       cell.type = "button";
-      cell.className = `inventory-item tier-${group.tier}`;
+      cell.className = `inventory-item tier-${group.tier}${isUniqueUpgrade(group) ? " unique" : ""}`;
       const countBadge = group.count > 1 ? `<span class="inv-count">x${group.count}</span>` : "";
       cell.innerHTML = `
         <canvas width="96" height="96" aria-hidden="true"></canvas>

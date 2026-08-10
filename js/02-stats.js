@@ -178,6 +178,22 @@ function calculateOwnedUpgradeEffects() {
     }
   }
 
+  // Wave-scoped temp bonuses for the NON-stat effect fields. These siblings of `stats` are read
+  // directly off this object by their consumers (e.g. extraEnemies at js/07-combat.js:483), so
+  // they never pass through ownedStatBonus() and the temp layer there cannot reach them.
+  // Applied after the weapon loop so temp values can't feed back into activeWeaponSlots above.
+  // extraWeaponSlots is deliberately EXCLUDED: temp slots are added at the maxWeaponSlots()
+  // accessor instead, and adding them here would widen the slice and double-count the temp
+  // weapons that grantTempWeapon() has already pushed onto state.weapons.
+  const temp = state?.temp?.effects;
+  if (temp) {
+    total.projectiles += temp.projectiles ?? 0;
+    total.shopDiscount += temp.shopDiscount ?? 0;
+    total.recycleRateBonus += temp.recycleRateBonus ?? 0;
+    total.extraEnemies += temp.extraEnemies ?? 0;
+    total.treeOneShot = total.treeOneShot || Boolean(temp.treeOneShot);
+  }
+
   return total;
 }
 
@@ -194,7 +210,98 @@ function ownedUpgradeEffectsFor(item) {
 }
 
 function ownedStatBonus(key) {
-  return calculateOwnedUpgradeEffects().stats[key] ?? 0;
+  return (calculateOwnedUpgradeEffects().stats[key] ?? 0) + (state?.temp?.stats?.[key] ?? 0);
+}
+
+// --- Wave-scoped temp modifiers ---------------------------------------------------------
+// A "this wave only" layer that sits on top of permanent owned-item stats. Nothing consumes
+// this yet (that's a later pass, e.g. fortune cookies); this is infrastructure only.
+//
+// effectiveStat(key) (js/07-combat.js) is: state.player.stats[key] + ownedStatBonus(key) +
+// weaponClassBonusStats()[key]. That whole expression is a flat sum, and the "percent" stats
+// (e.g. damagePercent) are only turned into a multiplier LATER via brotatoPercentMultiplier.
+// So adding state.temp.stats[key] here, inside ownedStatBonus, makes a temp point behave
+// exactly like a permanent point of the same stat -- no separate percent-vs-flat handling is
+// needed, because effectiveStat never distinguishes them; it's additive all the way through.
+// This also means the temp layer transparently survives syncDerivedStats(), since that
+// function re-derives everything by calling effectiveStat()/ownedStatBonus() fresh each time
+// rather than caching a value that could be stale-overwritten.
+
+function grantTempStat(key, amount) {
+  if (!state.temp) state.temp = { stats: {}, effects: {}, extraWeaponSlots: 0, weapons: [], flags: {} };
+  state.temp.stats[key] = (state.temp.stats[key] ?? 0) + amount;
+}
+
+// Wave-scoped bonus for the NON-stat effect fields (projectiles, shopDiscount, recycleRateBonus,
+// extraEnemies, treeOneShot). These are siblings of `stats` on the calculateOwnedUpgradeEffects()
+// return and are read straight off it, so grantTempStat() cannot reach them -- use this instead.
+// Do NOT pass extraWeaponSlots here; temp slots go through grantTempSlot().
+function grantTempEffect(key, amount) {
+  if (!state.temp) state.temp = { stats: {}, effects: {}, extraWeaponSlots: 0, weapons: [], flags: {} };
+  if (!state.temp.effects) state.temp.effects = {};
+  if (key === "treeOneShot") {
+    state.temp.effects.treeOneShot = Boolean(amount);
+    return;
+  }
+  state.temp.effects[key] = (state.temp.effects[key] ?? 0) + amount;
+}
+
+function grantTempSlot(n) {
+  if (!state.temp) state.temp = { stats: {}, effects: {}, extraWeaponSlots: 0, weapons: [], flags: {} };
+  state.temp.extraWeaponSlots = (state.temp.extraWeaponSlots ?? 0) + n;
+}
+
+// Grants a weapon for this wave only. If there is no free slot under the CURRENT
+// maxWeaponSlots(), a temp slot is opened first so the weapon is never silently dropped.
+// The entry shape mirrors addWeapon() in js/06-shop.js:912 ({name, tier, fireCooldown}).
+// The same object reference is pushed onto both state.weapons and state.temp.weapons so
+// clearTempModifiers() can remove it by identity later, never by name/tier matching (the
+// player may separately own a permanent weapon with the same name and tier).
+function grantTempWeapon(name, tier) {
+  if (!state.temp) state.temp = { stats: {}, effects: {}, extraWeaponSlots: 0, weapons: [], flags: {} };
+  if (state.weapons.length >= maxWeaponSlots()) {
+    grantTempSlot(1);
+  }
+  const entry = { name, tier, fireCooldown: rand(0.05, 0.35) };
+  state.weapons.push(entry);
+  state.temp.weapons.push(entry);
+  return entry;
+}
+
+function setTempFlag(key, value) {
+  if (!state.temp) state.temp = { stats: {}, effects: {}, extraWeaponSlots: 0, weapons: [], flags: {} };
+  state.temp.flags[key] = value;
+}
+
+function tempFlag(key) {
+  return state.temp?.flags?.[key];
+}
+
+// Wipes the whole temp bucket. Temp weapons are removed from state.weapons BEFORE the temp
+// extraWeaponSlots bonus is zeroed out, so nothing that was granted a temp slot ends up
+// stranded past the (now-shrunk) slice window -- the weapon and the slot that housed it
+// disappear together, in that order.
+function clearTempModifiers() {
+  if (!state.temp) {
+    state.temp = { stats: {}, effects: {}, extraWeaponSlots: 0, weapons: [], flags: {} };
+    return;
+  }
+  // peashooterOnly (CLOWN fortune) restore: MUST happen before the temp bucket below is reset,
+  // and before the loop above would otherwise try to splice temp weapons out of a loadout that
+  // isn't the real one. Restored by reference replacement, never by mutating the stash in
+  // place, so a stray write to state.weapons elsewhere during the wave can't corrupt the saved
+  // copy. Guarded so a wave that never armed peashooterOnly (stashedWeapons undefined) is a
+  // no-op, and a stray double-call (e.g. run ends mid-wave and endWave's clearTempModifiers
+  // fires again on the way to the menu) can't restore twice or clobber a since-changed loadout.
+  if (state.temp.stashedWeapons) {
+    state.weapons = state.temp.stashedWeapons;
+    state.temp.stashedWeapons = null;
+  }
+  for (const entry of state.temp.weapons) {
+    const index = state.weapons.indexOf(entry);
+    if (index !== -1) state.weapons.splice(index, 1);
+  }
+  state.temp = { stats: {}, effects: {}, extraWeaponSlots: 0, weapons: [], flags: {} };
 }
 
 function applyImmediatePurchaseEffect(item) {
@@ -327,6 +434,14 @@ function hpRegenHealDelay(regen) {
 // for contact or projectile damage, where the shared window is the actual crowd balance.
 function damagePlayer(rawDamage, sourceX, sourceY, sourceName, opts = {}) {
   const player = state.player;
+  // CLOWN fortune peashooterOnly: the trade for being stripped to a single default weapon is
+  // that the player literally cannot die this wave. Checked first, before the hit-cooldown
+  // early-return above it, so it applies to every damage source (contact, projectiles, burn
+  // ticks that route through here) rather than just the ones that would normally pass the
+  // cooldown gate.
+  if (typeof tempFlag === "function" && tempFlag("peashooterOnly")) {
+    return false;
+  }
   if (!opts.ignoreCooldown && player.damageCooldown > 0) {
     return false;
   }
@@ -386,6 +501,13 @@ function applyPlayerBurn(ticks, tickDamage, sourceName, kind = "burn") {
 function tickPlayerBurn(dt) {
   const player = state.player;
   if (!player.burnTicksLeft || player.burnTicksLeft <= 0) {
+    return;
+  }
+  // Burn/poison DoT bypasses damagePlayer entirely (see the comment above applyPlayerBurn), so
+  // the peashooterOnly "cannot die" guarantee has to be re-checked here too, or a Blight Sac
+  // poison tick could still kill a player who was told they were unkillable this wave.
+  if (typeof tempFlag === "function" && tempFlag("peashooterOnly")) {
+    player.burnTicksLeft = 0;
     return;
   }
   player.burnTickTimer -= dt;

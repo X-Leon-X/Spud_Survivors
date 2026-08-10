@@ -431,7 +431,7 @@ function weaponGripOffset(name) {
 }
 
 function drawWeaponSpriteShape(targetCtx, weapon) {
-  const tierColor = rarities[Math.min(MAX_WEAPON_RANK, weapon.tier)]?.color ?? "#dce4ed";
+  const tierColor = weapon.unique ? "#f2c45f" : rarities[Math.min(MAX_WEAPON_RANK, weapon.tier)]?.color ?? "#dce4ed";
   targetCtx.save();
   targetCtx.lineWidth = 2.4;
   targetCtx.strokeStyle = "#111722";

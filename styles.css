@@ -14,6 +14,7 @@
   --tier3: #58aaff;
   --tier4: #ba7eff;
   --tier5: #ff9c3d;
+  --unique: #f2c45f;
 }
 
 * {
@@ -956,6 +957,10 @@ h1 {
   border-color: var(--tier5);
 }
 
+.weapon-slot.tier-5.unique {
+  border-color: var(--unique);
+}
+
 .slot-tier {
   align-items: center;
   background: #111722;
@@ -1011,6 +1016,10 @@ h1 {
 
 .pill.tier-5 {
   border-color: var(--tier5);
+}
+
+.pill.tier-5.unique {
+  border-color: var(--unique);
 }
 
 .weapon-slot.menu-open,
@@ -1100,6 +1109,10 @@ h1 {
 
 .detail-panel[data-tier="5"] {
   border-left-color: var(--tier5);
+}
+
+.detail-panel[data-tier="5"][data-unique="1"] {
+  border-left-color: var(--unique);
 }
 
 .detail-panel .stats-title {
@@ -1262,6 +1275,10 @@ h1 {
   box-shadow: inset 0 0 0 3px rgba(255, 156, 61, 0.6), 0 5px 0 rgba(17, 23, 34, 0.16);
 }
 
+.card.tier-5.unique {
+  box-shadow: inset 0 0 0 3px rgba(242, 196, 95, 0.6), 0 5px 0 rgba(17, 23, 34, 0.16);
+}
+
 .card.locked {
   outline: 3px solid rgba(242, 196, 95, 0.72);
   outline-offset: -6px;
@@ -1333,6 +1350,10 @@ h1 {
 
 .card-meta .rarity-chip.tier-5 {
   background: var(--tier5);
+}
+
+.card-meta .rarity-chip.tier-5.unique {
+  background: var(--unique);
 }
 
 .card-meta .tier-line {
@@ -1522,6 +1543,10 @@ h1 {
 
 .tier-5 .rank-badge {
   background: var(--tier5);
+}
+
+.tier-5.unique .rank-badge {
+  background: var(--unique);
 }
 
 .reward-art {
@@ -1772,6 +1797,10 @@ h1 {
   background: var(--tier5);
 }
 
+.tier-5.unique .badge {
+  background: var(--unique);
+}
+
 .price {
   align-items: center;
   align-self: end;
@@ -2020,6 +2049,11 @@ h1 {
   50% { box-shadow: inset 0 0 0 3px rgba(255, 186, 96, 0.95), 0 5px 0 rgba(17, 23, 34, 0.16), 0 0 26px rgba(255, 156, 61, 0.55); }
 }
 
+@keyframes uniqueGlow {
+  0%, 100% { box-shadow: inset 0 0 0 3px rgba(242, 196, 95, 0.6), 0 5px 0 rgba(17, 23, 34, 0.16), 0 0 14px rgba(242, 196, 95, 0.25); }
+  50% { box-shadow: inset 0 0 0 3px rgba(250, 219, 145, 0.95), 0 5px 0 rgba(17, 23, 34, 0.16), 0 0 26px rgba(242, 196, 95, 0.55); }
+}
+
 @keyframes epicGlow {
   0%, 100% { box-shadow: inset 0 0 0 3px rgba(186, 126, 255, 0.54), 0 5px 0 rgba(17, 23, 34, 0.16), 0 0 10px rgba(186, 126, 255, 0.2); }
   50% { box-shadow: inset 0 0 0 3px rgba(206, 158, 255, 0.85), 0 5px 0 rgba(17, 23, 34, 0.16), 0 0 20px rgba(186, 126, 255, 0.42); }
@@ -2126,6 +2160,10 @@ button:active:not(:disabled) {
 
 .card.tier-5 {
   animation: cardIn 320ms cubic-bezier(0.22, 1.15, 0.34, 1) both, legendaryGlow 2.2s ease-in-out infinite;
+}
+
+.card.tier-5.unique {
+  animation: cardIn 320ms cubic-bezier(0.22, 1.15, 0.34, 1) both, uniqueGlow 2.2s ease-in-out infinite;
 }
 
 .character-card {
@@ -3691,4 +3729,121 @@ button:active:not(:disabled) {
     right: 10px;
     top: 148px;
   }
+}
+
+/* ============================================================
+   Fortune cookie: crack-open animation + fortune paper slip.
+   ============================================================ */
+
+@keyframes cookieCrack {
+  0% { transform: scale(1) rotate(0deg); }
+  30% { transform: scale(1.05) rotate(-2deg); }
+  55% { transform: scale(0.97) rotate(2deg); }
+  75% { transform: scale(1.03) rotate(-1deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+.card.fortune-cracking {
+  animation: cookieCrack 640ms cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+.card.fortune-cracking.fortune-cracking-clown {
+  animation-name: cookieCrackClown;
+  animation-duration: 720ms;
+}
+
+@keyframes cookieCrackClown {
+  0% { transform: scale(1) rotate(0deg); }
+  20% { transform: scale(1.06) rotate(-4deg); }
+  38% { transform: scale(0.94) rotate(5deg); }
+  55% { transform: scale(1.05) rotate(-4deg); }
+  72% { transform: scale(0.96) rotate(3deg); }
+  88% { transform: scale(1.02) rotate(-1deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card.fortune-cracking,
+  .card.fortune-cracking.fortune-cracking-clown {
+    animation-duration: 1ms;
+  }
+}
+
+/* The revealed fortune, printed on a thin paper slip pulled from the cookie. */
+.fortune-paper {
+  animation: fortunePaperIn 260ms ease-out both;
+  background: linear-gradient(180deg, #fffdf6 0%, #f7f1de 100%);
+  border: 1px solid rgba(17, 23, 34, 0.18);
+  border-radius: 3px;
+  box-shadow:
+    0 3px 8px rgba(17, 23, 34, 0.22),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+  color: #2c2416;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 15px;
+  font-style: italic;
+  line-height: 1.4;
+  margin: 4px 10px;
+  padding: 12px 16px 20px;
+  position: relative;
+  width: calc(100% - 20px);
+}
+
+/* Torn/deckled edge on both short ends of the slip, so it reads as paper, not a card. */
+.fortune-paper::before,
+.fortune-paper::after {
+  background-image: linear-gradient(135deg, transparent 50%, #f7f1de 50%),
+    linear-gradient(-135deg, transparent 50%, #f7f1de 50%);
+  background-position: left top;
+  background-repeat: repeat-x;
+  background-size: 8px 6px;
+  content: "";
+  height: 6px;
+  left: 0;
+  position: absolute;
+  width: 100%;
+}
+
+.fortune-paper::before {
+  top: -1px;
+}
+
+.fortune-paper::after {
+  bottom: -1px;
+  transform: rotate(180deg);
+}
+
+@keyframes fortunePaperIn {
+  0% { opacity: 0; transform: translateY(-6px) scale(0.96); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fortune-paper {
+    animation-duration: 1ms;
+  }
+}
+
+/* Rarity word, bottom-right on the paper slip. Colour comes from inline style (data-driven,
+   fortune.rarity.color); this rule only owns layout/weight/case. */
+.fortune-rarity {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  margin-top: 10px;
+  padding: 1px 5px;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+/* CLOWN's near-black red (#5a1f24) is otherwise unreadable on the pale slip: a light chip
+   behind the word keeps it legible without special-casing every other rarity's colour. */
+.fortune-rarity.fortune-rarity-dark {
+  background: rgba(255, 253, 246, 0.82);
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px rgba(17, 23, 34, 0.12);
+  display: inline-block;
+  float: right;
 }

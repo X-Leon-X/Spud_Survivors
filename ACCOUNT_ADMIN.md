@@ -4,7 +4,7 @@ Everything here is done by you, in the Supabase dashboard. None of it is in the 
 
 ## Deleting someone's account
 
-The privacy note on the character select screen tells players to open a GitHub issue to
+The privacy note on the title screen account panel tells players to open a GitHub issue to
 request deletion. When one arrives:
 
 1. **Check they own the address.** The issue only proves they control a GitHub account, not
@@ -40,7 +40,7 @@ address itself lives in Authentication → Users.
 
 ## Password resets
 
-Nothing for you to do. The player uses **Forgot password** on the character select screen,
+Nothing for you to do. The player uses **Forgot password** on the title screen account panel,
 Supabase emails them a link, they set a new one. You are never involved, and you can never
 see anyone's password: only Supabase stores it, hashed.
 

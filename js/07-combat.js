@@ -481,7 +481,16 @@ function enemySpawnBatchSize() {
   // Pet Alien (and anything else granting extraEnemies) thickens every wave slightly. The
   // cap still applies, so it makes waves arrive denser rather than uncapping the arena.
   const owned = calculateOwnedUpgradeEffects().extraEnemies ?? 0;
-  return Math.min(22, 1 + growth + midBonus + lateBonus + owned + earlyWaveEnemyBonus(wave));
+  const batch = 1 + growth + midBonus + lateBonus + owned + earlyWaveEnemyBonus(wave);
+  // CLOWN fortune clownWave: every base spawn is a Clown, and each Clown death implodes into
+  // ~7 bodies (spawnClownImplosion, ~2340 below) on top of MAX_ENEMIES=480 already guarding the
+  // total. An all-Clown wave at the normal batch size is a huge, unintended density spike --
+  // roughly halving the batch here keeps the wave chaotic (still visibly "everything is a
+  // Clown") without the implosion math turning it lethal instead of funny.
+  if (typeof tempFlag === "function" && tempFlag("clownWave")) {
+    return Math.max(1, Math.round(batch / 2));
+  }
+  return Math.min(22, batch);
 }
 
 // Waves 2 and 3 ONLY: extra enemies per spawn batch. Wave 2 used to be the thinnest wave in
@@ -598,6 +607,14 @@ function rollTreeCount() {
 }
 
 function chooseEnemyType() {
+  // CLOWN fortune clownWave: every spawn this wave is a Clown instead of the normal weighted
+  // roll. Looked up by name rather than assumed to exist, so a future rename/removal of the
+  // Clown template falls through to the normal roll instead of throwing. The implosion-only
+  // density spike this causes is compensated in enemySpawnBatchSize() below, not here.
+  if (typeof tempFlag === "function" && tempFlag("clownWave")) {
+    const clownTemplate = enemyTypes.find((type) => type.name === "Clown");
+    if (clownTemplate) return clownTemplate;
+  }
   // spawnable:false marks templates that only exist so spawnEnemy can use them directly
   // (Clown Mid/Small, spawned by the Clown's death implosion) — the wave roll must never
   // pick them on its own.
@@ -1621,11 +1638,39 @@ function separationPass(dt) {
   }
 }
 
+// CLOWN fortune armedEnemies -- CONTAINED implementation, not a full "every enemy gets proper
+// ranged AI" pass. Enemies that already shoot (behaviors "shoot"/"fireball"/"turret") are left
+// completely alone here, since giving them a second attack on top of their existing one would
+// be the opposite of "mild". Every OTHER enemy instead gets an occasional weak poke via the
+// existing shootEnemyProjectile() helper (js/07-combat.js:1935) reusing the Spitter's own bullet
+// pipeline (so no new rendering/collision path is needed), on its own dedicated cooldown field
+// (armedPokeCooldown) so it can never fight with that enemy's real actionCooldown/behavior. This
+// does not change movement, contact damage, or any other AI -- purely an extra low-damage,
+// low-frequency projectile layered on top. Reported as CONTAINED, not a full ranged rework.
+function applyArmedEnemyPoke(enemy, dt, player) {
+  if (enemy.behavior === "shoot" || enemy.behavior === "fireball" || enemy.behavior === "turret") return;
+  enemy.armedPokeCooldown = (enemy.armedPokeCooldown ?? rand(1.2, 2.6)) - dt;
+  if (enemy.armedPokeCooldown > 0) return;
+  const distance = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+  if (distance > 420) {
+    enemy.armedPokeCooldown = rand(0.3, 0.6); // re-check soon rather than parking a long cooldown while out of range
+    return;
+  }
+  const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+  shootEnemyProjectile(enemy, angle);
+  // Mild by design: roughly a third of a Spitter's own poke damage, and a long ~3-4.5s cadence
+  // per enemy so a whole armed crowd is a background threat, not a bullet-hell reskin.
+  const bullet = state.enemyBullets[state.enemyBullets.length - 1];
+  if (bullet) bullet.damage = Math.max(1, Math.round(bullet.damage / 3));
+  enemy.armedPokeCooldown = rand(3, 4.5);
+}
+
 function updateEnemies(dt) {
   const player = state.player;
   // One pass up front instead of a full array scan per lookup - see refreshDrummerBuffs.
   refreshDrummerBuffs();
   applyEnemySeparation(dt);
+  const armedEnemiesActive = typeof tempFlag === "function" && tempFlag("armedEnemies");
   for (let i = state.enemies.length - 1; i >= 0; i -= 1) {
     const enemy = state.enemies[i];
     enemy.contactCooldown -= dt;
@@ -1646,6 +1691,7 @@ function updateEnemies(dt) {
     }
 
     updateEnemyBehavior(enemy, dt);
+    if (armedEnemiesActive) applyArmedEnemyPoke(enemy, dt, player);
 
     // Natural, slime-like motion: instead of snapping straight at the player every frame,
     // ease the actual movement velocity (mvx/mvy) toward the behavior's desired velocity
@@ -2354,10 +2400,8 @@ function spawnClownImplosion(enemy) {
 
 // Blight Sac leaves a lingering poison pool where it died — see updatePoisonPools for the
 // tick-damage/lifetime handling and js/08-render.js drawPoisonPool for the visual.
-// NOTE: state.poisonPools is meant to live alongside the other state arrays in freshState()
-// (js/04-flow.js, owned by another agent) and be cleared in endWave() the same way
-// state.fortuneCookies is. That file is out of scope here, so this lazy-inits the array as
-// a safety net — but someone with 04-flow.js access should add it properly (see report).
+// state.poisonPools is initialised in freshState() and cleared in endWave() (js/04-flow.js)
+// alongside the other wave-scoped arrays; the lazy-init below is just a safety net.
 function spawnPoisonPool(enemy) {
   if (!state.poisonPools) state.poisonPools = [];
   state.poisonPools.push({
@@ -2388,11 +2432,20 @@ function updateFortuneCookies(dt) {
       cookie.y += (dy / distance) * pull * dt;
     }
     if (distance < player.radius + cookie.radius) {
-      playSfx("coin");
-      burst(cookie.x, cookie.y, "#ffd873", 14);
-      addFloater(cookie.x, cookie.y - 16, "Fortune Cookie!", { color: "#ffd873", size: 19, life: 1.5 });
-      addFloater(cookie.x, cookie.y + 2, "(coming soon)", { color: "#bfe6b0", size: 13, life: 1.5 });
-      state.fortuneCookies.splice(i, 1);
+      // Roll the fortune at pickup so the outcome is locked in the moment it is collected.
+      // If js/03d-fortunes.js somehow failed to load, leave the cookie in the arena rather
+      // than consuming it into nothing -- a silently vanishing pickup is worse than one the
+      // player can walk over again once the script is there. The feedback lives inside the
+      // guard too, so an unconsumed cookie doesn't retrigger the sfx every frame on overlap.
+      if (typeof rollFortune === "function") {
+        playSfx("coin");
+        burst(cookie.x, cookie.y, "#ffd873", 14);
+        addFloater(cookie.x, cookie.y - 16, "Fortune Cookie!", { color: "#ffd873", size: 19, life: 1.5 });
+        addFloater(cookie.x, cookie.y + 2, "Saved for after the wave", { color: "#bfe6b0", size: 13, life: 1.5 });
+        if (!state.pendingFortunes) state.pendingFortunes = [];
+        state.pendingFortunes.push(rollFortune());
+        state.fortuneCookies.splice(i, 1);
+      }
     }
   }
 }

@@ -42,7 +42,7 @@ function paintCodeIcon(iconCanvas, data = {}, kind = "item") {
   iconCtx.save();
   iconCtx.scale(iconCanvas.width / 96, iconCanvas.height / 96);
   iconCtx.scale(2, 2);
-  drawIconTile(iconCtx, data.tier ?? 1);
+  drawIconTile(iconCtx, data.tier ?? 1, isUniqueUpgrade(data));
   if (kind === "mutation" || data.part) {
     drawMutationIcon(iconCtx, data.part ?? data.name ?? "Heart");
   } else {
@@ -77,7 +77,7 @@ function paintIconCanvas(iconCanvas, now) {
     g.save();
     g.scale(w / 96, h / 96);
     g.scale(2, 2);
-    drawIconTile(g, data.tier ?? 1);
+    drawIconTile(g, data.tier ?? 1, isUniqueUpgrade(data));
     g.restore();
   }
 
@@ -177,8 +177,8 @@ function easeOutBack(t) {
   return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
 }
 
-function drawIconTile(iconCtx, tier) {
-  const color = rarities[Math.min(MAX_WEAPON_RANK, Math.max(1, tier))]?.color ?? "#dce4ed";
+function drawIconTile(iconCtx, tier, isUnique = false) {
+  const color = isUnique ? "#f2c45f" : rarities[Math.min(MAX_WEAPON_RANK, Math.max(1, tier))]?.color ?? "#dce4ed";
   const panel = iconCtx.createLinearGradient(6, 6, 42, 42);
   panel.addColorStop(0, "#fff4e4");
   panel.addColorStop(1, "#efd8bd");
