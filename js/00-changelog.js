@@ -20,6 +20,16 @@
 
 const CHANGELOG = [
   {
+    version: "0.14.1",
+    date: "2026-08-10",
+    title: "A proper crack",
+    notes: [
+      "Cracking a fortune cookie now shows the actual cookie. It shakes, splits into two halves, and the paper slip rises up between them.",
+      "The two halves stay either side of your fortune while you read it.",
+      "The unopened cookie bobs gently while it waits for your decision."
+    ]
+  },
+  {
     version: "0.14.0",
     date: "2026-08-10",
     title: "Fortune cookies",

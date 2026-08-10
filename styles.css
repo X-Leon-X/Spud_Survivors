@@ -3735,6 +3735,47 @@ button:active:not(:disabled) {
    Fortune cookie: crack-open animation + fortune paper slip.
    ============================================================ */
 
+/* The stage holds the cookie. Unopened it is two halves flush against each other reading as one
+   whole sprite; after the crack it is half | paper | half. */
+.fortune-stage {
+  align-items: center;
+  animation: cookieIdleBob 2600ms ease-in-out infinite;
+  display: flex;
+  gap: 0;
+  justify-content: center;
+  margin: 6px 0 2px;
+}
+
+/* Both halves are the SAME 512x512 sprite scaled to 120x120, each showing one 60px-wide slice
+   via background-position, so side by side they render the intact cookie. */
+.fortune-half {
+  background-image: url("assets/items/fortune_cookie.png");
+  background-repeat: no-repeat;
+  background-size: 120px 120px;
+  flex: 0 0 auto;
+  height: 120px;
+  /* auto, not pixelated: the source is 512px scaled DOWN to 120px, and the rest of the UI
+     scales art smoothly (image-rendering: auto elsewhere in this file). */
+  image-rendering: auto;
+  width: 60px;
+}
+
+.fortune-half-left {
+  background-position: 0 0;
+}
+
+.fortune-half-right {
+  background-position: -60px 0;
+}
+
+@keyframes cookieIdleBob {
+  0% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-3px) rotate(-1.2deg); }
+  100% { transform: translateY(0) rotate(0deg); }
+}
+
+/* -- Phase 1: shake (0-240ms). Runs on the stage, so both halves shudder together as one
+   still-intact cookie before anything separates. -- */
 @keyframes cookieCrack {
   0% { transform: scale(1) rotate(0deg); }
   30% { transform: scale(1.05) rotate(-2deg); }
@@ -3743,28 +3784,99 @@ button:active:not(:disabled) {
   100% { transform: scale(1) rotate(0deg); }
 }
 
-.card.fortune-cracking {
-  animation: cookieCrack 640ms cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
-}
-
-.card.fortune-cracking.fortune-cracking-clown {
-  animation-name: cookieCrackClown;
-  animation-duration: 720ms;
-}
-
 @keyframes cookieCrackClown {
   0% { transform: scale(1) rotate(0deg); }
-  20% { transform: scale(1.06) rotate(-4deg); }
-  38% { transform: scale(0.94) rotate(5deg); }
-  55% { transform: scale(1.05) rotate(-4deg); }
-  72% { transform: scale(0.96) rotate(3deg); }
-  88% { transform: scale(1.02) rotate(-1deg); }
+  20% { transform: scale(1.06) rotate(-5deg); }
+  38% { transform: scale(0.94) rotate(6deg); }
+  55% { transform: scale(1.05) rotate(-5deg); }
+  72% { transform: scale(0.96) rotate(4deg); }
+  88% { transform: scale(1.02) rotate(-2deg); }
   100% { transform: scale(1) rotate(0deg); }
 }
 
+.fortune-stage.fortune-cracking {
+  animation: cookieCrack 240ms cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+.fortune-stage.fortune-cracking.fortune-cracking-clown {
+  animation-name: cookieCrackClown;
+}
+
+/* -- Phase 2: split (240-700ms). Each half slides out and rotates away, with a small drop and
+   settle. animation-fill-mode: both holds the final split pose forever, which is what keeps the
+   halves flanking the paper in the final state. -- */
+@keyframes cookieSplitLeft {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  55% { transform: translate(-14px, 5px) rotate(-16deg); }
+  100% { transform: translate(-10px, 2px) rotate(-14deg); }
+}
+
+@keyframes cookieSplitRight {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  55% { transform: translate(14px, 5px) rotate(16deg); }
+  100% { transform: translate(10px, 2px) rotate(14deg); }
+}
+
+@keyframes cookieSplitLeftClown {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  55% { transform: translate(-18px, 7px) rotate(-26deg); }
+  100% { transform: translate(-12px, 3px) rotate(-22deg); }
+}
+
+@keyframes cookieSplitRightClown {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  55% { transform: translate(18px, 7px) rotate(26deg); }
+  100% { transform: translate(12px, 3px) rotate(22deg); }
+}
+
+.fortune-stage.fortune-cracking .fortune-half-left {
+  animation: cookieSplitLeft 460ms 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.fortune-stage.fortune-cracking .fortune-half-right {
+  animation: cookieSplitRight 460ms 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.fortune-stage.fortune-cracking.fortune-cracking-clown .fortune-half-left {
+  animation-name: cookieSplitLeftClown;
+}
+
+.fortune-stage.fortune-cracking.fortune-cracking-clown .fortune-half-right {
+  animation-name: cookieSplitRightClown;
+}
+
+/* The blank sliver that rises between the halves during the split. It is swapped for the real
+   .fortune-paper at reveal, so it only ever exists for the ~460ms of phase 2. */
+.fortune-slip {
+  animation: fortuneSlipRise 460ms 240ms ease-out both;
+  background: linear-gradient(180deg, #fffdf6 0%, #f7f1de 100%);
+  border: 1px solid rgba(17, 23, 34, 0.18);
+  border-radius: 3px;
+  box-shadow: 0 3px 8px rgba(17, 23, 34, 0.22);
+  flex: 0 1 auto;
+  height: 44px;
+  width: 96px;
+}
+
+@keyframes fortuneSlipRise {
+  0% { opacity: 0; transform: translateY(10px) scaleY(0.2); }
+  60% { opacity: 1; transform: translateY(-2px) scaleY(1.04); }
+  100% { opacity: 1; transform: translateY(0) scaleY(1); }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .card.fortune-cracking,
-  .card.fortune-cracking.fortune-cracking-clown {
+  /* Collapse every phase to effectively instant. The halves still land on their split pose
+     (fill-mode: both), so the final half | paper | half layout is identical. */
+  .fortune-stage {
+    animation: none;
+  }
+
+  .fortune-stage.fortune-cracking,
+  .fortune-stage.fortune-cracking.fortune-cracking-clown,
+  .fortune-stage.fortune-cracking .fortune-half-left,
+  .fortune-stage.fortune-cracking .fortune-half-right,
+  .fortune-slip {
+    animation-delay: 0ms;
     animation-duration: 1ms;
   }
 }
@@ -3783,10 +3895,14 @@ button:active:not(:disabled) {
   font-size: 15px;
   font-style: italic;
   line-height: 1.4;
-  margin: 4px 10px;
+  /* Sits as the middle child of .fortune-stage: the halves are fixed 60px each, the paper takes
+     the rest and shrinks first so half | paper | half never overflows the reward aside. */
+  flex: 1 1 auto;
+  margin: 4px 6px;
+  max-width: 420px;
+  min-width: 0;
   padding: 12px 16px 20px;
   position: relative;
-  width: calc(100% - 20px);
 }
 
 /* Torn/deckled edge on both short ends of the slip, so it reads as paper, not a card. */

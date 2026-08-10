@@ -779,6 +779,22 @@ function showFortuneReward(fortune) {
   heading.textContent = "Fortune Cookie";
   card.appendChild(heading);
 
+  // The cookie sprite is drawn as TWO halves of one background image (left half / right half,
+  // offset by background-position) so the crack animation can pull them apart and leave them
+  // flanking the fortune paper: half | paper | half.
+  const stage = document.createElement("div");
+  stage.className = "fortune-stage";
+
+  const cookieLeft = document.createElement("div");
+  cookieLeft.className = "fortune-half fortune-half-left";
+
+  const cookieRight = document.createElement("div");
+  cookieRight.className = "fortune-half fortune-half-right";
+
+  stage.appendChild(cookieLeft);
+  stage.appendChild(cookieRight);
+  card.appendChild(stage);
+
   const body = document.createElement("p");
   body.textContent = "It's still wrapped. Crack it open to read your fortune, or eat it whole without looking.";
   card.appendChild(body);
@@ -818,8 +834,16 @@ function showFortuneReward(fortune) {
     state.armedFortunes.push(fortune); // pushed exactly once, right here, before the animation
 
     const isClown = fortune.rarity?.key === "clown";
-    card.classList.add("fortune-cracking");
-    if (isClown) card.classList.add("fortune-cracking-clown");
+    // The animation lives on the stage (shake -> halves split apart), not on the card, so the
+    // card's own layout stays still while the cookie breaks.
+    stage.classList.add("fortune-cracking");
+    if (isClown) stage.classList.add("fortune-cracking-clown");
+
+    // Blank pale sliver that grows between the halves during the split; it is replaced by the
+    // real .fortune-paper at reveal time, so the player never sees an empty gap.
+    const slip = document.createElement("div");
+    slip.className = "fortune-slip";
+    stage.insertBefore(slip, cookieRight);
 
     let revealed = false;
     const revealFortune = () => {
@@ -834,7 +858,11 @@ function showFortuneReward(fortune) {
       if (state.mode !== "reward" || !card.isConnected) return;
       revealed = true;
 
-      card.classList.remove("fortune-cracking", "fortune-cracking-clown");
+      card.removeEventListener("animationend", onCrackAnimationEnd);
+      // .fortune-cracking is deliberately LEFT ON the stage: its half-split animations use
+      // animation-fill-mode: both, and that is what pins the two halves at their parted
+      // positions for the final half | paper | half layout. Removing it would snap the cookie
+      // back together. Only the intro text goes away here.
       ui.rewardTitle.textContent = "Your Fortune";
       body.remove();
 
@@ -850,7 +878,9 @@ function showFortuneReward(fortune) {
       rarityTag.textContent = fortune.rarity.label;
       rarityTag.style.color = fortune.rarity.color;
       paper.appendChild(rarityTag);
-      card.appendChild(paper);
+      // Final layout: half | paper | half. The blank slip is swapped out for the real paper in
+      // the exact same slot between the two halves.
+      stage.replaceChild(paper, slip);
 
       const continueButton = document.createElement("button");
       continueButton.type = "button";
@@ -860,12 +890,25 @@ function showFortuneReward(fortune) {
       priceRow.appendChild(continueButton);
     };
 
-    // animationend is the primary trigger (matches the played animation exactly), but a
-    // mis-fired/skipped animationend (tab backgrounded, style recalculated away, etc.) must
+    // animationend BUBBLES, and the crack plays several animations at once (stage shake, both
+    // halves splitting, the slip rising). A plain { once: true } listener would be consumed by
+    // whichever finishes FIRST -- the shake at ~240ms -- revealing the paper before the halves
+    // have parted. So the listener is NOT once-only: it ignores every animationend except the
+    // one named cookieSplitRight (the right half, which runs to the end of the sequence), and
+    // only then reveals. Note this deliberately filters on animation NAME, not on target: the
+    // clown variant swaps the name via animation-name, so both names are accepted.
+    const FINAL_ANIMATIONS = ["cookieSplitRight", "cookieSplitRightClown"];
+    function onCrackAnimationEnd(event) {
+      if (!FINAL_ANIMATIONS.includes(event.animationName)) return;
+      revealFortune();
+    }
+    card.addEventListener("animationend", onCrackAnimationEnd);
+
+    // A mis-fired/skipped animationend (tab backgrounded, style recalculated away, etc.) must
     // never leave the player stuck with no Continue button -- the timeout fallback guarantees
-    // the reveal happens regardless.
-    card.addEventListener("animationend", revealFortune, { once: true });
-    window.setTimeout(revealFortune, 900);
+    // the reveal happens regardless. Sized to the full sequence (240ms shake + 460ms split =
+    // 700ms) plus a generous margin.
+    window.setTimeout(revealFortune, 1400);
   });
 
   priceRow.appendChild(crackButton);
