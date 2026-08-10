@@ -423,6 +423,27 @@ function initTitleControls() {
     ui.titleOptions.classList.add("hidden");
   });
 
+  // Account controls sit in the title screen's top-right corner. Log in and Sign up open the
+  // same popup in different modes; once signed in both are replaced by a single Account
+  // button, since neither action makes sense any more.
+  function openAccountPanel(mode) {
+    playSfx("click");
+    if (typeof setAccountPanelMode === "function") setAccountPanelMode(mode);
+    if (typeof refreshAccountUi === "function") refreshAccountUi();
+    ui.titleAccount?.classList.remove("hidden");
+  }
+
+  for (const button of [ui.titleLogInButton, ui.titleSignUpButton, ui.titleAccountButton]) {
+    button?.addEventListener("pointerenter", () => playSfx("hover"));
+  }
+  ui.titleLogInButton?.addEventListener("click", () => openAccountPanel("login"));
+  ui.titleSignUpButton?.addEventListener("click", () => openAccountPanel("signup"));
+  ui.titleAccountButton?.addEventListener("click", () => openAccountPanel("account"));
+  ui.titleAccountBack?.addEventListener("click", () => {
+    playSfx("click");
+    ui.titleAccount?.classList.add("hidden");
+  });
+
   initChangelogControls();
   ui.titleQuitButton.addEventListener("click", () => {
     playSfx("click");

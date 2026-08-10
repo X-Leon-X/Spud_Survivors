@@ -167,10 +167,9 @@ function compendiumEntries() {
   });
 }
 
-// Discovery persists across RUNS but not across SESSIONS: sessionStorage, so refreshing the
-// tab keeps the book while opening a new tab (or reopening the game later) starts a clean
-// slate. Carrying a book between sessions is done deliberately, by pasting a progress code
-// on the character select screen, rather than silently in the background.
+// Discovery persists on THIS DEVICE (localStorage): a bestiary you refill from scratch every
+// visit is busywork, not a collection. Carrying it to another device is what an account is
+// for -- signing in merges the cloud copy in rather than replacing this one.
 // Kept in its own key rather than bolted onto the settings blob so a future settings change
 // can't wipe the book.
 const COMPENDIUM_KEY = "spud-survivors-compendium";
@@ -178,7 +177,7 @@ let enemiesSeen = loadCompendiumProgress();
 
 function loadCompendiumProgress() {
   try {
-    const stored = JSON.parse(sessionStorage.getItem(COMPENDIUM_KEY));
+    const stored = JSON.parse(localStorage.getItem(COMPENDIUM_KEY));
     // Guard the shape: a corrupt or hand-edited value must not break the panel.
     return stored && typeof stored === "object" && !Array.isArray(stored) ? stored : {};
   } catch {
@@ -188,7 +187,7 @@ function loadCompendiumProgress() {
 
 function saveCompendiumProgress() {
   try {
-    sessionStorage.setItem(COMPENDIUM_KEY, JSON.stringify(enemiesSeen));
+    localStorage.setItem(COMPENDIUM_KEY, JSON.stringify(enemiesSeen));
   } catch {
     // storage unavailable (private mode / file restrictions) - the book just won't persist
   }

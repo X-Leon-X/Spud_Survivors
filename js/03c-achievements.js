@@ -30,6 +30,7 @@ const ACHIEVEMENTS = [
   { id: "built_different", name: "Built Different", description: "Grew a Legendary body part.", hint: "Grow a Legendary body part", goal: 1, progressKey: null },
   { id: "merger", name: "Merger", description: "Merged something.", hint: "Merge something", goal: 1, progressKey: null },
   { id: "rip", name: "RIP", description: "Died.", hint: "Die", goal: 1, progressKey: null },
+  { id: "abort_mission", name: "Abort Mission.", description: "Abandoned a run.", hint: "Abandon a run", goal: 1, progressKey: null },
   { id: "mutated", name: "Mutated", description: "Mutated.", hint: "Mutate", goal: 1, progressKey: null },
   { id: "tanky", name: "Tanky", description: "Reached 125 max HP.", hint: "Reach 125 max HP", goal: 125, progressKey: "maxHp" },
   { id: "chunky", name: "Chunky", description: "Played as Chunk.", hint: "Play as Chunk", goal: 1, progressKey: null },
@@ -41,16 +42,15 @@ const ACHIEVEMENTS = [
   { id: "easter_egg_2", name: "Two Tuff Easter Eggs", description: "Discovered both easter eggs.", hint: "Discover both easter eggs", goal: 1, progressKey: null, secret: true }
 ];
 
-// sessionStorage, NOT localStorage: unlocks last for this browser session (a refresh keeps
-// them, a new tab or a later visit starts clean). Moving progress forward is a deliberate
-// act -- copy the code, paste it on the character select screen -- rather than something
-// that happens invisibly. See exportProgressCode/importProgressCode in js/09-main.js.
+// localStorage: unlocks stay on this device between visits, so closing the tab never costs
+// anyone their progress. Moving them to ANOTHER device is what an account is for (see
+// accountPullProgress in js/00-account.js), which merges rather than overwrites.
 const ACHIEVEMENTS_KEY = "spud-survivors-achievements";
 let unlockedAchievements = loadAchievements();
 
 function loadAchievements() {
   try {
-    const stored = JSON.parse(sessionStorage.getItem(ACHIEVEMENTS_KEY));
+    const stored = JSON.parse(localStorage.getItem(ACHIEVEMENTS_KEY));
     // Guard the shape: a corrupt or hand-edited value must not break the panel.
     return stored && typeof stored === "object" && !Array.isArray(stored) ? stored : {};
   } catch {
@@ -60,7 +60,7 @@ function loadAchievements() {
 
 function saveAchievements() {
   try {
-    sessionStorage.setItem(ACHIEVEMENTS_KEY, JSON.stringify(unlockedAchievements));
+    localStorage.setItem(ACHIEVEMENTS_KEY, JSON.stringify(unlockedAchievements));
   } catch {
     // storage unavailable (private mode / file restrictions) - progress just won't persist
   }

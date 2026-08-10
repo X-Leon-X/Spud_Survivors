@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Spud Survivors</title>
-    <link rel="stylesheet" href="styles.css?v=0.13.0">
+    <link rel="stylesheet" href="styles.css?v=0.13.1">
   </head>
   <body>
     <main class="game-shell">
@@ -75,10 +75,6 @@
             <div class="achievements-body">
               <div id="achievementsList" class="achievements-list"></div>
             </div>
-            <div class="achievements-transfer">
-              <button id="achievementsExport" type="button" class="achievements-transfer-button">Copy progress code</button>
-              <button id="achievementsImport" type="button" class="achievements-transfer-button">Paste progress code</button>
-            </div>
           </div>
         </div>
 
@@ -94,6 +90,12 @@
 
       <aside id="titleScreen" class="title-screen" aria-label="Title screen">
         <div class="title-bg-glow" aria-hidden="true"></div>
+        <div class="title-account-corner">
+          <span id="accountStatus" class="account-status">Playing as a guest</span>
+          <button id="titleLogInButton" type="button" class="title-corner-btn">Log in</button>
+          <button id="titleSignUpButton" type="button" class="title-corner-btn title-corner-btn-primary">Sign up</button>
+          <button id="titleAccountButton" type="button" class="title-corner-btn hidden">Account</button>
+        </div>
         <canvas id="titleSlimeLayer" class="title-slime-layer" width="1280" height="720" aria-hidden="true"></canvas>
         <div class="title-inner">
           <div class="title-logo">
@@ -121,6 +123,36 @@
           </div>
         </div>
 
+        <div id="titleAccount" class="title-options hidden">
+          <div class="title-options-panel title-account-panel">
+            <div class="account-head">
+              <div><span class="label">Account</span><h2 id="accountPanelTitle">Sign in</h2></div>
+            </div>
+            <p class="account-hint">Optional. Your progress is already saved on this device. An account carries it to your other devices too, and keeps it safe if you clear your browser data.</p>
+
+            <div id="accountForm" class="account-form">
+              <input id="accountEmail" class="account-field" type="email" autocomplete="email" placeholder="Email" aria-label="Email">
+              <input id="accountPassword" class="account-field" type="password" autocomplete="current-password" placeholder="Password (6+ characters)" aria-label="Password">
+              <div class="account-actions">
+                <button id="accountLogIn" type="button" class="achievements-transfer-button">Log in</button>
+                <button id="accountSignUp" type="button" class="achievements-transfer-button">Sign up</button>
+                <button id="accountRecover" type="button" class="achievements-transfer-button account-link">Forgot password</button>
+              </div>
+            </div>
+
+            <div id="accountSignedIn" class="account-actions hidden">
+              <button id="accountSync" type="button" class="achievements-transfer-button">Sync now</button>
+              <button id="accountLogOut" type="button" class="achievements-transfer-button account-link">Log out</button>
+            </div>
+
+            <p id="accountMessage" class="account-message" role="status"></p>
+
+            <p class="account-privacy">
+              If you make an account we store your email address, your achievements and compendium, and a record of each finished run (character, wave, kills, scrap, time). Nothing else, and none of it is shared with anyone or used for advertising. Forgotten your password? Use Forgot password above, it is automatic. To have your account and everything in it deleted, <a href="https://github.com/X-Leon-X/Spud_Survivors/issues" target="_blank" rel="noopener noreferrer">open an issue on GitHub</a>. Play without an account and nothing leaves your device.
+            </p>
+            <button id="titleAccountBack" type="button" class="title-btn title-btn-primary">Back</button>
+          </div>
+        </div>
         <div id="titleOptions" class="title-options hidden">
           <div class="title-options-panel">
             <span class="label">Options</span>
@@ -167,46 +199,7 @@
           </div>
         </div>
         <div id="characterCards" class="character-grid"></div>
-        <section class="progress-transfer" aria-label="Progress code">
-          <div class="progress-transfer-text">
-            <div class="stats-title">Progress</div>
-            <p id="progressTransferHint">Achievements and the compendium last for this session. Copy your code to keep them.</p>
-            <input id="startProgressCode" class="progress-code-field" type="text" readonly aria-label="Your progress code">
-          </div>
-          <div class="progress-transfer-actions">
-            <button id="startCopyProgress" type="button" class="achievements-transfer-button">Copy code</button>
-            <button id="startPasteProgress" type="button" class="achievements-transfer-button">Paste code</button>
-          </div>
-        </section>
 
-        <section class="account-panel" aria-label="Account">
-          <div class="account-head">
-            <div class="stats-title">Account</div>
-            <span id="accountStatus" class="account-status">Playing as a guest</span>
-          </div>
-          <p class="account-hint">Optional. An account saves your progress across devices. The game plays exactly the same without one.</p>
-
-          <div id="accountForm" class="account-form">
-            <input id="accountEmail" class="account-field" type="email" autocomplete="email" placeholder="Email" aria-label="Email">
-            <input id="accountPassword" class="account-field" type="password" autocomplete="current-password" placeholder="Password (6+ characters)" aria-label="Password">
-            <div class="account-actions">
-              <button id="accountLogIn" type="button" class="achievements-transfer-button">Log in</button>
-              <button id="accountSignUp" type="button" class="achievements-transfer-button">Sign up</button>
-              <button id="accountRecover" type="button" class="achievements-transfer-button account-link">Forgot password</button>
-            </div>
-          </div>
-
-          <div id="accountSignedIn" class="account-actions hidden">
-            <button id="accountSync" type="button" class="achievements-transfer-button">Sync now</button>
-            <button id="accountLogOut" type="button" class="achievements-transfer-button account-link">Log out</button>
-          </div>
-
-          <p id="accountMessage" class="account-message" role="status"></p>
-
-          <p class="account-privacy">
-            If you make an account we store your email address, your achievements and compendium, and a record of each finished run (character, wave, kills, scrap, time). Nothing else, and none of it is shared with anyone or used for advertising. Forgotten your password? Use Forgot password above, it is automatic. To have your account and everything in it deleted, <a href="https://github.com/X-Leon-X/Spud_Survivors/issues" target="_blank" rel="noopener noreferrer">open an issue on GitHub</a>. Play without an account and nothing leaves your device.
-          </p>
-        </section>
         <section class="class-bonus-panel" aria-label="Weapon class bonuses">
           <div class="stats-title">Weapon Class Bonuses</div>
           <div id="classBonusList" class="class-bonus-list"></div>
@@ -324,16 +317,6 @@
           <div class="stats-title">Damage Taken</div>
           <div id="summaryDamageTaken" class="summary-weapons"></div>
         </section>
-        <section class="progress-transfer" aria-label="Progress code">
-          <div class="progress-transfer-text">
-            <div class="stats-title">Save your progress</div>
-            <p id="summaryProgressHint">This code holds your achievements and compendium. Keep it to carry them into your next session.</p>
-            <input id="summaryProgressCode" class="progress-code-field" type="text" readonly aria-label="Your progress code">
-          </div>
-          <div class="progress-transfer-actions">
-            <button id="summaryCopyProgress" type="button" class="achievements-transfer-button">Copy code</button>
-          </div>
-        </section>
         <div class="summary-actions">
           <button id="summaryRestartButton" type="button">New Run</button>
         </div>
@@ -341,27 +324,27 @@
       </aside>
     </main>
 
-    <script src="js/01-core.js?v=0.13.0"></script>
-    <script src="js/00-audio.js?v=0.13.0"></script>
-    <script src="js/00-account.js?v=0.13.0"></script>
-    <script src="js/00-builds.js?v=0.13.0"></script>
-    <script src="js/00-changelog.js?v=0.13.0"></script>
-    <script src="js/00-gravestone.js?v=0.13.0"></script>
-    <script src="js/00-fx.js?v=0.13.0"></script>
-    <script src="js/00-assets.js?v=0.13.0"></script>
-    <script src="js/02-stats.js?v=0.13.0"></script>
-    <script src="js/03-data.js?v=0.13.0"></script>
-    <script src="js/03b-compendium.js?v=0.13.0"></script>
-    <script src="js/03c-achievements.js?v=0.13.0"></script>
-    <script src="js/04-flow.js?v=0.13.0"></script>
-    <script src="js/05-icons.js?v=0.13.0"></script>
-    <script src="js/06-shop.js?v=0.13.0"></script>
-    <script src="js/07-combat.js?v=0.13.0"></script>
-    <script src="js/08-render.js?v=0.13.0"></script>
-    <script src="js/09-main.js?v=0.13.0"></script>
-    <script src="js/09b-title.js?v=0.13.0"></script>
-    <script src="js/09c-title-slimes.js?v=0.13.0"></script>
-    <script src="js/09d-devpanel.js?v=0.13.0"></script>
-    <script src="js/09e-account-ui.js?v=0.13.0"></script>
+    <script src="js/01-core.js?v=0.13.1"></script>
+    <script src="js/00-audio.js?v=0.13.1"></script>
+    <script src="js/00-account.js?v=0.13.1"></script>
+    <script src="js/00-builds.js?v=0.13.1"></script>
+    <script src="js/00-changelog.js?v=0.13.1"></script>
+    <script src="js/00-gravestone.js?v=0.13.1"></script>
+    <script src="js/00-fx.js?v=0.13.1"></script>
+    <script src="js/00-assets.js?v=0.13.1"></script>
+    <script src="js/02-stats.js?v=0.13.1"></script>
+    <script src="js/03-data.js?v=0.13.1"></script>
+    <script src="js/03b-compendium.js?v=0.13.1"></script>
+    <script src="js/03c-achievements.js?v=0.13.1"></script>
+    <script src="js/04-flow.js?v=0.13.1"></script>
+    <script src="js/05-icons.js?v=0.13.1"></script>
+    <script src="js/06-shop.js?v=0.13.1"></script>
+    <script src="js/07-combat.js?v=0.13.1"></script>
+    <script src="js/08-render.js?v=0.13.1"></script>
+    <script src="js/09-main.js?v=0.13.1"></script>
+    <script src="js/09b-title.js?v=0.13.1"></script>
+    <script src="js/09c-title-slimes.js?v=0.13.1"></script>
+    <script src="js/09d-devpanel.js?v=0.13.1"></script>
+    <script src="js/09e-account-ui.js?v=0.13.1"></script>
   </body>
 </html>

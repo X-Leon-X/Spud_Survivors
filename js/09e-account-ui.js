@@ -1,6 +1,6 @@
 "use strict";
 
-// account-ui.js - the account panel on the character select screen.
+// account-ui.js - the account panel, opened from the title screen menu.
 //
 // Deliberately separate from js/00-account.js (which is the transport) and from 09-main.js
 // (which is the game). Accounts are OPTIONAL: every path here fails soft and nothing in this
@@ -25,10 +25,37 @@ function setAccountMessage(text, kind = "info") {
   accountUi.message.classList.toggle("is-good", kind === "good");
 }
 
+// Log in and Sign up open the SAME panel; the mode only changes the heading and which button
+// is emphasised, because the two forms need identical fields. Keeping one form avoids two
+// copies of the email/password inputs drifting apart.
+let accountPanelMode = "login";
+
+function setAccountPanelMode(mode) {
+  accountPanelMode = mode;
+  const title = document.getElementById("accountPanelTitle");
+  if (title) {
+    title.textContent = mode === "signup" ? "Create an account" : mode === "account" ? "Your account" : "Sign in";
+  }
+  const signUp = document.getElementById("accountSignUp");
+  const logIn = document.getElementById("accountLogIn");
+  // The mode's action becomes the primary button so the panel opens ready for what was asked
+  // for, without hiding the other route entirely.
+  signUp?.classList.toggle("is-primary", mode === "signup");
+  logIn?.classList.toggle("is-primary", mode !== "signup");
+  setAccountMessage("");
+}
+
 function refreshAccountUi() {
   const loggedIn = typeof isLoggedIn === "function" && isLoggedIn();
   accountUi.form?.classList.toggle("hidden", loggedIn);
   accountUi.signedIn?.classList.toggle("hidden", !loggedIn);
+
+  // Corner buttons: Log in / Sign up while signed out, a single Account button once signed
+  // in. Doing this here means every path that changes login state updates the corner.
+  document.getElementById("titleLogInButton")?.classList.toggle("hidden", loggedIn);
+  document.getElementById("titleSignUpButton")?.classList.toggle("hidden", loggedIn);
+  document.getElementById("titleAccountButton")?.classList.toggle("hidden", !loggedIn);
+
   if (!accountUi.status) return;
   const email = typeof accountEmail === "function" ? accountEmail() : null;
   accountUi.status.textContent = loggedIn ? (email ? `Signed in as ${email}` : "Signed in") : "Playing as a guest";
@@ -92,7 +119,6 @@ document.getElementById("accountLogIn")?.addEventListener("click", () => {
     await accountPushProgress();
     if (typeof renderAchievements === "function") renderAchievements();
     if (typeof renderCompendium === "function") renderCompendium();
-    if (typeof refreshProgressCodeFields === "function") refreshProgressCodeFields();
     setAccountMessage(pulled.ok && pulled.merged > 0
       ? `Signed in. ${pulled.merged} unlock(s) restored.`
       : "Signed in. Progress is syncing.", "good");
@@ -118,7 +144,6 @@ document.getElementById("accountSync")?.addEventListener("click", () => {
     if (!pushed.ok) { setAccountMessage(pushed.error, "error"); return; }
     if (typeof renderAchievements === "function") renderAchievements();
     if (typeof renderCompendium === "function") renderCompendium();
-    if (typeof refreshProgressCodeFields === "function") refreshProgressCodeFields();
     setAccountMessage(pulled.merged > 0 ? `Synced. ${pulled.merged} unlock(s) restored.` : "Synced.", "good");
   });
 });
@@ -128,7 +153,7 @@ document.getElementById("accountLogOut")?.addEventListener("click", () => {
     // Push before leaving so the last few unlocks of this session are not stranded.
     await accountPushProgress();
     accountLogOut();
-    setAccountMessage("Logged out. This session's progress stays on this device.");
+    setAccountMessage("Logged out. Your progress stays on this device.");
   });
 });
 
@@ -153,8 +178,7 @@ if (typeof isLoggedIn === "function" && isLoggedIn()) {
     if (result.ok && result.merged > 0) {
       if (typeof renderAchievements === "function") renderAchievements();
       if (typeof renderCompendium === "function") renderCompendium();
-      if (typeof refreshProgressCodeFields === "function") refreshProgressCodeFields();
-    }
+      }
   }).catch(() => {});
 }
 

@@ -20,6 +20,18 @@
 
 const CHANGELOG = [
   {
+    version: "0.13.1",
+    date: "2026-08-10",
+    title: "Log in from the title screen, progress codes retired",
+    notes: [
+      "Log in and Sign up now sit in the top right of the title screen, and open a popup rather than sending you somewhere else.",
+      "Once you are signed in those two are replaced by a single Account button, with your email shown next to it.",
+      "New achievement: Abort Mission, for abandoning a run.",
+      "Progress codes are gone. Your achievements and compendium now save on your device automatically, so closing the tab no longer costs you anything.",
+      "An account is now purely about carrying that progress to your other devices, and keeping it safe if you clear your browser data."
+    ]
+  },
+  {
     version: "0.13.0",
     date: "2026-08-09",
     title: "Accounts, luck that finally works, and achievements you can actually earn",

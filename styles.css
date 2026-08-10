@@ -658,72 +658,68 @@ h1 {
   padding: 12px;
 }
 
-/* Progress code row on character select. Matches the class-bonus panel so it reads as part
-   of the screen rather than a warning banner, but sits directly under the characters since
-   it is the last thing you can act on before a run starts. */
-.progress-transfer {
-  align-items: center;
-  background: rgba(13, 18, 27, 0.64);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  justify-content: space-between;
-  margin-top: 14px;
-  padding: 12px;
-}
 
-.progress-transfer-text {
-  flex: 1 1 240px;
-  min-width: 0;
-}
-
-#progressTransferHint {
-  color: rgba(255, 247, 231, 0.55);
-  font-size: 11px;
-  line-height: 1.45;
-  margin: 4px 0 0;
-}
-
-.progress-transfer-actions {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 8px;
-}
-
-/* The code shown as real, selectable text. Monospace and text-overflow rather than wrapping:
-   it is one long unbroken string, and a wrapped block of base64 is much harder to check by
-   eye when someone is copying it down manually. */
-.progress-code-field {
-  background: rgba(0, 0, 0, 0.32);
-  border: 1px solid rgba(255, 247, 231, 0.16);
-  border-radius: 5px;
-  color: rgba(255, 247, 231, 0.72);
-  cursor: text;
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 10px;
-  margin-top: 6px;
-  padding: 5px 8px;
-  text-overflow: ellipsis;
-  width: 100%;
-}
-
-.progress-code-field:focus {
-  border-color: rgba(242, 196, 95, 0.5);
-  color: #fff7e7;
-  outline: none;
-}
 
 /* --- Account panel (character select) ---------------------------------------------------
    Styled as a quiet, optional extra rather than a gate: the game is fully playable signed
    out, so this must never look like something you have to deal with before pressing play. */
-.account-panel {
-  background: rgba(13, 18, 27, 0.64);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  margin-top: 14px;
-  padding: 12px;
+/* Account controls in the title screen's top-right. Above the slime canvas and the glow, but
+   deliberately quiet: signing in is optional and must not compete with Play. */
+.title-account-corner {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  position: absolute;
+  right: 18px;
+  top: 16px;
+  z-index: 6;
+}
+
+.title-corner-btn {
+  background: rgba(12, 16, 22, 0.6);
+  border: 1px solid rgba(255, 247, 231, 0.22);
+  border-radius: 6px;
+  color: rgba(255, 247, 231, 0.82);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 5px 12px;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.title-corner-btn:hover {
+  background: rgba(242, 196, 95, 0.16);
+  border-color: rgba(242, 196, 95, 0.5);
+  color: #f2c45f;
+}
+
+.title-corner-btn-primary {
+  background: rgba(242, 196, 95, 0.16);
+  border-color: rgba(242, 196, 95, 0.45);
+  color: #f2c45f;
+}
+
+.title-account-corner .account-status {
+  margin-right: 2px;
+}
+
+/* Whichever action the popup was opened for gets the emphasis. */
+.achievements-transfer-button.is-primary {
+  background: rgba(242, 196, 95, 0.18);
+  border-color: rgba(242, 196, 95, 0.5);
+  color: #f2c45f;
+}
+
+/* The account lives in a title-screen overlay (see #titleAccount), reusing the Options panel
+   chrome so it matches the rest of that screen. Wider than Options because it holds a form
+   and the privacy note. */
+.title-account-panel {
+  max-width: 520px;
+  text-align: left;
+}
+
+.title-account-panel .account-head h2 {
+  margin: 0;
 }
 
 .account-head {

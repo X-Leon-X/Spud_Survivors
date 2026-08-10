@@ -539,8 +539,6 @@ function showStartMenu() {
   setPaused(false);
   ui.startMenu.classList.remove("hidden");
   renderCharacterSelect();
-  // Defined in js/09-main.js, which loads after this file, so guard rather than assume.
-  if (typeof refreshProgressCodeFields === "function") refreshProgressCodeFields();
   updateHud();
 }
 
