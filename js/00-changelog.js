@@ -20,6 +20,17 @@
 
 const CHANGELOG = [
   {
+    version: "0.16.1",
+    date: "2026-08-11",
+    title: "Long Live the King",
+    notes: [
+      "The Nibbler King finally has real art instead of a scaled-up regular Nibbler. Its body, its crown, and its club are all hand drawn now.",
+      "The crown still glows and still turns an angrier red once the King enters its second phase, same as before.",
+      "The King's club now actually swings in the direction of its attacks, whether it is a single strike, the three hit combo, the spinning sweep, or the big overhead smash.",
+      "Ground warnings for the slam, the spinning sweep, the overhead smash, and the summon circles now use a cracked, glowing warning ring instead of a plain drawn circle. They still time and expand exactly the same way, so nothing about dodging them has changed."
+    ]
+  },
+  {
     version: "0.16.0",
     date: "2026-08-11",
     title: "The King's Court",

@@ -1601,6 +1601,7 @@ function drawEnemy(enemy) {
       ctx.save();
       ctx.scale(squash, 1 / squash);
       drawNibblerKingCrown(enemy);
+      drawNibblerKingClub(enemy);
       drawNibblerKingPhaseOverlay(enemy);
       ctx.restore();
     }
@@ -1993,15 +1994,31 @@ function drawEnemyArtBody(enemy, art) {
   ctx.scale(facing * breathe * stretchX * jellyX, breathe * stretchY * jellyY);
   ctx.imageSmoothingEnabled = true;
 
-  ctx.drawImage(art, -half, -half - base, size, size);
+  // Aspect-correct draw. Historically this was drawImage(art, -half, -half - base, size, size),
+  // i.e. the art forced into a SQUARE. Every original enemy PNG is square (512x512), so that was
+  // invisible -- but the Nibbler King's art is 1485x1024 (1.45:1), and a square draw squashed it
+  // ~31% horizontally, turning a wide blob into a tall narrow one. Fit the art inside the same
+  // `size` box instead, preserving its own ratio: the wider dimension takes the full box and the
+  // other scales down. For square source art drawW/drawH both collapse back to `size`, so this
+  // is a no-op for every pre-existing enemy sprite and only changes non-square art.
+  const artRatio = art.naturalWidth && art.naturalHeight ? art.naturalWidth / art.naturalHeight : 1;
+  const drawW = artRatio >= 1 ? size : size * artRatio;
+  const drawH = artRatio >= 1 ? size / artRatio : size;
+  // Bottom-anchored at exactly where the square draw put the sprite's base (-half - base + size)
+  // so ground contact does not shift for any existing enemy.
+  const drawX = -drawW / 2;
+  const drawY = -half - base + size - drawH;
 
-  // White hit flash: re-stamp the sprite as a silhouette using its own alpha.
+  ctx.drawImage(art, drawX, drawY, drawW, drawH);
+
+  // White hit flash: re-stamp the sprite as a silhouette using its own alpha. MUST use the same
+  // drawX/drawY/drawW/drawH as the body above, or the flash silhouette drifts out of register.
   if (enemy.flashTimer > 0) {
     const strength = clamp(enemy.flashTimer / 0.09, 0, 1);
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     ctx.globalAlpha = strength * 0.85;
-    ctx.drawImage(art, -half, -half - base, size, size);
+    ctx.drawImage(art, drawX, drawY, drawW, drawH);
     ctx.restore();
   }
 
@@ -2010,7 +2027,7 @@ function drawEnemyArtBody(enemy, art) {
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     ctx.globalAlpha = 0.5;
-    ctx.drawImage(art, -half, -half - base, size, size);
+    ctx.drawImage(art, drawX, drawY, drawW, drawH);
     ctx.restore();
   }
 
@@ -2115,60 +2132,114 @@ function drawNibblerKingAura(enemy) {
   ctx.stroke();
 }
 
-// ART HOOK: this is the ENTIRE procedural crown placeholder. When real boss art exists
-// (either a crown baked directly into a dedicated nibbler-king.png, or a separate
-// crown.png overlay), replace the body of this one function with `ctx.drawImage(...)` --
-// nothing else in the boss render pipeline needs to change, since every caller only ever
-// invokes drawNibblerKingCrown(enemy) and never draws a crown any other way. The crown is
-// drawn in the enemy's local space, ABOVE the head (negative Y), scaled off enemy.radius so
-// it stays proportional if the boss's radius is ever tuned.
+// ART HOOK: was the entire procedural crown placeholder; now draws the real crown art
+// (assets/enemies/nibbler-king-crown.png, registered as "boss:nibblerKingCrown" in
+// js/00-assets.js). Nothing else in the boss render pipeline needs to change, since every
+// caller only ever invokes drawNibblerKingCrown(enemy) and never draws a crown any other
+// way. Falls back to drawing nothing (not the old procedural shape) if the art has not
+// finished loading yet, matching how every other PNG-art draw call in this file is guarded
+// (see drawEnemyArtBody/drawCrate/drawFortuneCookie: `if (art) { ctx.drawImage(...) }`,
+// where `art` comes from a `.ready`-gated lookup — see artFor() in js/00-assets.js).
 function drawNibblerKingCrown(enemy) {
+  const art = artFor("boss:nibblerKingCrown");
+  if (!art) return;
+
   const r = enemy.radius;
   // Match drawEnemyArtBody's own geometry (js/08-render.js) so the crown sits just above the
   // ACTUAL drawn sprite's top, not an arbitrary radius multiple -- the King's art is scaled
-  // way up (ENEMY_ART_CONFIG "Nibbler King": scale 4.0, see js/00-assets.js), so a naive
-  // -r*1.02 offset would land the crown around the sprite's belly instead of its head.
+  // way up (ENEMY_ART_CONFIG "Nibbler King", see js/00-assets.js), so a naive -r*1.02 offset
+  // would land the crown around the sprite's belly instead of its head.
   const cfg = enemyArtConfig(enemy.name);
   const half = r * cfg.scale;              // half of drawEnemyArtBody's `size`
   const base = half * 0.82;                // same ground-contact anchor drawEnemyArtBody uses
   const spriteTopY = r * cfg.yOffset - half - base;
   const headY = spriteTopY + r * 0.35;     // nudge down slightly onto the head, not floating above it
+  // Ride the body's hop offset exactly like the health bar does (drawEnemyStateOverlays),
+  // so the crown stays welded to the head instead of detaching while the boss bobs. This
+  // outer draw call is OUTSIDE drawEnemyArtBody's own save/restore (see drawEnemy), so it
+  // does not automatically inherit the body's internal hopY translate -- it must reapply it.
+  const hopY = enemy._renderHopY ?? 0;
+
   const crownWidth = r * 1.15;
   const crownHeight = r * 0.62;
-  const spikes = 5;
+  // Fit the crown art (aspect-correct) into a box sized off the same crownWidth/crownHeight
+  // the old procedural silhouette used, so the swap lands at the same on-screen scale.
+  const aspect = art.width / art.height;
+  let drawW = crownWidth;
+  let drawH = drawW / aspect;
+  if (drawH > crownHeight) {
+    drawH = crownHeight;
+    drawW = drawH * aspect;
+  }
 
   ctx.save();
-  ctx.translate(0, headY);
-  ctx.fillStyle = "#f2c45f";
-  ctx.strokeStyle = "#a9791f";
-  ctx.lineWidth = Math.max(1.5, r * 0.045);
+  ctx.translate(0, headY + hopY);
+  ctx.imageSmoothingEnabled = true;
+  // Anchor at the bottom-centre of the crown box (its band), matching the old silhouette's
+  // pivot at y=0 with spikes rising into negative Y.
+  ctx.drawImage(art, -drawW / 2, -drawH, drawW, drawH);
+  ctx.restore();
+}
 
-  // Zigzag crown silhouette: a base band with alternating spike peaks, drawn as one closed
-  // polygon so the fill/stroke read as a single gold object.
-  ctx.beginPath();
-  ctx.moveTo(-crownWidth / 2, 0);
-  for (let i = 0; i <= spikes; i += 1) {
-    const x = -crownWidth / 2 + (crownWidth * i) / spikes;
-    const peak = i % 2 === 0;
-    const y = peak ? -crownHeight : -crownHeight * 0.42;
-    ctx.lineTo(x, y);
-  }
-  ctx.lineTo(crownWidth / 2, 0);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
+// CLUB: drawn only during the 4 melee attacks (weaponSwing, slamCombo, spinSweep,
+// overheadSmash), and only through their "telegraph" and "strike" bossStates -- once an
+// attack enters "recover" the swing is over and the club should vanish until the next one
+// (matching how bossTelegraph itself is cleared entering "recover", see
+// updateNibblerKingBehavior in js/07-combat.js). Reads the SAME angle data the telegraph
+// and executeBossStrike use (boss.bossTelegraph.angle / .angles[.hit]) so the drawn club
+// always points exactly where the hit is honestly telegraphed/landing, never a
+// re-derived or approximate angle. Drawn in the boss's local space (translated to
+// enemy.x/y, un-squashed), like the crown, so it rides the body's position but stays
+// upright/undistorted by the idle jelly wobble.
+function drawNibblerKingClub(enemy) {
+  const art = artFor("boss:nibblerKingClub");
+  if (!art) return;
+  if (enemy.bossState !== "telegraph" && enemy.bossState !== "strike") return;
 
-  // Base band beneath the spikes, plus small gem accents on the tall peaks so it reads as a
-  // crown rather than a jagged strip at a glance.
-  ctx.fillStyle = "#a9791f";
-  ctx.fillRect(-crownWidth / 2, -r * 0.08, crownWidth, r * 0.12);
-  ctx.fillStyle = "#ff6a5f";
-  for (let i = 0; i <= spikes; i += 2) {
-    const x = -crownWidth / 2 + (crownWidth * i) / spikes;
-    ctx.beginPath();
-    ctx.arc(x, -crownHeight * 0.78, Math.max(1.5, r * 0.07), 0, Math.PI * 2);
-    ctx.fill();
+  const melee = enemy.bossAttack === "weaponSwing" || enemy.bossAttack === "slamCombo" ||
+    enemy.bossAttack === "spinSweep" || enemy.bossAttack === "overheadSmash";
+  if (!melee) return;
+
+  const r = enemy.radius;
+  const telegraph = enemy.bossTelegraph;
+  const time = performance.now();
+
+  // Resolve the swing angle per attack kind. weaponSwing/slamCombo have an honest fixed
+  // angle from the telegraph payload; spinSweep has no single angle (it hits everywhere at
+  // once) so the club spins continuously to sell the whirl; overheadSmash is raised
+  // straight up over the head rather than swung sideways.
+  let angle;
+  let pivotReach = r * 0.75; // how far the grip sits from the boss centre, i.e. arm length
+  if (enemy.bossAttack === "weaponSwing") {
+    angle = telegraph?.angle ?? 0;
+  } else if (enemy.bossAttack === "slamCombo") {
+    const hit = telegraph?.hit ?? 0;
+    angle = telegraph?.angles?.[hit] ?? 0;
+  } else if (enemy.bossAttack === "spinSweep") {
+    // Fast continuous spin, sped up further during the "strike" (the actual whirl) vs the
+    // slower telegraph wind-up rotation.
+    const spinRate = enemy.bossState === "strike" ? 14 : 4;
+    angle = (time / 1000) * spinRate;
+    pivotReach = r * 0.85;
+  } else if (enemy.bossAttack === "overheadSmash") {
+    // Raised overhead: pointing straight up (-90deg) during telegraph (wind-up), swinging
+    // down to straight ahead/down at the moment of strike.
+    angle = enemy.bossState === "strike" ? Math.PI / 2 : -Math.PI / 2;
+    pivotReach = r * 0.5;
   }
+
+  const clubLength = r * 1.9;
+  const aspect = art.width / art.height;
+  const clubHeight = clubLength / aspect;
+
+  ctx.save();
+  ctx.translate(Math.cos(angle) * pivotReach, Math.sin(angle) * pivotReach + (enemy._renderHopY ?? 0));
+  ctx.rotate(angle);
+  ctx.imageSmoothingEnabled = true;
+  // Anchor at the LEFT edge of the image (the handle, per the source art's convention: drawn
+  // pointing right with the handle at the left end) so the club pivots around the grip with
+  // the head sweeping through the arc, the way a held weapon actually swings.
+  ctx.drawImage(art, 0, -clubHeight / 2, clubLength, clubHeight);
   ctx.restore();
 }
 
@@ -2200,6 +2271,27 @@ function drawNibblerKingPhaseOverlay(enemy) {
   }
 }
 
+// Shared ring-art draw for the circular ground telegraphs/shockwaves below. Draws
+// boss-warning-ring.png (registered as "fx:bossWarningRing" in js/00-assets.js) centred at
+// (x, y), scaled to the given radius, at the given alpha -- replacing what used to be a
+// plain stroked/filled circle with the cracked molten-stone ring texture, WITHOUT touching
+// any of the existing expand/pulse timing math (callers still compute radius/alpha exactly
+// as before and just hand them to this instead of calling ctx.arc/stroke directly).
+// Guarded like every other PNG draw in this file: falls back to the caller's own procedural
+// stroke if the art has not finished loading, so a mid-session load never means a missing
+// telegraph. Returns true if it drew the art (so the caller can skip its stroke fallback).
+function drawWarningRingArt(x, y, radius, alpha) {
+  const art = artFor("fx:bossWarningRing");
+  if (!art || radius <= 0 || alpha <= 0) return false;
+  const size = radius * 2;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(art, x - size / 2, y - size / 2, size, size);
+  ctx.restore();
+  return true;
+}
+
 // Ground-space red attack telegraphs, one per attack kind (see startBossTelegraph in
 // js/07-combat.js for what populates enemy.bossTelegraph). Called once per boss from the
 // top-level draw() loop, in WORLD coordinates (not the boss's local translate/squash space),
@@ -2214,14 +2306,18 @@ function drawNibblerKingTelegraphs(enemy) {
     const ring = enemy.bossSlamRing;
     const p = 1 - clamp(ring.life / ring.maxLife, 0, 1);
     const eased = easeOutCubic(p);
-    ctx.save();
-    ctx.globalAlpha = 1 - eased;
-    ctx.strokeStyle = "#ff6a5f";
-    ctx.lineWidth = 6 * (1 - eased * 0.6);
-    ctx.beginPath();
-    ctx.arc(ring.x, ring.y, ring.radius * (0.3 + eased * 0.7), 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
+    const radius = ring.radius * (0.3 + eased * 0.7);
+    const alpha = 1 - eased;
+    if (!drawWarningRingArt(ring.x, ring.y, radius, alpha)) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = "#ff6a5f";
+      ctx.lineWidth = 6 * (1 - eased * 0.6);
+      ctx.beginPath();
+      ctx.arc(ring.x, ring.y, radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   // SPIN SWEEP shockwave: same idea as the ground-slam ring above, but centred on the boss
@@ -2231,14 +2327,18 @@ function drawNibblerKingTelegraphs(enemy) {
     const ring = enemy.bossSpinRing;
     const p = 1 - clamp(ring.life / ring.maxLife, 0, 1);
     const eased = easeOutCubic(p);
-    ctx.save();
-    ctx.globalAlpha = 1 - eased;
-    ctx.strokeStyle = "#ff9c5b";
-    ctx.lineWidth = 5 * (1 - eased * 0.6);
-    ctx.beginPath();
-    ctx.arc(ring.x, ring.y, ring.radius * (0.5 + eased * 0.5), 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
+    const radius = ring.radius * (0.5 + eased * 0.5);
+    const alpha = 1 - eased;
+    if (!drawWarningRingArt(ring.x, ring.y, radius, alpha)) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = "#ff9c5b";
+      ctx.lineWidth = 5 * (1 - eased * 0.6);
+      ctx.beginPath();
+      ctx.arc(ring.x, ring.y, radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   if (enemy.bossState !== "telegraph" || !enemy.bossTelegraph) return;
@@ -2270,17 +2370,18 @@ function drawNibblerKingTelegraphs(enemy) {
     ctx.restore();
   } else if (telegraph.kind === "summonSpots") {
     // ATTACK 2 telegraph: a red warning ring at each spot a Nibbler is about to materialize.
+    // ART: the cracked-stone ring texture replaces the plain filled disc underneath; the
+    // stroked rim on top (same strobe colour/timing as before) stays procedural so the warning
+    // still reads as "red = danger" at a glance.
     for (const spot of telegraph.spots) {
+      const spotRadius = 22 + progress * 10;
       ctx.save();
+      drawWarningRingArt(spot.x, spot.y, spotRadius, strobe * 0.55);
       ctx.strokeStyle = `rgba(255, 70, 70, ${strobe})`;
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.arc(spot.x, spot.y, 22 + progress * 10, 0, Math.PI * 2);
+      ctx.arc(spot.x, spot.y, spotRadius, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.fillStyle = `rgba(255, 70, 70, ${strobe * 0.22})`;
-      ctx.beginPath();
-      ctx.arc(spot.x, spot.y, 22 + progress * 10, 0, Math.PI * 2);
-      ctx.fill();
       ctx.restore();
     }
   } else if (telegraph.kind === "flash") {
@@ -2297,18 +2398,17 @@ function drawNibblerKingTelegraphs(enemy) {
   } else if (telegraph.kind === "slam") {
     // ATTACK 4 telegraph: an expanding red circle on the ground at the slam's centre, matching
     // executeBossStrike's slamRadius math so the warning is an honest preview of the shockwave.
+    // ART: the cracked-stone ring texture replaces the plain filled disc underneath; the
+    // stroked rim on top (same strobe colour/timing as before) is unchanged.
     const slamRadius = enemy.radius * ((enemy.bossPhase ?? 1) >= 2 ? 5.5 : 4.5);
     const grow = 0.25 + progress * 0.85;
     ctx.save();
+    drawWarningRingArt(telegraph.x, telegraph.y, slamRadius * grow, strobe * 0.5);
     ctx.strokeStyle = `rgba(255, 60, 60, ${strobe})`;
     ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.arc(telegraph.x, telegraph.y, slamRadius * grow, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.fillStyle = `rgba(255, 60, 60, ${strobe * 0.16})`;
-    ctx.beginPath();
-    ctx.arc(telegraph.x, telegraph.y, slamRadius * grow, 0, Math.PI * 2);
-    ctx.fill();
     ctx.restore();
   } else if (telegraph.kind === "chargePath") {
     // ATTACK 5 telegraph: a straight red line/path from the boss toward where the player was
@@ -2354,35 +2454,33 @@ function drawNibblerKingTelegraphs(enemy) {
   } else if (telegraph.kind === "spinRing") {
     // ATTACK 7 (SPIN SWEEP) telegraph: an expanding ring at club reach around the boss, since
     // this attack hits every direction at once -- no arc to aim, just a growing danger radius.
+    // ART: the cracked-stone ring texture replaces the plain filled disc underneath; the
+    // stroked rim on top (same strobe colour/timing as before) is unchanged.
     const range = enemy.radius * ((enemy.bossPhase ?? 1) >= 2 ? 2.7 : 2.3);
     const grow = 0.3 + progress * 0.7;
     ctx.save();
+    drawWarningRingArt(enemy.x, enemy.y, range * grow, strobe * 0.45);
     ctx.strokeStyle = `rgba(255, 156, 91, ${strobe})`;
     ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.arc(enemy.x, enemy.y, range * grow, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.fillStyle = `rgba(255, 156, 91, ${strobe * 0.14})`;
-    ctx.beginPath();
-    ctx.arc(enemy.x, enemy.y, range * grow, 0, Math.PI * 2);
-    ctx.fill();
     ctx.restore();
   } else if (telegraph.kind === "overheadMark") {
     // ATTACK 8 (OVERHEAD SMASH) telegraph: a small precise circle pinned to the player's
     // position when the telegraph started -- deliberately small and exact, unlike the other
     // ground-warning attacks, since the whole point is a readable tell you can just step off.
+    // ART: the cracked-stone ring texture replaces the plain filled disc underneath; the
+    // stroked rim on top (same strobe colour/timing as before) is unchanged.
     const smashRadius = 46;
     const pulse = 0.85 + Math.sin(performance.now() / 1000 * (4 + progress * 6) * Math.PI * 2) * 0.15;
     ctx.save();
+    drawWarningRingArt(telegraph.x, telegraph.y, smashRadius * pulse, strobe * 0.6);
     ctx.strokeStyle = `rgba(255, 60, 60, ${strobe})`;
     ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.arc(telegraph.x, telegraph.y, smashRadius * pulse, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.fillStyle = `rgba(255, 60, 60, ${strobe * 0.2})`;
-    ctx.beginPath();
-    ctx.arc(telegraph.x, telegraph.y, smashRadius * pulse, 0, Math.PI * 2);
-    ctx.fill();
     // A thin line from the boss to the mark so it's clear WHO is about to slam it, even
     // though the hit lands wherever the mark is regardless of where the boss ends up.
     ctx.strokeStyle = `rgba(255, 60, 60, ${strobe * 0.3})`;

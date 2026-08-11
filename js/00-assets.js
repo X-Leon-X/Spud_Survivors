@@ -130,14 +130,19 @@ const ART_SOURCES = {
   "enemy:Clown Mid": "assets/enemies/clown-mid.png",
   "enemy:Clown Small": "assets/enemies/clown-small.png",
 
-  // BOSS SYSTEM -- Nibbler King. Reuses the regular Nibbler sprite, scaled way up (see
-  // ENEMY_ART_CONFIG below), since there is no dedicated boss sprite yet. When real art
-  // exists, point this at it (e.g. "assets/enemies/nibbler-king.png") -- everything else
-  // (scale, crown/aura hook) keeps working unchanged. See the ART HOOK comment in
-  // js/08-render.js (drawNibblerKingCrownAndAura) for the procedural crown/aura placeholder
-  // that should be retired once real boss art (crown baked into the sprite, or its own aura
-  // art) exists.
-  "enemy:Nibbler King": "assets/enemies/nibbler.png",
+  // BOSS SYSTEM -- Nibbler King. Dedicated boss sprite (uncrowned body; the crown is a
+  // separate overlay drawn by drawNibblerKingCrown in js/08-render.js). Processed from
+  // source art with a feathered black-background cutout that keeps the baked-in golden
+  // glow instead of hard-cutting it.
+  "enemy:Nibbler King": "assets/enemies/nibbler-king.png",
+
+  // BOSS SYSTEM -- Nibbler King crown/club overlays and ground-telegraph ring texture.
+  // Not enemy body art, so not on the "enemy:" key namespace: the crown is drawn by
+  // drawNibblerKingCrown (js/08-render.js), the club by the melee-strike club draw, and
+  // the ring by drawNibblerKingTelegraphs for circular ground warnings.
+  "boss:nibblerKingCrown": "assets/enemies/nibbler-king-crown.png",
+  "boss:nibblerKingClub": "assets/enemies/nibbler-king-club.png",
+  "fx:bossWarningRing": "assets/fx/boss-warning-ring.png",
 
   // UI chrome icons (buttons, placeholders).
   "ui:compendium": "assets/ui/compendium.png",
@@ -174,13 +179,16 @@ const ENEMY_ART_CONFIG = {
   "Clown Mid": { scale: 1.9, yOffset: -0.05 },
   "Clown Small": { scale: 2.0, yOffset: -0.04 },
 
-  // BOSS SYSTEM -- Nibbler King: the same nibbler.png art blown up to ~3.7x a normal
-  // Nibbler's rendered size (normal Nibbler is scale 1.9 on a radius-16 body -> drawn size
-  // ~30.4; boss is radius 52, so scale 4.0 here draws at 52*2*4.0=416, vs the normal
-  // Nibbler's 16*2*1.9=60.8 -- a ~6.8x LINEAR size jump driven mostly by the bigger hitbox,
-  // matching "massive". yOffset unchanged from the base Nibbler entry (no such entry exists
-  // above; using the Bruiser-ish default feel) so the sprite still plants on its shadow.
-  "Nibbler King": { scale: 4.0, yOffset: -0.05 }
+  // BOSS SYSTEM -- Nibbler King: dedicated boss art (nibbler-king.png), cropped tight to its
+  // own alpha bounding box during processing (no transparent padding at all), unlike the old
+  // placeholder nibbler.png which had real padding (content bbox ~225x152 inside its 256x256
+  // canvas, ~59% of the canvas height). Because the new art fills its whole box, the SAME
+  // scale as the old placeholder would draw noticeably bigger on screen. Scale is tuned down
+  // from the old 4.0 to 2.4 so the boss's on-screen drawn height stays close to what it was
+  // before the art swap (drawn box = radius*2*scale = 132*2.4 = 316.8px, close to the old
+  // effective content height of ~528*0.594 = 313.6px), keeping the swap a like-for-like art
+  // replacement rather than a hitbox-vs-visual mismatch. yOffset unchanged.
+  "Nibbler King": { scale: 2.4, yOffset: -0.05 }
 };
 
 // Enemies whose art faces the camera head-on and is left/right symmetric. These must NOT be
