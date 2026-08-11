@@ -37,8 +37,9 @@ const CHANGELOG = [
     date: "2026-08-10",
     title: "Buckshot",
     notes: [
-      "Seed Shotgun now fires 4 real pellets per shot instead of one wide fake spread blast.",
-      "Total damage per shot is unchanged, it is just split evenly across the pellets, so the shotgun feels punchier without hitting harder overall.",
+      "Seed Shotgun was never really a shotgun. It fired a single bullet at a random wide angle and hoped you would not notice.",
+      "It now fires 4 real pellets in a proper cone, so it finally works the way its name promises.",
+      "Total damage per shot has not changed. The same damage is split across the pellets instead of being multiplied by them.",
       "Extra +projectile items add more pellets to the spread the same way as before."
     ]
   },
