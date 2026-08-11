@@ -871,7 +871,16 @@ function fireWeaponFromSlot(weapon, slot, target) {
     const offset = (i - (shots - 1) / 2) * spread;
     const shotAngle = angle + offset;
     const crit = Math.random() * 100 < weaponCritChance(weapon);
-    const baseDamage = weaponShotDamage(weapon);
+    let baseDamage = weaponShotDamage(weapon);
+    // Real multi-pellet weapons (e.g. Seed Shotgun) fire `shots` separate bullets per
+    // trigger pull but must keep the same TOTAL damage per shot as a single-projectile
+    // weapon would, including as +projectile items push `shots` up. So baseDamage is
+    // divided by the actual shot count here (before crit, so crits still apply per-pellet)
+    // and the result is clamped with the same Math.max(1, Math.round(...)) idiom used
+    // elsewhere in this file to avoid 0-damage pellets when heavily stacked.
+    if (profile.splitDamageAcrossProjectiles) {
+      baseDamage = Math.max(1, Math.round(baseDamage / shots));
+    }
     const damage = baseDamage * (crit ? weaponCritMultiplier(weapon) : 1);
     const speed = weaponProjectileSpeed(weapon);
     state.bullets.push({

@@ -20,6 +20,16 @@
 
 const CHANGELOG = [
   {
+    version: "0.15.1",
+    date: "2026-08-10",
+    title: "Buckshot",
+    notes: [
+      "Seed Shotgun now fires 4 real pellets per shot instead of one wide fake spread blast.",
+      "Total damage per shot is unchanged, it is just split evenly across the pellets, so the shotgun feels punchier without hitting harder overall.",
+      "Extra +projectile items add more pellets to the spread the same way as before."
+    ]
+  },
+  {
     version: "0.15.0",
     date: "2026-08-10",
     title: "The Nibbler King",

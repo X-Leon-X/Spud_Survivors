@@ -133,7 +133,7 @@ const upgrades = [
     id: "seed_shotgun",
     name: "Seed Shotgun",
     badge: "W",
-    description: "A short-range spread weapon devastating up close, weak at distance.",
+    description: "Fires 4 pellets per shot, splitting its damage across them. Devastating up close, weak at distance.",
     baseCost: 58,
     tier: 3,
     loadoutType: "weapon",
@@ -592,7 +592,7 @@ const upgradeProfiles = {
   seed_shotgun: {
     lore: "A stubby launcher tube packed tight with dried garden seeds.",
     properties: "Fires a wide spread of seeds that devastates enemies at point-blank range but falls off hard at distance. Best used to clear tight crowds pressed against you.",
-    stats: ["Adds Seed Shotgun", "+2 Ranged Damage", "Wide spread, short range", "Damage drops off fast at range"]
+    stats: ["Adds Seed Shotgun", "+2 Ranged Damage", "Fires 4 pellets, damage split across them", "Damage drops off fast at range"]
   },
   thorn_lasher: {
     lore: "A braided vine whip studded with sharpened thorns.",
@@ -1046,15 +1046,19 @@ const weaponStatProfiles = {
     critMultiplier: 1.8,
     knockback: [10, 13, 16, 20, 25],
     pierce: [0, 1, 1, 2, 2],
-    // No true multi-pellet field is fired per shot beyond `projectiles` (which is reserved
-    // here for the player's own +projectile item stacking). The "spread of pellets" concept
-    // is approximated with a very wide `spread` value plus aggressive `damageFalloff` and a
-    // short `range`, so it reads as a shotgun (strong up close, weak far away) without the
-    // engine actually simulating separate pellets.
+    // Fires real multi-pellet shots: `projectiles: 4` below spawns 4 separate pellet
+    // bullets per trigger pull (see weaponProjectileCount), and `splitDamageAcrossProjectiles`
+    // tells fireWeaponFromSlot (js/07-combat.js) to divide baseDamage by the actual shot
+    // count so the TOTAL damage per shot stays equal to `baseDamage` no matter how many
+    // pellets fire (including when +projectile items add extra pellets). `spread` is
+    // narrowed accordingly (0.14 vs the old fake-spread 0.55) since the cone now has 4
+    // real pellets instead of 1 shot faking a spread via wide angle + falloff.
+    projectiles: 4,
+    splitDamageAcrossProjectiles: true,
     projectileSpeed: [520, 550, 585, 625, 670],
     projectileRadius: 6,
     projectileScale: 0.85,
-    spread: 0.55,
+    spread: 0.14,
     damageFalloff: 0.4,
     color: "#8fbf5a",
     impactColor: "#d7e79a"
