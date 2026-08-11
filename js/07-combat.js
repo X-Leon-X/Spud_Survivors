@@ -3264,7 +3264,15 @@ function landSlamComboHit(boss, index) {
   if (toPlayer <= range) {
     const angleDiff = Math.abs(angleDifference(Math.atan2(player.y - boss.y, player.x - boss.x), angle));
     if (angleDiff <= halfArc) {
-      const damage = Math.round(boss.damage * (phase2 ? 1.5 : 1.15));
+      // 1.0/0.8x (down from 1.5/1.15x). Per-hit these look mild, but this attack lands up to
+      // THREE times and the multiplier has to be read against the full chain, not one swing:
+      // at 1.5x the phase-2 combo totalled 153 damage, which outright kills both a lean ~90 HP
+      // build and a typical ~120 HP one from full health. Three chained swings inside a 1.05s
+      // phase-2 window is a tight dodge, and "froze for one second, died from full" reads as
+      // unfair rather than punishing. At 1.0/0.8x the full chain is 102 phase-2 / 82 phase-1,
+      // so eating all three is a catastrophic but survivable mistake for anything but the
+      // leanest build, and each individual swing still hurts enough to demand real movement.
+      const damage = Math.round(boss.damage * (phase2 ? 1.0 : 0.8));
       damagePlayer(damage, boss.x, boss.y, "Nibbler King");
     }
   }
