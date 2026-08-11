@@ -3991,7 +3991,7 @@ button:active:not(:disabled) {
    seamless. */
 .fortune-slip {
   animation: fortuneSlipUnfurl 500ms 230ms cubic-bezier(0.22, 1.12, 0.36, 1) both;
-  background: #fefefe;
+  background: #ffffff;
   border: 1px solid rgba(17, 23, 34, 0.16);
   border-radius: 3px;
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
@@ -4062,7 +4062,7 @@ button:active:not(:disabled) {
      slight remaining tip and settles it flat. */
   animation: fortunePaperIn 280ms cubic-bezier(0.22, 1.1, 0.36, 1) both;
   align-items: center;
-  background: #fefefe;
+  background: #ffffff;
   border: 1px solid rgba(17, 23, 34, 0.16);
   border-radius: 3px;
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
@@ -4081,11 +4081,13 @@ button:active:not(:disabled) {
   line-height: 1.35;
   margin: 0;
   min-width: 0;
+  overflow: visible;
   /* Extra right padding reserves the corner the rarity word sits in, so long fortunes never
      collide with it. */
   padding: 10px 74px 10px 18px;
   position: relative;
   text-align: center;
+  white-space: normal;
   width: min(60%, 520px);
   /* The strip overlaps the parted halves' inner edges, so it reads as one slip sticking out of a
      cracked cookie rather than three separate objects in a row. */
@@ -4194,6 +4196,24 @@ button:active:not(:disabled) {
 .card.fortune-card .fortune-paper {
   position: relative;
   z-index: 2;
+}
+
+/* NEEDED SPECIFICITY FIX: the generic `.card p` rule (class + type = 0,1,1) outranks the plain
+   `.fortune-paper` class selector (0,1,0) above, so its dark translucent background/text-color/
+   border/padding/overflow/white-space were silently winning the cascade and the "white" paper
+   was actually rendering as a near-black tinted strip with low-contrast blue-gray text. Re-assert
+   the paper's own look here at 0,2,1 (`.card.fortune-card .fortune-paper`), which beats `.card p`
+   outright, so the strip is guaranteed solid opaque white with black text no matter what generic
+   `.card p` styling exists elsewhere. */
+.card.fortune-card .fortune-paper {
+  background: #ffffff;
+  border: 1px solid rgba(17, 23, 34, 0.16);
+  border-radius: 3px;
+  color: #111111;
+  margin: 0;
+  overflow: visible;
+  padding: 10px 74px 10px 18px;
+  white-space: normal;
 }
 
 /* The action row stays a centred cluster rather than stretching across the whole full-width

@@ -20,6 +20,14 @@
 
 const CHANGELOG = [
   {
+    version: "0.14.4",
+    date: "2026-08-10",
+    title: "Truly white paper",
+    notes: [
+      "Fixed the fortune slip sometimes rendering with a dark, hard-to-read background instead of clean white paper. It is now solid white with crisp black text every time."
+    ]
+  },
+  {
     version: "0.14.3",
     date: "2026-08-10",
     title: "A readable fortune",
