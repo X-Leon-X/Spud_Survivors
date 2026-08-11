@@ -1764,6 +1764,11 @@ function updateEnemies(dt) {
     enemy.y += (moveY + (enemy.knockY ?? 0)) * dt;
     enemy.knockX = (enemy.knockX ?? 0) * Math.pow(0.06, dt);
     enemy.knockY = (enemy.knockY ?? 0) * Math.pow(0.06, dt);
+    // Cheap per-frame arena clamp for every enemy: knockback (especially the heavy hits that
+    // shove a boss) can otherwise push an enemy clean off the visible arena. No extra margin
+    // (unlike the player's +8) since enemies don't need breathing room from the wall.
+    enemy.x = clamp(enemy.x, enemy.radius, W - enemy.radius);
+    enemy.y = clamp(enemy.y, enemy.radius, H - enemy.radius);
     enemy.bob += dt * 5;
 
     const overlap = playerHitRadius() + enemy.radius;
@@ -1966,6 +1971,9 @@ function checkGravebloomInterrupt(enemy) {
 // fire rather than being skated backwards, which also stops chip damage from trivially
 // kiting it forever. Applied to weapon knockback only, not the Darter lunge.
 function enemyKnockbackResist(enemy) {
+  // The King is meant to feel weighty and immovable: 0.1 means it only takes ~10% of normal
+  // knockback (90% resisted), noticeably more planted than even the Bruiser below.
+  if (enemy.name === "Nibbler King") return 0.1;
   if (enemy.name === "Bruiser") return 0.25;
   if (enemy.size === "large") return 0.45;
   if (enemy.size === "medium") return 0.8;
@@ -2787,7 +2795,18 @@ const BOSS_ATTACK_TIMING = {
   // SPIT VOLLEY (ranged): several lobbed shots with individual ground markers.
   spitVolley: { p1: { telegraph: 1.0, strike: 0.1, recover: 1.0 }, p2: { telegraph: 0.7, strike: 0.1, recover: 0.65 } },
   // RADIAL BURST (ranged): full-circle projectile ring with gaps.
-  radialBurst: { p1: { telegraph: 0.9, strike: 0.08, recover: 0.95 }, p2: { telegraph: 0.6, strike: 0.08, recover: 0.6 } }
+  radialBurst: { p1: { telegraph: 0.9, strike: 0.08, recover: 0.95 }, p2: { telegraph: 0.6, strike: 0.08, recover: 0.6 } },
+  // ---- New attacks below (v0.17.0) ----
+  // GROUND POUND SHOCKWAVE: 3 sequential expanding rings, each independently dodgeable. Strike
+  // duration covers all 3 rings fired staggered (see the "groundPoundShockwave" branch of
+  // executeBossStrike / runGroundPoundTick).
+  groundPoundShockwave: { p1: { telegraph: 1.0, strike: 0.9, recover: 1.0 }, p2: { telegraph: 0.65, strike: 0.7, recover: 0.65 } },
+  // CROWN TOSS: the crown is thrown out toward the player then arcs back, boomerang-style, with
+  // two discrete hit-check points (out-peak, return-peak).
+  crownToss: { p1: { telegraph: 0.7, strike: 1.2, recover: 0.8 }, p2: { telegraph: 0.5, strike: 0.9, recover: 0.5 } },
+  // STOMP QUAKE (melee): a short flurry of tight tremor pulses right around the boss, punishing
+  // players standing in melee range who don't react.
+  stompQuake: { p1: { telegraph: 0.6, strike: 0.8, recover: 0.7 }, p2: { telegraph: 0.4, strike: 0.6, recover: 0.5 } }
 };
 
 function bossAttackTiming(name, phase) {
@@ -2808,7 +2827,10 @@ function pickBossAttack(boss) {
     { name: "overheadSmash", weight: 2 },
     { name: "seedSpray", weight: 2 },
     { name: "spitVolley", weight: 2 },
-    { name: "radialBurst", weight: 2 }
+    { name: "radialBurst", weight: 2 },
+    { name: "groundPoundShockwave", weight: 2 },
+    { name: "crownToss", weight: 2 },
+    { name: "stompQuake", weight: 2 }
   ];
   if (boss.bossPhase >= 2) {
     pool.push({ name: "nibblerLaunch", weight: 2 });
@@ -2868,6 +2890,17 @@ function updateNibblerKingBehavior(boss, dt, angleToPlayer, distanceToPlayer, sp
     boss.bossSpinRing.life -= dt;
     if (boss.bossSpinRing.life <= 0) boss.bossSpinRing = null;
   }
+  // GROUND POUND rings: an array (up to 3 concurrent, staggered) rather than a single slot like
+  // bossSlamRing/bossSpinRing, since this attack fires multiple rings across its strike window.
+  if (boss.bossPoundRings && boss.bossPoundRings.length) {
+    for (const ring of boss.bossPoundRings) ring.life -= dt;
+    boss.bossPoundRings = boss.bossPoundRings.filter((ring) => ring.life > 0);
+  }
+  // STOMP QUAKE ring: same single-slot decay pattern as bossSlamRing, just its own field.
+  if (boss.bossQuakeRing) {
+    boss.bossQuakeRing.life -= dt;
+    if (boss.bossQuakeRing.life <= 0) boss.bossQuakeRing = null;
+  }
 
   // ---- Idle: ambient chase (slow -- see the Nibbler King's template speed) until the
   // attack cooldown between actions elapses, then queue a new attack.
@@ -2926,6 +2959,15 @@ function updateNibblerKingBehavior(boss, dt, angleToPlayer, distanceToPlayer, sp
     if (boss.bossAttack === "slamCombo") {
       runSlamComboTick(boss, dt);
     }
+    if (boss.bossAttack === "groundPoundShockwave") {
+      runGroundPoundTick(boss, dt);
+    }
+    if (boss.bossAttack === "crownToss") {
+      runCrownTossTick(boss, dt);
+    }
+    if (boss.bossAttack === "stompQuake") {
+      runStompQuakeTick(boss, dt);
+    }
     if (boss.bossTimer <= 0) {
       const timing = bossAttackTiming(boss.bossAttack, boss.bossPhase);
       boss.bossState = "recover";
@@ -2936,6 +2978,12 @@ function updateNibblerKingBehavior(boss, dt, angleToPlayer, distanceToPlayer, sp
       boss.chargeTimer = 0;
       boss._comboHitsLanded = 0;
       boss._comboNextHitAt = undefined;
+      boss._poundRingsFired = 0;
+      boss._poundNextRingAt = undefined;
+      boss._crownHitsLanded = 0;
+      boss.bossCrownPos = null;
+      boss._quakePulsesFired = 0;
+      boss._quakeNextPulseAt = undefined;
     }
     return;
   }
@@ -3034,6 +3082,25 @@ function startBossTelegraph(boss) {
     // flash plus an expanding ring, distinct from the phase-2 nibblerLaunch's own flash (that
     // one throws real Nibblers, this one throws projectiles).
     boss.bossTelegraph = { kind: "radialFlash", elapsed: 0 };
+  } else if (boss.bossAttack === "groundPoundShockwave") {
+    // RANGED/AOE: 3 sequential rings centred on the boss, staggered so each is individually
+    // dodgeable. Telegraph is a single growing warning ring at the boss (the rings themselves
+    // are visualized as they fire, during strike, via boss.bossPoundRings).
+    boss.bossTelegraph = { kind: "poundWarn", elapsed: 0 };
+  } else if (boss.bossAttack === "crownToss") {
+    // The crown is thrown toward the player's position at telegraph start (not homing), then
+    // arcs back to the boss -- an honest fixed-angle preview, same convention as chargePath.
+    boss.bossTelegraph = {
+      kind: "crownArc",
+      fromX: boss.x,
+      fromY: boss.y,
+      angle: Math.atan2(player.y - boss.y, player.x - boss.x),
+      elapsed: 0
+    };
+  } else if (boss.bossAttack === "stompQuake") {
+    // MELEE: tight tremor pulses right around the boss -- short telegraph since it's meant to
+    // punish players who don't react to being in melee range.
+    boss.bossTelegraph = { kind: "quakeWarn", elapsed: 0 };
   }
 }
 
@@ -3228,6 +3295,148 @@ function executeBossStrike(boss) {
     playSfx("explosion");
     burst(boss.x, boss.y, "#ff9c5b", 20);
     spawnRing(boss.x, boss.y, "#ff9c5b", boss.radius * 2, 0.3);
+  } else if (boss.bossAttack === "groundPoundShockwave") {
+    // ATTACK 12 (RANGED/AOE): GROUND POUND SHOCKWAVE. 3 rings fired staggered across the strike
+    // window (first one now, the rest via runGroundPoundTick), each independently dodgeable and
+    // individually weaker than a single groundSlam.
+    boss._poundRingsFired = 0;
+    boss._poundNextRingAt = undefined;
+    fireGroundPoundRing(boss, 0);
+  } else if (boss.bossAttack === "crownToss") {
+    // ATTACK 13 (RANGED): CROWN TOSS. Boomerang throw -- out toward the telegraphed angle, then
+    // back to the boss. Hit-checked at two discrete points (out-peak, return-peak) via
+    // runCrownTossTick rather than continuous tracking, since the arc is a fixed, honest path.
+    boss._crownHitsLanded = 0;
+    playSfx("shoot");
+    burst(boss.x, boss.y, "#f2c45f", 12);
+  } else if (boss.bossAttack === "stompQuake") {
+    // ATTACK 14 (MELEE): STOMP QUAKE. First of 3-4 tight tremor pulses lands here; the rest
+    // fire via runStompQuakeTick. Punishes players standing right next to the boss.
+    boss._quakePulsesFired = 0;
+    boss._quakeNextPulseAt = undefined;
+    fireStompQuakePulse(boss, 0);
+  }
+}
+
+// Fires ring N (0-2) of the ground pound shockwave: a moderate-radius expanding ring centred on
+// the boss's CURRENT position (each ring re-centres, unlike groundSlam's single fixed spot),
+// dealing damage once via a simple distance check, same convention as groundSlam.
+function fireGroundPoundRing(boss, index) {
+  const player = state.player;
+  const phase2 = boss.bossPhase >= 2;
+  const ringRadius = boss.radius * (phase2 ? 3.2 : 2.6);
+  boss.bossPoundRings = boss.bossPoundRings ?? [];
+  boss.bossPoundRings.push({ x: boss.x, y: boss.y, radius: ringRadius, life: 0.35, maxLife: 0.35 });
+  const dist = Math.hypot(player.x - boss.x, player.y - boss.y);
+  if (dist <= ringRadius + playerHitRadius()) {
+    const damage = Math.round(boss.damage * (phase2 ? 0.85 : 0.6));
+    damagePlayer(damage, boss.x, boss.y, "Nibbler King");
+  }
+  addShake(5, true);
+  playSfx("explosion");
+  burst(boss.x, boss.y, "#ff6a5f", 14);
+}
+
+// Per-frame ticker for groundPoundShockwave, called from updateNibblerKingBehavior's "strike"
+// state -- fires rings 1 and 2 staggered across the strike window, same pattern as
+// runSlamComboTick.
+function runGroundPoundTick(boss, dt) {
+  const timing = bossAttackTiming("groundPoundShockwave", boss.bossPhase);
+  const ringCount = 3;
+  const ringSpacing = timing.strike / ringCount;
+  if (boss._poundNextRingAt === undefined) {
+    boss._poundNextRingAt = ringSpacing;
+  }
+  const elapsedInStrike = timing.strike - boss.bossTimer;
+  if (boss._poundRingsFired < ringCount - 1 && elapsedInStrike >= boss._poundNextRingAt) {
+    boss._poundRingsFired += 1;
+    boss._poundNextRingAt += ringSpacing;
+    fireGroundPoundRing(boss, boss._poundRingsFired);
+  }
+}
+
+// Per-frame ticker for crownToss, called from updateNibblerKingBehavior's "strike" state.
+// Rather than tracking the crown continuously, this checks two discrete points along the
+// out-and-back arc: the outward peak (roughly 40% through the strike) and the return peak
+// (roughly 90% through), matching the documented "simplify to 1-2 discrete hit-check points"
+// fallback for this attack.
+function runCrownTossTick(boss, dt) {
+  const player = state.player;
+  const phase2 = boss.bossPhase >= 2;
+  const timing = bossAttackTiming("crownToss", boss.bossPhase);
+  const elapsedInStrike = timing.strike - boss.bossTimer;
+  const angle = boss.bossTelegraph?.angle ?? 0;
+  const throwRange = boss.radius * 3.4;
+
+  const outAt = timing.strike * 0.4;
+  const backAt = timing.strike * 0.9;
+
+  if (boss._crownHitsLanded < 1 && elapsedInStrike >= outAt) {
+    boss._crownHitsLanded = 1;
+    const hitX = boss.x + Math.cos(angle) * throwRange;
+    const hitY = boss.y + Math.sin(angle) * throwRange;
+    boss.bossCrownPos = { x: hitX, y: hitY };
+    const dist = Math.hypot(player.x - hitX, player.y - hitY);
+    if (dist <= 40 + playerHitRadius()) {
+      const damage = Math.round(boss.damage * (phase2 ? 1.3 : 0.9));
+      damagePlayer(damage, hitX, hitY, "Nibbler King");
+    }
+    burst(hitX, hitY, "#f2c45f", 10);
+  } else if (boss._crownHitsLanded < 2 && elapsedInStrike >= backAt) {
+    boss._crownHitsLanded = 2;
+    boss.bossCrownPos = { x: boss.x, y: boss.y };
+    const dist = Math.hypot(player.x - boss.x, player.y - boss.y);
+    if (dist <= 40 + playerHitRadius()) {
+      const damage = Math.round(boss.damage * (phase2 ? 1.3 : 0.9));
+      damagePlayer(damage, boss.x, boss.y, "Nibbler King");
+    }
+    burst(boss.x, boss.y, "#f2c45f", 10);
+  } else if (elapsedInStrike < outAt) {
+    // In-flight toward the peak: interpolate for the render step (drawn in js/08-render.js).
+    const p = clamp(elapsedInStrike / outAt, 0, 1);
+    boss.bossCrownPos = { x: boss.x + Math.cos(angle) * throwRange * p, y: boss.y + Math.sin(angle) * throwRange * p };
+  } else if (elapsedInStrike < backAt) {
+    const p = clamp((elapsedInStrike - outAt) / (backAt - outAt), 0, 1);
+    boss.bossCrownPos = {
+      x: boss.x + Math.cos(angle) * throwRange * (1 - p),
+      y: boss.y + Math.sin(angle) * throwRange * (1 - p)
+    };
+  }
+}
+
+// Fires pulse N (0-3) of the stomp quake: a small fixed-radius tremor right around the boss,
+// same distance-check convention as spinSweep but much shorter range and lower per-hit damage
+// since it fires several times in quick succession.
+function fireStompQuakePulse(boss, index) {
+  const player = state.player;
+  const phase2 = boss.bossPhase >= 2;
+  const quakeRadius = boss.radius * 1.8;
+  const dist = Math.hypot(player.x - boss.x, player.y - boss.y);
+  if (dist <= quakeRadius + playerHitRadius()) {
+    const damage = Math.round(boss.damage * (phase2 ? 0.7 : 0.5));
+    damagePlayer(damage, boss.x, boss.y, "Nibbler King");
+  }
+  boss.bossQuakeRing = { x: boss.x, y: boss.y, radius: quakeRadius, life: 0.25, maxLife: 0.25 };
+  addShake(4, true);
+  playSfx("hit");
+  burst(boss.x, boss.y, "#ff9c5b", 10);
+}
+
+// Per-frame ticker for stompQuake, called from updateNibblerKingBehavior's "strike" state --
+// fires 3 more pulses (4 total, pulse 0 already fired in executeBossStrike) evenly spaced
+// across the strike window, same pattern as runSlamComboTick/runGroundPoundTick.
+function runStompQuakeTick(boss, dt) {
+  const timing = bossAttackTiming("stompQuake", boss.bossPhase);
+  const pulseCount = 4;
+  const pulseSpacing = timing.strike / pulseCount;
+  if (boss._quakeNextPulseAt === undefined) {
+    boss._quakeNextPulseAt = pulseSpacing;
+  }
+  const elapsedInStrike = timing.strike - boss.bossTimer;
+  if (boss._quakePulsesFired < pulseCount - 1 && elapsedInStrike >= boss._quakeNextPulseAt) {
+    boss._quakePulsesFired += 1;
+    boss._quakeNextPulseAt += pulseSpacing;
+    fireStompQuakePulse(boss, boss._quakePulsesFired);
   }
 }
 
@@ -3350,9 +3559,9 @@ const BOSS_TREE_RESPAWN_INTERVAL = 14;
 // as treeTimer above) rather than a module-level variable so it resets cleanly the instant a
 // new fight starts (startBossFight in js/04-flow.js creates a fresh state.bossFight object every
 // time, so there is nothing to manually reset here).
-const BOSS_TRICKLE_INTERVAL_P1 = [2.5, 4];   // phase 1: one every 2.5-4s
-const BOSS_TRICKLE_INTERVAL_P2 = [1.5, 2.5]; // phase 2: faster, one every 1.5-2.5s
-const BOSS_TRICKLE_CAP = 8; // hard cap on trickle-spawned Nibblers alive at once
+const BOSS_TRICKLE_INTERVAL_P1 = [1.2, 2.2]; // phase 1: one every 1.2-2.2s
+const BOSS_TRICKLE_INTERVAL_P2 = [0.8, 1.5]; // phase 2: faster, one every 0.8-1.5s
+const BOSS_TRICKLE_CAP = 16; // hard cap on trickle-spawned Nibblers alive at once
 
 function updateBossFight(dt) {
   if (!state.bossFight) return;

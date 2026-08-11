@@ -2150,9 +2150,21 @@ function drawNibblerKingCrown(enemy) {
   // way up (ENEMY_ART_CONFIG "Nibbler King", see js/00-assets.js), so a naive -r*1.02 offset
   // would land the crown around the sprite's belly instead of its head.
   const cfg = enemyArtConfig(enemy.name);
-  const half = r * cfg.scale;              // half of drawEnemyArtBody's `size`
+  const size = r * 2 * cfg.scale;          // drawEnemyArtBody's own `size`
+  const half = size / 2;                   // half of drawEnemyArtBody's `size`
   const base = half * 0.82;                // same ground-contact anchor drawEnemyArtBody uses
-  const spriteTopY = r * cfg.yOffset - half - base;
+  // drawEnemyArtBody aspect-fits the BODY art into the `size` box rather than stretching it to
+  // fill a square, so the real rendered top of the body sprite (drawY) sits lower than a naive
+  // "top of the square box" assumption whenever the art isn't square (the King's body art is
+  // 1269x1004, ratio ~1.264). Recompute that same aspect-fit math here using the body art's own
+  // ratio so the crown anchors to where the head ACTUALLY is instead of floating above it.
+  const bodyArt = enemyArt(enemy.name);
+  const artRatio = (bodyArt && bodyArt.naturalWidth && bodyArt.naturalHeight)
+    ? bodyArt.naturalWidth / bodyArt.naturalHeight
+    : 1;
+  const bodyDrawH = artRatio >= 1 ? size / artRatio : size;
+  const bodyTopY = r * cfg.yOffset - half - base + size - bodyDrawH; // matches drawEnemyArtBody's drawY exactly
+  const spriteTopY = bodyTopY;
   const headY = spriteTopY + r * 0.35;     // nudge down slightly onto the head, not floating above it
   // Ride the body's hop offset exactly like the health bar does (drawEnemyStateOverlays),
   // so the crown stays welded to the head instead of detaching while the boss bobs. This
@@ -2228,7 +2240,18 @@ function drawNibblerKingClub(enemy) {
     pivotReach = r * 0.5;
   }
 
-  const clubLength = r * 1.9;
+  // Base the club's length on the body art's ACTUAL rendered half-width (aspect-fit, not the
+  // raw radius) so it stays correctly proportioned if the art ever changes -- see the same
+  // aspect-fit math in drawEnemyArtBody/drawNibblerKingCrown.
+  const cfg = enemyArtConfig(enemy.name);
+  const bodySize = r * 2 * cfg.scale;
+  const bodyArt = enemyArt(enemy.name);
+  const bodyArtRatio = (bodyArt && bodyArt.naturalWidth && bodyArt.naturalHeight)
+    ? bodyArt.naturalWidth / bodyArt.naturalHeight
+    : 1;
+  const bodyDrawW = bodyArtRatio >= 1 ? bodySize : bodySize * bodyArtRatio;
+  const renderedHalfWidth = bodyDrawW / 2;
+  const clubLength = renderedHalfWidth * 1.9;
   const aspect = art.width / art.height;
   const clubHeight = clubLength / aspect;
 
@@ -2339,6 +2362,60 @@ function drawNibblerKingTelegraphs(enemy) {
       ctx.stroke();
       ctx.restore();
     }
+  }
+
+  // GROUND POUND SHOCKWAVE rings: same expanding-ring visual as groundSlam, but multiple
+  // concurrent rings (see boss.bossPoundRings, an array set/decayed in js/07-combat.js).
+  if (enemy.bossPoundRings) {
+    for (const ring of enemy.bossPoundRings) {
+      const p = 1 - clamp(ring.life / ring.maxLife, 0, 1);
+      const eased = easeOutCubic(p);
+      const radius = ring.radius * (0.3 + eased * 0.7);
+      const alpha = 1 - eased;
+      if (!drawWarningRingArt(ring.x, ring.y, radius, alpha)) {
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = "#ff6a5f";
+        ctx.lineWidth = 5 * (1 - eased * 0.6);
+        ctx.beginPath();
+        ctx.arc(ring.x, ring.y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+  }
+
+  // STOMP QUAKE ring: same idea, single small ring right around the boss for each tremor pulse.
+  if (enemy.bossQuakeRing) {
+    const ring = enemy.bossQuakeRing;
+    const p = 1 - clamp(ring.life / ring.maxLife, 0, 1);
+    const eased = easeOutCubic(p);
+    const radius = ring.radius * (0.4 + eased * 0.6);
+    const alpha = 1 - eased;
+    if (!drawWarningRingArt(ring.x, ring.y, radius, alpha)) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = "#ff9c5b";
+      ctx.lineWidth = 4 * (1 - eased * 0.6);
+      ctx.beginPath();
+      ctx.arc(ring.x, ring.y, radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // CROWN TOSS in-flight marker: a small solid dot tracing the crown's out-and-back arc while
+  // the strike plays, so the boomerang path itself reads clearly. Drawn in addition to (not
+  // instead of) the boss's own head-mounted crown from drawNibblerKingCrown -- simplest to
+  // read as "a second crown" flying out rather than adding a suppress-during-toss branch to
+  // the unrelated idle-crown draw path.
+  if (enemy.bossCrownPos && enemy.bossAttack === "crownToss" && enemy.bossState === "strike") {
+    ctx.save();
+    ctx.fillStyle = "#f2c45f";
+    ctx.beginPath();
+    ctx.arc(enemy.bossCrownPos.x, enemy.bossCrownPos.y, 22, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   if (enemy.bossState !== "telegraph" || !enemy.bossTelegraph) return;
@@ -2531,6 +2608,53 @@ function drawNibblerKingTelegraphs(enemy) {
     ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.arc(enemy.x, enemy.y, enemy.radius * (1.1 + progress * 1.8), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  } else if (telegraph.kind === "poundWarn") {
+    // ATTACK 12 (GROUND POUND SHOCKWAVE) telegraph: a growing warning ring centred on the boss,
+    // previewing the first (and largest-window) of the 3 staggered rings to come.
+    const range = enemy.radius * ((enemy.bossPhase ?? 1) >= 2 ? 3.2 : 2.6);
+    const grow = 0.3 + progress * 0.7;
+    ctx.save();
+    drawWarningRingArt(enemy.x, enemy.y, range * grow, strobe * 0.5);
+    ctx.strokeStyle = `rgba(255, 60, 60, ${strobe})`;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(enemy.x, enemy.y, range * grow, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  } else if (telegraph.kind === "crownArc") {
+    // ATTACK 13 (CROWN TOSS) telegraph: a straight line toward the throw angle, previewing the
+    // boomerang's out-leg (same visual language as chargePath) plus a small mark at the peak.
+    const throwRange = enemy.radius * 3.4;
+    const endX = telegraph.fromX + Math.cos(telegraph.angle) * throwRange;
+    const endY = telegraph.fromY + Math.sin(telegraph.angle) * throwRange;
+    ctx.save();
+    ctx.strokeStyle = `rgba(242, 196, 95, ${strobe * 0.85})`;
+    ctx.lineWidth = 3;
+    ctx.setLineDash([10, 8]);
+    ctx.beginPath();
+    ctx.moveTo(telegraph.fromX, telegraph.fromY);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = `rgba(255, 90, 90, ${strobe})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(endX, endY, 24 + progress * 8, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  } else if (telegraph.kind === "quakeWarn") {
+    // ATTACK 14 (STOMP QUAKE) telegraph: a tight pulsing ring right around the boss, short and
+    // urgent since this attack is meant to punish players who don't react to being in melee.
+    const range = enemy.radius * 1.8;
+    const pulse = 0.85 + Math.sin(performance.now() / 1000 * (5 + progress * 6) * Math.PI * 2) * 0.15;
+    ctx.save();
+    drawWarningRingArt(enemy.x, enemy.y, range * pulse, strobe * 0.55);
+    ctx.strokeStyle = `rgba(255, 156, 91, ${strobe})`;
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.arc(enemy.x, enemy.y, range * pulse, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   }

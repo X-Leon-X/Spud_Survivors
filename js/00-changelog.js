@@ -20,6 +20,17 @@
 
 const CHANGELOG = [
   {
+    version: "0.17.0",
+    date: "2026-08-11",
+    title: "Stand Your Ground",
+    notes: [
+      "The Nibbler King barely gets shoved around by knockback anymore, so it feels appropriately heavy, and it (along with every other enemy) can no longer get knocked clean off the edge of the arena.",
+      "The King's crown and club now actually sit on its body instead of floating above its head, so both are finally clearly visible during the fight.",
+      "Three new attacks: a ground pound shockwave (three sequential rings you can dodge one at a time), a crown toss (the King throws its crown out and it arcs back), and a stomp quake (a flurry of quick tremors that punish standing right next to it).",
+      "A steady stream of nibblers now trickles in throughout the fight, noticeably faster than before, so you can never fully relax even between the King's own attacks."
+    ]
+  },
+  {
     version: "0.16.1",
     date: "2026-08-11",
     title: "Long Live the King",
