@@ -130,6 +130,15 @@ const ART_SOURCES = {
   "enemy:Clown Mid": "assets/enemies/clown-mid.png",
   "enemy:Clown Small": "assets/enemies/clown-small.png",
 
+  // BOSS SYSTEM -- Nibbler King. Reuses the regular Nibbler sprite, scaled way up (see
+  // ENEMY_ART_CONFIG below), since there is no dedicated boss sprite yet. When real art
+  // exists, point this at it (e.g. "assets/enemies/nibbler-king.png") -- everything else
+  // (scale, crown/aura hook) keeps working unchanged. See the ART HOOK comment in
+  // js/08-render.js (drawNibblerKingCrownAndAura) for the procedural crown/aura placeholder
+  // that should be retired once real boss art (crown baked into the sprite, or its own aura
+  // art) exists.
+  "enemy:Nibbler King": "assets/enemies/nibbler.png",
+
   // UI chrome icons (buttons, placeholders).
   "ui:compendium": "assets/ui/compendium.png",
   "ui:gravestone": "assets/ui/gravestone.png"
@@ -163,7 +172,15 @@ const ENEMY_ART_CONFIG = {
   Gravebloom: { scale: 1.72, yOffset: -0.1 },       // tall drooping flower head
   Clown: { scale: 1.78, yOffset: -0.06 },
   "Clown Mid": { scale: 1.9, yOffset: -0.05 },
-  "Clown Small": { scale: 2.0, yOffset: -0.04 }
+  "Clown Small": { scale: 2.0, yOffset: -0.04 },
+
+  // BOSS SYSTEM -- Nibbler King: the same nibbler.png art blown up to ~3.7x a normal
+  // Nibbler's rendered size (normal Nibbler is scale 1.9 on a radius-16 body -> drawn size
+  // ~30.4; boss is radius 52, so scale 4.0 here draws at 52*2*4.0=416, vs the normal
+  // Nibbler's 16*2*1.9=60.8 -- a ~6.8x LINEAR size jump driven mostly by the bigger hitbox,
+  // matching "massive". yOffset unchanged from the base Nibbler entry (no such entry exists
+  // above; using the Bruiser-ish default feel) so the sprite still plants on its shadow.
+  "Nibbler King": { scale: 4.0, yOffset: -0.05 }
 };
 
 // Enemies whose art faces the camera head-on and is left/right symmetric. These must NOT be

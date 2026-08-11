@@ -20,6 +20,21 @@
 
 const CHANGELOG = [
   {
+    version: "0.15.0",
+    date: "2026-08-10",
+    title: "The Nibbler King",
+    notes: [
+      "Wave 10's first boss fight has arrived: the Nibbler King, a massive crowned Nibbler with an aura of its own.",
+      "The fight happens right after wave 10's rewards and shop, before wave 11 begins. It does not use up a wave, so you keep your normal progress either way.",
+      "The King does not run on a clock. The fight only ends when it goes down.",
+      "Every attack shows a clear red warning first, so you always get a chance to react before it lands.",
+      "It swings, it charges, it slams the ground, and it calls in regular Nibblers to back it up.",
+      "Push it past half health and it gets angry: faster attacks, harder hits, and it starts flinging Nibblers out in every direction.",
+      "Beat it for a big pile of scrap on top of the usual post-wave rewards.",
+      "A dedicated health bar tracks the fight so you always know how close it is to going down."
+    ]
+  },
+  {
     version: "0.14.4",
     date: "2026-08-10",
     title: "Truly white paper",

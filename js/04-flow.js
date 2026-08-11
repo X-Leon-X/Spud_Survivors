@@ -42,6 +42,13 @@ function freshState() {
     shopDiscount: 0,
     recycleRate: 0.35,
     treeOneShot: false,
+    // BOSS SYSTEM: null outside a boss fight. See startBossFight() below for the shape
+    // (index/phase/timers) and js/07-combat.js updateBossEnemy for the attack machine that
+    // lives on the boss enemy instance itself. bossFightClearedForWave records the wave
+    // NUMBER (e.g. 11) whose boss has already been beaten, so a dev-panel wave jump or a
+    // re-entrant startWave() call can't re-trigger the same interstitial twice.
+    bossFight: null,
+    bossFightClearedForWave: null,
     extraWeaponSlots: 0,
     temp: { stats: {}, effects: {}, extraWeaponSlots: 0, weapons: [], flags: {} },
     character: selectedCharacter,
@@ -155,7 +162,27 @@ function applyCharacter(character) {
   state.player.hp = state.player.stats.maxHp;
 }
 
+// BOSS SYSTEM -- the single entry point every "advance past a wave" path goes through
+// (the shop's Start Next Wave button and the dev panel's wave-jump both call startWave()
+// directly), so intercepting here is the one place that reliably catches every route into
+// wave 11, 21, 31, etc. A boss fight is an INTERSTITIAL: it must NOT consume a wave number,
+// so this fires BEFORE state.wave is incremented, using the wave the player is about to
+// enter (state.wave + 1) as the trigger. If that wave would be a multiple of
+// BOSS_WAVE_INTERVAL and no boss fight has happened for it yet, redirect into
+// startBossFight() instead of incrementing -- when the fight ends (see endBossFight in
+// js/07-combat.js) it calls startWave() again itself, and by then bossFightClearedForWave
+// has been stamped so this check falls through and wave 11 (etc.) starts normally.
 function startWave() {
+  const nextWave = state.wave + 1;
+  if (
+    nextWave % BOSS_WAVE_INTERVAL === 0 &&
+    state.bossFightClearedForWave !== nextWave &&
+    !state.bossFight
+  ) {
+    startBossFight(nextWave / BOSS_WAVE_INTERVAL);
+    return;
+  }
+
   state.mode = "playing";
   state.wave += 1;
   state.waveDuration = Math.min(56, 32 + state.wave * 3);
@@ -177,6 +204,92 @@ function startWave() {
   showMessage(`Wave ${state.wave}`, "More scrap. Meaner shapes.", 1100);
   applyArmedFortunes();
   applyPeashooterOnlyIfArmed();
+}
+
+// BOSS SYSTEM -- begins an interstitial boss fight. `bossIndex` is 1 for the first fight
+// (between wave 10 and 11), 2 for the second (wave 20/21), etc. -- see startWave() above for
+// the trigger. Deliberately does NOT touch state.wave: the fight sits BETWEEN two wave
+// numbers, so the HUD wave chip is hidden entirely for its duration (see updateHud(),
+// js/06-shop.js) rather than shown as a fake wave number.
+//
+// The fight reuses the normal "playing" simulation loop (movePlayer, updateEnemies, weapon
+// fire, etc. in js/07-combat.js's update()) -- only the wave-end condition and the enemy
+// spawner are special-cased for state.bossFight (see the waveTime guard and the
+// spawnWaveEnemies early-return, both in js/07-combat.js), so nothing here needs to duplicate
+// that machinery.
+function startBossFight(bossIndex) {
+  state.mode = "playing";
+  state.bossFight = {
+    index: bossIndex,
+    phase: 1,
+    // Trees respawn periodically through the fight (a modest trickle, not a full
+    // spawnTrees() reset) so the arena doesn't go bare over a long fight -- see
+    // updateBossFight()'s tick, called from update() in js/07-combat.js.
+    treeTimer: 22
+  };
+  state.spawnTimer = 0;
+  state.enemies.length = 0;
+  state.enemyDeaths.length = 0;
+  state.trees.length = 0;
+  state.crates.length = 0;
+  state.crateDrops.length = 0;
+  state.fortuneCookies.length = 0;
+  state.poisonPools.length = 0;
+  state.bulbs.length = 0;
+  state.bullets.length = 0;
+  state.swings.length = 0;
+  state.enemyBullets.length = 0;
+  state.crateBudget = 0; // no crates during a boss fight -- see updateCrateSpawns' guard
+  state.player.hp = Math.min(state.player.maxHp, state.player.hp + 8);
+  spawnTrees();
+  hideShop();
+  hideReward();
+  playSfx("wave");
+  spawnNibblerKing(bossIndex);
+  // Title reads EXACTLY "Boss Fight N" -- no wave number anywhere in it (spec requirement).
+  showMessage(`Boss Fight ${bossIndex}`, "The Nibbler King rises.", 1400);
+  applyArmedFortunes();
+  applyPeashooterOnlyIfArmed();
+}
+
+// BOSS SYSTEM -- called from js/07-combat.js the instant the Nibbler King dies (or, as a
+// soft-lock safety, if the boss fight is active but no boss enemy exists in state.enemies --
+// see the guard in update()'s wave-end check). Clears the fight flag, stamps
+// bossFightClearedForWave so startWave() doesn't re-trigger the same fight, and hands off to
+// the SAME post-wave reward flow every normal wave uses (finishWaveTransition ->
+// showBodyReward -> continueRewards -> crate/fortune/shop), so the boss reward is not a
+// special case the player has to learn separately.
+function endBossFight(isSoftLockSafety = false) {
+  const bossFight = state.bossFight;
+  if (!bossFight) return;
+  if (isSoftLockSafety) {
+    // Should never happen in normal play (the boss only leaves state.enemies via
+    // killBossEnemy, which calls endBossFight(false) itself) -- this path exists purely so a
+    // boss vanishing some other way can never permanently strand the player on a wave that
+    // can no longer end. Logged so it's visible during testing if it ever fires.
+    console.warn("Boss fight ended via soft-lock safety: no boss enemy found while state.bossFight was active.");
+  }
+  const clearedWave = bossFight.index * BOSS_WAVE_INTERVAL + 1;
+  state.bossFight = null;
+  state.bossFightClearedForWave = clearedWave;
+  state.mode = "bagging";
+  clearTempModifiers();
+  state.enemies.length = 0;
+  state.enemyDeaths.length = 0;
+  state.trees.length = 0;
+  state.enemyBullets.length = 0;
+  state.bullets.length = 0;
+  state.swings.length = 0;
+  state.player.burnTicksLeft = 0;
+  state.player.burnTickTimer = 0;
+  state.player.burnSourceName = null;
+  const looseScrap = state.coins.reduce((sum, coin) => sum + coin.value, 0);
+  if (looseScrap > 0) {
+    startBagCollection(looseScrap);
+    showMessage(`+${looseScrap} bagged`, "Loose scrap saved for later", 1000);
+    return;
+  }
+  finishWaveTransition();
 }
 
 // CLOWN consumer: peashooterOnly. Runs AFTER applyArmedFortunes() so the flag it sets (via

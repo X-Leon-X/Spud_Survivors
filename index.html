@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Spud Survivors</title>
-    <link rel="stylesheet" href="styles.css?v=0.14.4">
+    <link rel="stylesheet" href="styles.css?v=0.15.0">
   </head>
   <body>
     <main class="game-shell">
@@ -34,6 +34,19 @@
               <span id="hpFill"></span>
             </div>
             <strong id="hpText" class="hp-readout">0 / 0</strong>
+          </div>
+        </div>
+
+        <!-- BOSS SYSTEM: prominent boss health bar, shown only during a boss fight (toggled
+             in updateHud(), js/06-shop.js). Distinct styling from the player HP bar above --
+             wider, centered, deep-red fill that turns fully red and pulses in phase 2 (see
+             .boss-bar-fill.phase2 in styles.css). -->
+        <div id="bossBar" class="boss-bar hidden" aria-label="Boss health">
+          <div class="boss-bar-head">
+            <span id="bossBarName" class="boss-bar-name">NIBBLER KING</span>
+          </div>
+          <div class="boss-bar-track">
+            <span id="bossBarFill" class="boss-bar-fill"></span>
           </div>
         </div>
 
@@ -324,28 +337,28 @@
       </aside>
     </main>
 
-    <script src="js/01-core.js?v=0.14.4"></script>
-    <script src="js/00-audio.js?v=0.14.4"></script>
-    <script src="js/00-account.js?v=0.14.4"></script>
-    <script src="js/00-builds.js?v=0.14.4"></script>
-    <script src="js/00-changelog.js?v=0.14.4"></script>
-    <script src="js/00-gravestone.js?v=0.14.4"></script>
-    <script src="js/00-fx.js?v=0.14.4"></script>
-    <script src="js/00-assets.js?v=0.14.4"></script>
-    <script src="js/02-stats.js?v=0.14.4"></script>
-    <script src="js/03-data.js?v=0.14.4"></script>
-    <script src="js/03b-compendium.js?v=0.14.4"></script>
-    <script src="js/03c-achievements.js?v=0.14.4"></script>
-    <script src="js/03d-fortunes.js?v=0.14.4"></script>
-    <script src="js/04-flow.js?v=0.14.4"></script>
-    <script src="js/05-icons.js?v=0.14.4"></script>
-    <script src="js/06-shop.js?v=0.14.4"></script>
-    <script src="js/07-combat.js?v=0.14.4"></script>
-    <script src="js/08-render.js?v=0.14.4"></script>
-    <script src="js/09-main.js?v=0.14.4"></script>
-    <script src="js/09b-title.js?v=0.14.4"></script>
-    <script src="js/09c-title-slimes.js?v=0.14.4"></script>
-    <script src="js/09d-devpanel.js?v=0.14.4"></script>
-    <script src="js/09e-account-ui.js?v=0.14.4"></script>
+    <script src="js/01-core.js?v=0.15.0"></script>
+    <script src="js/00-audio.js?v=0.15.0"></script>
+    <script src="js/00-account.js?v=0.15.0"></script>
+    <script src="js/00-builds.js?v=0.15.0"></script>
+    <script src="js/00-changelog.js?v=0.15.0"></script>
+    <script src="js/00-gravestone.js?v=0.15.0"></script>
+    <script src="js/00-fx.js?v=0.15.0"></script>
+    <script src="js/00-assets.js?v=0.15.0"></script>
+    <script src="js/02-stats.js?v=0.15.0"></script>
+    <script src="js/03-data.js?v=0.15.0"></script>
+    <script src="js/03b-compendium.js?v=0.15.0"></script>
+    <script src="js/03c-achievements.js?v=0.15.0"></script>
+    <script src="js/03d-fortunes.js?v=0.15.0"></script>
+    <script src="js/04-flow.js?v=0.15.0"></script>
+    <script src="js/05-icons.js?v=0.15.0"></script>
+    <script src="js/06-shop.js?v=0.15.0"></script>
+    <script src="js/07-combat.js?v=0.15.0"></script>
+    <script src="js/08-render.js?v=0.15.0"></script>
+    <script src="js/09-main.js?v=0.15.0"></script>
+    <script src="js/09b-title.js?v=0.15.0"></script>
+    <script src="js/09c-title-slimes.js?v=0.15.0"></script>
+    <script src="js/09d-devpanel.js?v=0.15.0"></script>
+    <script src="js/09e-account-ui.js?v=0.15.0"></script>
   </body>
 </html>

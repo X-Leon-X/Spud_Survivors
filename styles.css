@@ -247,6 +247,67 @@ canvas {
   width: 100%;
 }
 
+/* BOSS SYSTEM: prominent boss health bar, distinct from the player HP bar above (wider,
+   centered under the HUD, deeper red). Hidden outside a boss fight -- toggled in
+   updateHud() (js/06-shop.js) the same way .bag-stat is hidden outside the shop. */
+.boss-bar {
+  left: 50%;
+  max-width: min(620px, calc(100% - 48px));
+  position: absolute;
+  top: 14px;
+  transform: translateX(-50%);
+  width: 520px;
+  z-index: 5;
+}
+
+.boss-bar.hidden {
+  display: none;
+}
+
+.boss-bar-head {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.boss-bar-name {
+  color: var(--cream);
+  font-size: 15px;
+  font-weight: 1000;
+  letter-spacing: 2px;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+}
+
+.boss-bar-track {
+  background: rgba(0, 0, 0, 0.45);
+  border: 2px solid rgba(255, 255, 255, 0.16);
+  border-radius: 9px;
+  height: 20px;
+  overflow: hidden;
+}
+
+.boss-bar-fill {
+  background: linear-gradient(90deg, #9c1d2b, #d6283a);
+  display: block;
+  height: 100%;
+  transition: width 150ms linear;
+  width: 100%;
+}
+
+/* Phase 2: the bar itself reads as angrier -- a deeper, pulsing red -- the instant the
+   boss crosses the phase threshold, matching the on-canvas red pulse (see
+   drawNibblerKingPhaseOverlay in js/08-render.js). Class is toggled on the OUTER .boss-bar
+   container by updateHud() (js/06-shop.js: ui.bossBar.classList.toggle("boss-bar-phase2", ...)). */
+.boss-bar.boss-bar-phase2 .boss-bar-fill {
+  animation: bossBarPulse 0.85s ease-in-out infinite;
+  background: linear-gradient(90deg, #5c0f18, #b3121f);
+}
+
+@keyframes bossBarPulse {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.35); }
+}
+
 .message {
   background: rgba(20, 24, 33, 0.9);
   border: 2px solid rgba(255, 255, 255, 0.16);

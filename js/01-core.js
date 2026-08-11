@@ -12,6 +12,10 @@ const ui = {
   bag: document.getElementById("bagText"),
   hpFill: document.getElementById("hpFill"),
   hpText: document.getElementById("hpText"),
+  // Boss health bar (BOSS SYSTEM). Only shown during a boss fight -- see updateHud().
+  bossBar: document.getElementById("bossBar"),
+  bossBarFill: document.getElementById("bossBarFill"),
+  bossBarName: document.getElementById("bossBarName"),
   message: document.getElementById("message"),
   titleScreen: document.getElementById("titleScreen"),
   titleStage: document.getElementById("titleStage"),
@@ -98,9 +102,15 @@ const DRUMMER_BUFF_RADIUS = 260;
 const DRUMMER_SPEED_MULTIPLIER = 1.4;
 const DRUMMER_DAMAGE_MULTIPLIER = 1.25;
 
+// --- BOSS SYSTEM constants (see js/04-flow.js for the interstitial fight flow, and
+// js/07-combat.js for the Nibbler King attack state machine / updateBossEnemy). Grouped
+// here, away from the enemyTypes array below, so they don't collide with edits to it.
+const BOSS_WAVE_INTERVAL = 10;   // a boss fight happens after every 10th wave, as an interstitial
+const BOSS_PHASE2_HP_FRACTION = 0.5;
+
 const enemyTypes = [
   { name: "Nibbler", behavior: "chase", size: "small", color: "#f1766e", hp: 9, speed: 106, radius: 16, damage: 6, scrap: 1, minWave: 1, weight: 14 },
-  { name: "Skitter", behavior: "chase", size: "small", color: "#88d27a", hp: 6, speed: 158, radius: 12, damage: 4, scrap: 1, minWave: 2, weight: 12 },
+  { name: "Skitter", behavior: "chase", size: "small", color: "#88d27a", hp: 6, speed: 158, radius: 12, damage: 3, scrap: 1, minWave: 2, weight: 12 },
   { name: "Bruiser", behavior: "chase", size: "large", color: "#b28cf2", hp: 92, speed: 34, radius: 28, damage: 14, scrap: 9, minWave: 3, weight: 2 },
   { name: "Darter", behavior: "charge", size: "medium", color: "#ff9c5b", hp: 40, speed: 68, radius: 18, damage: 10, scrap: 2, minWave: 4, weight: 1 },
   { name: "Ember Glob", behavior: "fireball", size: "medium", color: "#e56f45", hp: 16, speed: 52, radius: 17, damage: 5, scrap: 2, minWave: 5, weight: 1 },
@@ -118,7 +128,7 @@ const enemyTypes = [
   // HP 34 -> 58: it is a rooted, woody plant that can never dodge, flee or reposition, so it
   // should take real effort to clear rather than dying faster than a Darter (40) that can
   // actually escape. Still well under the Bruiser (92) -- it is sturdy, not a boss.
-  { name: "Thistle", behavior: "turret", size: "medium", color: "#7fae5c", hp: 58, speed: 0, radius: 19, damage: 9, scrap: 3, minWave: 6, weight: 2 },
+  { name: "Thistle", behavior: "turret", size: "medium", color: "#7fae5c", hp: 58, speed: 0, radius: 19, damage: 6, scrap: 3, minWave: 6, weight: 2 },
   // Blight Sac: medium bloated chaser, drops a poison pool on death (see killEnemy/updatePoisonPools).
   { name: "Blight Sac", behavior: "chase", size: "medium", color: "#8fbf5a", hp: 30, speed: 46, radius: 20, damage: 7, scrap: 3, minWave: 7, weight: 2 },
   // Gravebloom: large, slow, interruptible summoner. Big HP pool so a focus-fire interrupt
@@ -130,7 +140,18 @@ const enemyTypes = [
   // out via spawnable:false so the wave roll never picks them directly.
   { name: "Clown", behavior: "chase", size: "large", color: "#ff6f91", hp: 60, speed: 50, radius: 26, damage: 10, scrap: 5, minWave: 10, weight: 1 },
   { name: "Clown Mid", behavior: "chase", size: "medium", color: "#ff8fab", hp: 22, speed: 72, radius: 18, damage: 7, scrap: 2, minWave: Infinity, weight: 0, spawnable: false },
-  { name: "Clown Small", behavior: "chase", size: "small", color: "#ffb0c4", hp: 9, speed: 128, radius: 12, damage: 4, scrap: 1, minWave: Infinity, weight: 0, spawnable: false }
+  { name: "Clown Small", behavior: "chase", size: "small", color: "#ffb0c4", hp: 9, speed: 128, radius: 12, damage: 4, scrap: 1, minWave: Infinity, weight: 0, spawnable: false },
+
+  // --- BOSS SYSTEM: Nibbler King (see js/04-flow.js startBossFight / js/07-combat.js
+  // updateBossEnemy for the fight logic). Never rolled by chooseEnemyType (spawnable:false,
+  // minWave:Infinity) -- it is only ever created directly via spawnEnemy(nibblerKingTemplate(idx)).
+  // hp below is a PLACEHOLDER base; the real per-fight HP is computed by nibblerKingHp(bossIndex)
+  // in js/07-combat.js and stamped onto the spawned instance after spawnEnemy() runs (spawnEnemy's
+  // own enemyScaling()/sizeHpMultiplier() math is tuned for swarm enemies, not a single boss, so
+  // it is overridden rather than fought). speed is deliberately slow -- a massive, lumbering
+  // Nibbler that wins through attacks and adds, not by outrunning the player. damage is its
+  // CONTACT damage only; attack damage is set per-attack in the boss attack state machine.
+  { name: "Nibbler King", behavior: "boss", size: "large", color: "#f1766e", hp: 1400, speed: 58, radius: 52, damage: 22, scrap: 260, minWave: Infinity, weight: 0, spawnable: false }
 ];
 
 const rarities = {

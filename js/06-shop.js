@@ -952,8 +952,19 @@ function hideMessage() {
 }
 
 function updateHud() {
-  ui.wave.textContent = state.wave;
-  ui.time.textContent = Math.max(0, Math.ceil(state.waveTime));
+  // BOSS SYSTEM: during a boss fight the Wave chip must never show a real wave number (the
+  // fight is interstitial and doesn't belong to one), so it's replaced with "Boss" instead of
+  // being hidden outright -- hiding it would leave an empty gap in the HUD row. The Time chip
+  // reads a frozen "--" for the same reason: waveTime keeps counting down internally as a
+  // display fallback safety net (see the wave-end guard in js/07-combat.js), but a visibly
+  // ticking timer that does nothing when it hits 0 would read as broken.
+  if (state.bossFight) {
+    ui.wave.textContent = "Boss";
+    ui.time.textContent = "--";
+  } else {
+    ui.wave.textContent = state.wave;
+    ui.time.textContent = Math.max(0, Math.ceil(state.waveTime));
+  }
   ui.scrap.textContent = state.scrap;
   ui.bag.textContent = state.unusedScrap + state.pendingBagScrap;
   ui.bag.closest(".stat").classList.toggle("hidden", state.mode === "playing" || state.mode === "menu");
@@ -962,6 +973,26 @@ function updateHud() {
   ui.achievementsButton?.classList.toggle("hidden", state.mode === "playing" || state.mode === "menu");
   ui.hpFill.style.width = `${clamp(state.player.hp / state.player.maxHp, 0, 1) * 100}%`;
   ui.hpText.textContent = `${Math.max(0, Math.round(state.player.hp))} / ${Math.round(state.player.maxHp)}`;
+
+  // BOSS SYSTEM: boss health bar, visible ONLY during a boss fight, following the same
+  // toggle('hidden') pattern the bag chip already uses above. Reads live hp/maxHp off
+  // whichever enemy in state.enemies is the boss (behavior:"boss") -- there is ever at most
+  // one -- rather than trusting a cached reference, since the array is rebuilt/cleared
+  // between fights and a stale object reference here would show a dead boss's frozen hp.
+  if (ui.bossBar) {
+    const boss = state.bossFight ? state.enemies.find((e) => e.behavior === "boss") : null;
+    ui.bossBar.classList.toggle("hidden", !boss);
+    if (boss) {
+      const ratio = clamp(boss.hp / boss.maxHp, 0, 1);
+      ui.bossBarFill.style.width = `${ratio * 100}%`;
+      if (ui.bossBarName) ui.bossBarName.textContent = "NIBBLER KING";
+      // Phase 2 reads as visibly angrier: the bar itself turns a deeper red and pulses (see
+      // .boss-bar-fill.phase2 in styles.css), rather than the player having to infer phase
+      // from the HP number alone.
+      ui.bossBarFill.classList.toggle("phase2", (boss.bossPhase ?? 1) >= 2);
+    }
+  }
+
   if (state.mode === "shop") {
     renderStatSheets();
   }

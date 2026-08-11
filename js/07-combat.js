@@ -52,7 +52,7 @@ function blightTouchTickDamage() {
 // Ember Glob's fireball sets you alight. Scales a little harder than the Blight Sac's touch
 // poison because it has to be aimed and can be dodged, whereas walking into a sac cannot.
 function emberBurnTickDamage() {
-  return Math.max(2, Math.round(6 + state.wave * 0.45));
+  return Math.max(2, Math.round(3 + state.wave * 0.25));
 }
 
 function update(dt) {
@@ -86,7 +86,14 @@ function update(dt) {
   regeneratePlayer(dt);
 
   movePlayer(dt);
-  spawnWaveEnemies(dt);
+  // BOSS SYSTEM: normal wave spawning is suppressed during a boss fight -- the Nibbler King
+  // summons its own adds (see the "summonNibblers"/"nibblerLaunch" attacks below), so the
+  // regular swarm spawner must not also be dumping enemies into the arena on top of that.
+  if (!state.bossFight) {
+    spawnWaveEnemies(dt);
+  } else {
+    updateBossFight(dt);
+  }
   fireEquippedWeapons(dt);
   updateEngineering(dt);
   updateMeleePulse();
@@ -115,6 +122,19 @@ function update(dt) {
     // step on the death beat.
     const fallen = state.character?.name ?? "Spud";
     playGravestone(fallen + " — wave " + state.wave, showSummary);
+  } else if (state.bossFight) {
+    // BOSS SYSTEM: the boss wave never ends on the waveTime timer (see startBossFight, which
+    // freezes/hides the timer display). It ends ONLY when the Nibbler King dies -- handled by
+    // killBossEnemy(), called from killEnemy() below once the boss's hp hits 0.
+    //
+    // SOFT-LOCK SAFETY: if a boss fight is flagged active but no boss instance actually exists
+    // in state.enemies (it despawned some other way, failed to spawn, or was removed by code
+    // this feature doesn't know about), waiting forever for a death event that can never fire
+    // would permanently strand the player. Detect that and end the fight defensively.
+    const bossAlive = state.enemies.some((e) => e.behavior === "boss");
+    if (!bossAlive) {
+      endBossFight(true);
+    }
   } else if (state.waveTime <= 0) {
     endWave();
   }
@@ -1413,30 +1433,44 @@ function processWeaponSwingHits(swing) {
   const geom = weaponSwingGeometry(swing);
   const hitWidth = 14;
   if (geom.progress > 0.74) return;
-  if (swing.hits >= swing.maxHits) return;
 
-  for (let i = state.enemies.length - 1; i >= 0; i -= 1) {
-    const enemy = state.enemies[i];
-    if (swing.hitEnemies.has(enemy)) continue;
-    const distance = pointToSegmentDistance(enemy.x, enemy.y, geom.innerX, geom.innerY, geom.headX, geom.headY);
-    if (distance > enemy.radius + hitWidth) continue;
+  if (swing.hits < swing.maxHits) {
+    for (let i = state.enemies.length - 1; i >= 0; i -= 1) {
+      const enemy = state.enemies[i];
+      if (swing.hitEnemies.has(enemy)) continue;
+      const distance = pointToSegmentDistance(enemy.x, enemy.y, geom.innerX, geom.innerY, geom.headX, geom.headY);
+      if (distance > enemy.radius + hitWidth) continue;
 
-    swing.hitEnemies.add(enemy);
-    swing.hits += 1;
-    applyBulletHit({
-      x: enemy.x,
-      y: enemy.y,
-      vx: Math.cos(geom.current),
-      vy: Math.sin(geom.current),
-      weaponName: swing.weaponName,
-      damage: swing.damage,
-      crit: swing.crit,
-      burnDps: swing.burnDps,
-      burnDuration: swing.burnDuration,
-      knockback: swing.knockback,
-      impactColor: swing.impactColor
-    }, enemy, i);
-    if (swing.hits >= swing.maxHits) break;
+      swing.hitEnemies.add(enemy);
+      swing.hits += 1;
+      applyBulletHit({
+        x: enemy.x,
+        y: enemy.y,
+        vx: Math.cos(geom.current),
+        vy: Math.sin(geom.current),
+        weaponName: swing.weaponName,
+        damage: swing.damage,
+        crit: swing.crit,
+        burnDps: swing.burnDps,
+        burnDuration: swing.burnDuration,
+        knockback: swing.knockback,
+        impactColor: swing.impactColor
+      }, enemy, i);
+      if (swing.hits >= swing.maxHits) break;
+    }
+  }
+
+  // Melee swings get a bonus chance to knock enemy projectiles clean out of the air.
+  // This is deliberately NOT gated behind swing.hits/maxHits (it's a freebie, not a pierce
+  // hit) and does not touch swing.hitEnemies or any other hit-tracking set.
+  for (let i = state.enemyBullets.length - 1; i >= 0; i -= 1) {
+    const bullet = state.enemyBullets[i];
+    const distance = pointToSegmentDistance(bullet.x, bullet.y, geom.innerX, geom.innerY, geom.headX, geom.headY);
+    if (distance > bullet.radius + hitWidth) continue;
+    if (Math.random() > 0.45) continue;
+
+    burst(bullet.x, bullet.y, "#ffd9a0", 5);
+    state.enemyBullets.splice(i, 1);
   }
 
   for (let i = state.trees.length - 1; i >= 0; i -= 1) {
@@ -1795,7 +1829,7 @@ function updateEnemyBehavior(enemy, dt) {
     enemy.vy = Math.sin(direction) * moveSpeed;
     if (enemy.actionCooldown <= 0 && distance < 560) {
       shootEnemyProjectile(enemy, angle);
-      enemy.actionCooldown = Math.max(0.75, 1.75 - state.wave * 0.025);
+      enemy.actionCooldown = Math.max(1.05, 2.35 - state.wave * 0.03);
       enemy.fireAnim = 0.32;            // recoil/puff animation window
       enemy.fireAngle = angle;
     }
@@ -1873,6 +1907,15 @@ function updateEnemyBehavior(enemy, dt) {
     }
     enemy.vx = Math.cos(angle) * speed * 0.85;
     enemy.vy = Math.sin(angle) * speed * 0.85;
+    return;
+  }
+
+  // BOSS SYSTEM: the Nibbler King's movement/attacks are driven entirely by its own state
+  // machine (updateNibblerKingBehavior, defined with the rest of the boss system further down
+  // this file) rather than the generic per-behavior branches above -- a boss fight has its own
+  // pacing (telegraph/strike/recover) that doesn't map onto any existing behavior.
+  if (enemy.behavior === "boss") {
+    updateNibblerKingBehavior(enemy, dt, angle, distance, speed);
     return;
   }
 
@@ -2334,6 +2377,14 @@ function killEnemy(index) {
   addShake(Math.min(3, 0.8 + enemy.radius * 0.05));
   spawnRing(enemy.x, enemy.y, enemy.color, enemy.radius * 2.2);
   spawnEnemyDeath(enemy);
+  // BOSS SYSTEM: the Nibbler King's death is its own dedicated moment (bigger burst, its own
+  // sfx cadence, generous scrap, then hands off to endBossFight -> the normal reward flow) --
+  // see killBossEnemy below. It still falls through none of the ordinary per-enemy death hooks
+  // (Husk split / poison pool / Clown implosion) since none of those apply to it.
+  if (enemy.behavior === "boss") {
+    killBossEnemy(enemy);
+    return;
+  }
   const waveBonus = Math.random() < Math.min(0.5, state.wave * 0.025) ? 1 : 0;
   const luckBonus = Math.random() * 100 < Math.min(70, effectiveStat("luck") * 0.55) ? 1 : 0;
   const value = enemy.scrap + waveBonus + luckBonus;
@@ -2511,4 +2562,433 @@ function addFloater(x, y, text, options = {}) {
     fadePower: options.fadePower ?? 1,
     scaleOut: options.scaleOut ?? 0
   });
+}
+
+// =====================================================================================
+// BOSS SYSTEM -- the Nibbler King. A boss fight is INTERSTITIAL: it happens between two
+// normal waves and does not itself consume a wave number (see startBossFight in
+// js/04-flow.js for exactly where it is spliced into the wave flow, and the wave-end guard
+// near the top of update() in this file for how the timer is disabled while it runs).
+//
+// state.bossFight, when active, looks like:
+//   {
+//     index: 1,          // 1st boss, 2nd boss, ... (wave/BOSS_WAVE_INTERVAL)
+//     phase: 1,           // 1 or 2 (2 = <=BOSS_PHASE2_HP_FRACTION of max hp)
+//     treeTimer: <seconds until the next periodic tree respawn>
+//   }
+// It is null/undefined outside of a boss fight.
+// =====================================================================================
+
+// HP FORMULA: base 1400 (see the Nibbler King's enemyTypes entry -- that field is only a
+// placeholder read by nowhere else) is replaced by this curve once the fight actually starts.
+// Aiming for a 45-75s fight against a "reasonably equipped wave-10 build". This is a TUNED
+// TARGET, not derived from a precise DPS model -- a wave-10 build's real damage output varies
+// enormously with weapon RNG/tier and stat rolls, so instead of chasing a false-precision
+// formula this starts from "the fight should last about a minute" and picks an HP pool sized
+// for that, to be adjusted from actual playtesting (UNTESTED -- see the honest gaps in the
+// final report; this number has not been verified against a real run).
+// Sanity-checked against real weapon numbers rather than guessed: a wave-10 player typically
+// carries 4-6 weapons around tier 2-3, i.e. roughly 20 damage per shot on a ~0.7s cooldown
+// (see baseDamage/cooldown arrays in js/03-data.js), which lands somewhere near 110-250 DPS
+// depending on how the stat/tier rolls went. Crucially, this is a dodge-heavy fight where the
+// player spends a large share of the time avoiding telegraphs rather than attacking, so plan
+// for roughly 60% damage uptime, not 100%.
+//   5200 HP  ->  ~35s (250 dps) to ~79s (110 dps) at 60% uptime.
+// That brackets the intended 45-75s band for a typical build. An earlier pass used 12000 here,
+// which works out to a 2-3 minute slog for anything but a top-end build.
+// Boss 1: 5200. Boss 2 (wave 20): 8060. Boss 3 (wave 30): ~12493. Growth of 1.55x per boss
+// index roughly mirrors how much the player's own DPS grows between encounters (weapon tiers +
+// stat stacking over 10 more waves), keeping later fights in the same band.
+// STILL UNTESTED against a real run -- adjust from playtesting.
+function nibblerKingHp(bossIndex) {
+  const base = 5200;
+  return Math.round(base * Math.pow(1.55, Math.max(0, bossIndex - 1)));
+}
+
+// Generous scrap reward, scaling with boss index the same way its HP does so a later boss
+// (which took just as long to kill, just against a bigger pool) still feels like a big payout
+// relative to what the shop costs by then.
+function nibblerKingScrapReward(bossIndex) {
+  return Math.round(260 * Math.pow(1.4, Math.max(0, bossIndex - 1)));
+}
+
+// Entry point for the interstitial boss fight, called from js/04-flow.js's startBossFight().
+// Spawns the King at the arena centre-top (clear of the player's start position), sets up
+// state.bossFight, and shows the "Boss Fight N" title (title text/number owned by the caller).
+function spawnNibblerKing(bossIndex) {
+  const template = enemyTypes.find((type) => type.name === "Nibbler King");
+  if (!template) return null;
+  const pos = { x: W / 2, y: H * 0.32 };
+  spawnEnemy(template, pos);
+  const boss = state.enemies[state.enemies.length - 1];
+  // Override spawnEnemy's generic enemyScaling()/sizeHpMultiplier() math (tuned for swarm
+  // enemies scaling with state.wave, not a single boss instance) with the dedicated formula.
+  const hp = nibblerKingHp(bossIndex);
+  boss.hp = hp;
+  boss.maxHp = hp;
+  boss.scrap = nibblerKingScrapReward(bossIndex);
+  // Attack state machine fields (see updateNibblerKingBehavior below).
+  boss.bossState = "idle";
+  boss.bossTimer = rand(1.2, 2.2); // brief pause before the first attack so the arrival reads
+  boss.bossAttack = null;
+  boss.bossPhase = 1;
+  boss.bossFlash = 0;          // phase-2-transition screen/body flash pulse
+  boss.bossTelegraph = null;   // per-attack telegraph payload consumed by js/08-render.js
+  return boss;
+}
+
+// ---- Attack tuning: [telegraph, strike, recover] in seconds, per phase. Phase 2 numbers are
+// noticeably faster (shorter telegraph AND recover) so the fight visibly speeds up, but the
+// telegraph never drops so low that the hit becomes undodgeable -- see each attack's own
+// comment for the reasoning against its specific danger.
+const BOSS_ATTACK_TIMING = {
+  weaponSwing: { p1: { telegraph: 0.85, strike: 0.22, recover: 0.9 }, p2: { telegraph: 0.55, strike: 0.18, recover: 0.55 } },
+  summonNibblers: { p1: { telegraph: 1.1, strike: 0.05, recover: 0.7 }, p2: { telegraph: 0.8, strike: 0.05, recover: 0.45 } },
+  nibblerLaunch: { p1: { telegraph: 0.9, strike: 0.05, recover: 1.1 }, p2: { telegraph: 0.6, strike: 0.05, recover: 0.75 } },
+  groundSlam: { p1: { telegraph: 1.0, strike: 0.25, recover: 1.0 }, p2: { telegraph: 0.65, strike: 0.2, recover: 0.6 } },
+  charge: { p1: { telegraph: 0.95, strike: 0.55, recover: 1.1 }, p2: { telegraph: 0.65, strike: 0.4, recover: 0.7 } }
+};
+
+function bossAttackTiming(name, phase) {
+  const entry = BOSS_ATTACK_TIMING[name];
+  return phase >= 2 ? entry.p2 : entry.p1;
+}
+
+// Weighted random attack pick. nibblerLaunch is PHASE 2 ONLY (see its weight below), so it
+// never appears in the phase-1 pool at all rather than being weighted to near-zero.
+function pickBossAttack(boss) {
+  const pool = [
+    { name: "weaponSwing", weight: 3 },
+    { name: "summonNibblers", weight: 2 },
+    { name: "groundSlam", weight: 2 },
+    { name: "charge", weight: 2 }
+  ];
+  if (boss.bossPhase >= 2) {
+    pool.push({ name: "nibblerLaunch", weight: 2 });
+  }
+  const total = pool.reduce((sum, entry) => sum + entry.weight, 0);
+  let roll = Math.random() * total;
+  for (const entry of pool) {
+    roll -= entry.weight;
+    if (roll <= 0) return entry.name;
+  }
+  return pool[0].name;
+}
+
+// The Nibbler King's own movement + the telegraph/strike/recover attack state machine. Called
+// once per enemy per frame from updateEnemyBehavior's "boss" branch above. `speed` is the
+// template speed already adjusted by any Drummer buff (unused here since bosses don't buff,
+// but kept for signature symmetry with the other behavior branches).
+function updateNibblerKingBehavior(boss, dt, angleToPlayer, distanceToPlayer, speed) {
+  const player = state.player;
+
+  // Defensive defaults: normally every field here is set by spawnNibblerKing() the instant the
+  // boss is created, but the dev panel's "Spawn Enemy" tool can create a raw Nibbler King
+  // template directly (enemyTypes lists every template, including spawnable:false ones, for
+  // testing -- see js/09d-devpanel.js). Without this, a dev-spawned King would have
+  // bossState === undefined, match none of the branches below, and just stand there inert
+  // instead of throwing -- silently broken rather than loudly broken. This makes it fight.
+  if (boss.bossState === undefined) boss.bossState = "idle";
+  if (boss.bossPhase === undefined) boss.bossPhase = 1;
+  if (boss.bossTimer === undefined) boss.bossTimer = rand(0.6, 1.2);
+  if (boss.bossFlash === undefined) boss.bossFlash = 0;
+
+  // Phase 2 trigger: fires exactly once, the instant hp crosses the threshold, regardless of
+  // which attack (or none) is in progress -- a mid-swing phase change still reads clearly
+  // because of the flash below, and the state machine itself doesn't need to reset.
+  if (boss.bossPhase === 1 && boss.hp <= boss.maxHp * BOSS_PHASE2_HP_FRACTION) {
+    boss.bossPhase = 2;
+    boss.bossFlash = 1;
+    addShake(10, true);
+    playSfx("gameover"); // reuses the existing dramatic stinger -- no new sfx asset needed
+    showMessage("NIBBLER KING ENRAGES", "Its attacks are faster and hit harder now.", 1800);
+    spawnRing(boss.x, boss.y, "#ff3b3b", boss.radius * 3, 0.6);
+    burst(boss.x, boss.y, "#ff3b3b", 30);
+  }
+  if (boss.bossFlash > 0) {
+    boss.bossFlash = Math.max(0, boss.bossFlash - dt * 1.5);
+  }
+  // GROUND SLAM shockwave ring: decays after executeBossStrike sets it (see the "groundSlam"
+  // branch there). Read by drawNibblerKingTelegraphs in js/08-render.js; cleared once spent so
+  // a finished slam doesn't leave a frozen ring on screen.
+  if (boss.bossSlamRing) {
+    boss.bossSlamRing.life -= dt;
+    if (boss.bossSlamRing.life <= 0) boss.bossSlamRing = null;
+  }
+
+  // ---- Idle: ambient chase (slow -- see the Nibbler King's template speed) until the
+  // attack cooldown between actions elapses, then queue a new attack.
+  if (boss.bossState === "idle") {
+    boss.vx = Math.cos(angleToPlayer) * speed * 0.6;
+    boss.vy = Math.sin(angleToPlayer) * speed * 0.6;
+    boss.bossTimer -= dt;
+    if (boss.bossTimer <= 0) {
+      boss.bossAttack = pickBossAttack(boss);
+      const timing = bossAttackTiming(boss.bossAttack, boss.bossPhase);
+      boss.bossState = "telegraph";
+      boss.bossTimer = timing.telegraph;
+      startBossTelegraph(boss);
+    }
+    return;
+  }
+
+  // ---- Telegraph: RED warning for every attack, no exceptions. The boss holds mostly still
+  // (a slow creep is fine -- it should not feel frozen) while the telegraph payload
+  // (boss.bossTelegraph) is read by js/08-render.js to draw the actual red warning shape.
+  if (boss.bossState === "telegraph") {
+    boss.vx = Math.cos(angleToPlayer) * speed * 0.15;
+    boss.vy = Math.sin(angleToPlayer) * speed * 0.15;
+    boss.bossTimer -= dt;
+    if (boss.bossTelegraph) boss.bossTelegraph.elapsed = (boss.bossTelegraph.elapsed ?? 0) + dt;
+    if (boss.bossTimer <= 0) {
+      const timing = bossAttackTiming(boss.bossAttack, boss.bossPhase);
+      boss.bossState = "strike";
+      boss.bossTimer = timing.strike;
+      executeBossStrike(boss);
+    }
+    return;
+  }
+
+  // ---- Strike: the actual hit/spawn/dash happens once, at the moment executeBossStrike ran
+  // (called above the instant telegraph ends). This state just holds for the strike's visible
+  // duration (charge/slam already move the boss themselves inside their own strike handlers).
+  if (boss.bossState === "strike") {
+    boss.bossTimer -= dt;
+    if (boss.bossAttack === "charge" && boss._chargeVX !== undefined) {
+      boss.vx = boss._chargeVX;
+      boss.vy = boss._chargeVY;
+      // updateEnemies (the caller of updateEnemyBehavior) eases mvx/mvy toward vx/vy every
+      // frame UNLESS enemy.chargeTimer > 0, which is the exact "instant snap" lunge path
+      // already built for the Darter's own charge. Setting it here makes the boss's dash
+      // reuse that same crisp, non-eased movement instead of ramping up smoothly (which would
+      // read as sluggish for what is supposed to be a sudden, dodge-worthy dash).
+      boss.chargeTimer = boss.bossTimer;
+    } else {
+      boss.vx = 0;
+      boss.vy = 0;
+    }
+    if (boss.bossTimer <= 0) {
+      const timing = bossAttackTiming(boss.bossAttack, boss.bossPhase);
+      boss.bossState = "recover";
+      boss.bossTimer = timing.recover;
+      boss.bossTelegraph = null;
+      boss._chargeVX = undefined;
+      boss._chargeVY = undefined;
+      boss.chargeTimer = 0;
+    }
+    return;
+  }
+
+  // ---- Recover: brief wait after every attack before the next one can be queued, win or
+  // lose (there is no way to "cancel" recovery by damaging the boss -- it is a fixed cost).
+  if (boss.bossState === "recover") {
+    boss.vx = Math.cos(angleToPlayer) * speed * 0.3;
+    boss.vy = Math.sin(angleToPlayer) * speed * 0.3;
+    boss.bossTimer -= dt;
+    if (boss.bossTimer <= 0) {
+      boss.bossState = "idle";
+      boss.bossAttack = null;
+      boss.bossTimer = boss.bossPhase >= 2 ? rand(0.4, 0.9) : rand(0.8, 1.6);
+    }
+    return;
+  }
+}
+
+// Sets up the red-telegraph payload for whichever attack was just picked. js/08-render.js
+// reads boss.bossTelegraph to draw the actual warning shape (arc/cone, ground circle(s), or a
+// path line) -- this only records WHAT to warn about and WHERE, not how it looks.
+function startBossTelegraph(boss) {
+  const player = state.player;
+  if (boss.bossAttack === "weaponSwing") {
+    boss.bossTelegraph = { kind: "swing", angle: Math.atan2(player.y - boss.y, player.x - boss.x), elapsed: 0 };
+  } else if (boss.bossAttack === "summonNibblers") {
+    const count = boss.bossPhase >= 2 ? 4 : 2 + Math.floor(rand(0, 2)); // p1: 2-3, p2: 4
+    const spots = [];
+    for (let i = 0; i < count; i += 1) {
+      const angle = rand(0, Math.PI * 2);
+      const dist = rand(90, 220);
+      spots.push({
+        x: clamp(boss.x + Math.cos(angle) * dist, 40, W - 40),
+        y: clamp(boss.y + Math.sin(angle) * dist, 40, H - 40)
+      });
+    }
+    boss.bossTelegraph = { kind: "summonSpots", spots, elapsed: 0 };
+  } else if (boss.bossAttack === "nibblerLaunch") {
+    boss.bossTelegraph = { kind: "flash", elapsed: 0 };
+  } else if (boss.bossAttack === "groundSlam") {
+    boss.bossTelegraph = { kind: "slam", x: boss.x, y: boss.y, elapsed: 0 };
+  } else if (boss.bossAttack === "charge") {
+    boss.bossTelegraph = {
+      kind: "chargePath",
+      fromX: boss.x,
+      fromY: boss.y,
+      toAngle: Math.atan2(player.y - boss.y, player.x - boss.x),
+      elapsed: 0
+    };
+  }
+}
+
+// Fires the moment telegraph ends. This is where actual damage/spawns/motion happen -- see
+// each branch. All damage numbers are boss contact-scale multiples, not the flat contact
+// damage itself, so each attack reads as clearly more dangerous than just touching the boss.
+function executeBossStrike(boss) {
+  const player = state.player;
+  const phase2 = boss.bossPhase >= 2;
+
+  if (boss.bossAttack === "weaponSwing") {
+    // ATTACK 1: WEAPON SWING. Real range for a massive boss: a wide arc reaching well past
+    // its body. Damage checked once, at strike start (no arc sweep over multiple frames --
+    // the strike duration is just how long the visual swing plays).
+    const angle = boss.bossTelegraph?.angle ?? Math.atan2(player.y - boss.y, player.x - boss.x);
+    const range = boss.radius * 3.2;
+    const halfArc = phase2 ? 0.95 : 0.8; // radians -- phase 2 swings a wider arc too
+    const toPlayer = Math.hypot(player.x - boss.x, player.y - boss.y);
+    if (toPlayer <= range) {
+      const angleDiff = Math.abs(angleDifference(Math.atan2(player.y - boss.y, player.x - boss.x), angle));
+      if (angleDiff <= halfArc) {
+        const damage = Math.round(boss.damage * (phase2 ? 2.6 : 2.0));
+        damagePlayer(damage, boss.x, boss.y, "Nibbler King");
+      }
+    }
+    playSfx("swing");
+    burst(boss.x + Math.cos(angle) * range * 0.6, boss.y + Math.sin(angle) * range * 0.6, "#ff6a5f", 14);
+    addShake(6, true);
+  } else if (boss.bossAttack === "summonNibblers") {
+    // ATTACK 2: SUMMON NIBBLERS. Materialize a Nibbler at each warned spot, respecting the
+    // active enemy cap so this can never run away with the enemy count.
+    const nibblerTemplate = enemyTypes.find((type) => type.name === "Nibbler");
+    const spots = boss.bossTelegraph?.spots ?? [];
+    if (nibblerTemplate) {
+      for (const spot of spots) {
+        if (state.enemies.length >= enemyActiveCap()) break;
+        spawnEnemy(nibblerTemplate, spot);
+        spawnRing(spot.x, spot.y, "#ff6a5f", 34, 0.3);
+        burst(spot.x, spot.y, "#f1766e", 10);
+      }
+    }
+    playSfx("kill");
+  } else if (boss.bossAttack === "nibblerLaunch") {
+    // ATTACK 3 (PHASE 2 ONLY): NIBBLER LAUNCH. Chosen as REAL Nibbler enemies given an
+    // outward dash velocity (rather than projectiles-that-become-enemies) because the combat
+    // loop already has a working "lunge" pattern for the Darter (chargeTimer/lungeAngle in
+    // updateEnemyBehavior) -- reusing that same field pair here means these launched Nibblers
+    // fall straight into existing collision/damage/knockback code with zero new bullet-vs-
+    // enemy interaction to write. A projectile-based version would need its own hit-test
+    // against the player AND a spawn-on-landing path, which is strictly more new surface
+    // area for the same visual result.
+    const nibblerTemplate = enemyTypes.find((type) => type.name === "Nibbler");
+    const count = 8;
+    if (nibblerTemplate) {
+      for (let i = 0; i < count; i += 1) {
+        if (state.enemies.length >= enemyActiveCap()) break;
+        const angle = (i / count) * Math.PI * 2;
+        const spawnDist = boss.radius * 0.8;
+        const pos = {
+          x: clamp(boss.x + Math.cos(angle) * spawnDist, 20, W - 20),
+          y: clamp(boss.y + Math.sin(angle) * spawnDist, 20, H - 20)
+        };
+        spawnEnemy(nibblerTemplate, pos);
+        const launched = state.enemies[state.enemies.length - 1];
+        // Borrow the Darter's own lunge fields: chargeTimer counts down while vx/vy (set
+        // every frame from lungeAngle in updateEnemyBehavior's "charge" branch) drive an
+        // outward dash. Nibbler's behavior is "chase", not "charge", so instead the dash is
+        // driven directly here for a short window via knockX/knockY (already summed into
+        // position every frame in updateEnemies), which decays naturally on its own.
+        launched.knockX = Math.cos(angle) * 620;
+        launched.knockY = Math.sin(angle) * 620;
+      }
+    }
+    burst(boss.x, boss.y, "#fff2a8", 40);
+    spawnRing(boss.x, boss.y, "#ffe28a", boss.radius * 2.4, 0.35);
+    addShake(9, true);
+    playSfx("explosion");
+  } else if (boss.bossAttack === "groundSlam") {
+    // ATTACK 4: GROUND SLAM. Telegraphed circle already shown during telegraph; the shockwave
+    // damage is applied once here, at the moment the ring "hits" (visualized as an expanding
+    // ring in js/08-render.js reading boss.bossSlamRing, set here for the render step to pick
+    // up and animate over the strike/recover window).
+    const cx = boss.bossTelegraph?.x ?? boss.x;
+    const cy = boss.bossTelegraph?.y ?? boss.y;
+    const slamRadius = boss.radius * (phase2 ? 5.5 : 4.5);
+    boss.bossSlamRing = { x: cx, y: cy, radius: slamRadius, life: 0.4, maxLife: 0.4 };
+    const dist = Math.hypot(player.x - cx, player.y - cy);
+    if (dist <= slamRadius + playerHitRadius()) {
+      const damage = Math.round(boss.damage * (phase2 ? 2.2 : 1.7));
+      damagePlayer(damage, cx, cy, "Nibbler King");
+    }
+    addShake(9, true);
+    playSfx("explosion");
+    burst(cx, cy, "#ff6a5f", 24);
+  } else if (boss.bossAttack === "charge") {
+    // ATTACK 5: CHARGE/TACKLE. Dash along the telegraphed straight line toward where the
+    // player WAS when the telegraph started (not a homing dash -- that's what makes it
+    // dodgeable). Speed is a flat velocity set for the whole strike duration.
+    const path = boss.bossTelegraph;
+    const angle = path?.toAngle ?? Math.atan2(player.y - boss.y, player.x - boss.x);
+    const chargeSpeed = boss.speed * (phase2 ? 11 : 8.5);
+    boss._chargeVX = Math.cos(angle) * chargeSpeed;
+    boss._chargeVY = Math.sin(angle) * chargeSpeed;
+    // Damage is checked continuously while charging via the normal enemy-contact code path
+    // (overlap test in updateEnemies), but that hit is capped by ENEMY_CONTACT_COOLDOWN /
+    // the player's own i-frame window like any other contact -- so a bonus direct-hit check
+    // right at charge start rewards actually being in the boss's way when it launches.
+    const dist = Math.hypot(player.x - boss.x, player.y - boss.y);
+    if (dist <= boss.radius + playerHitRadius() + 40) {
+      const damage = Math.round(boss.damage * (phase2 ? 2.4 : 1.8));
+      damagePlayer(damage, boss.x, boss.y, "Nibbler King");
+    }
+    burst(boss.x, boss.y, "#ffd15f", 16);
+    playSfx("hit");
+  }
+}
+
+// Boss death: a bigger, longer death beat than a normal kill, generous scrap already stamped
+// onto boss.scrap by spawnNibblerKing, then hands off to endBossFight (js/04-flow.js) which
+// flows into the NORMAL post-wave reward sequence (crate -> fortune -> shop) so the player is
+// rewarded exactly like finishing any other wave, just after a boss instead of a timer.
+function killBossEnemy(boss) {
+  playSfx("gameover");
+  addShake(14, true);
+  for (let i = 0; i < 4; i += 1) {
+    window.setTimeout(() => {
+      burst(boss.x + rand(-40, 40), boss.y + rand(-40, 40), i % 2 ? "#f2c45f" : "#ff6a5f", 26);
+    }, i * 140);
+  }
+  spawnRing(boss.x, boss.y, "#f2c45f", boss.radius * 3.4, 0.7);
+  burst(boss.x, boss.y, "#ff6a5f", 40);
+  spawnScrapDrop(boss.x, boss.y, boss.scrap);
+  showMessage("Nibbler King Defeated!", `+${boss.scrap} scrap`, 2200);
+  // NOTE: no dedicated "beat a boss" achievement exists yet in js/03c-achievements.js -- adding
+  // one is outside this feature's scope (achievements are their own system), so this
+  // deliberately does NOT call unlockAchievement with a borrowed, semantically-wrong id.
+  if (typeof endBossFight === "function") {
+    endBossFight(false);
+  }
+}
+
+// Called every frame from update() while state.bossFight is active (in place of the normal
+// spawnWaveEnemies). The boss's own attack state machine runs from updateEnemyBehavior via
+// the "boss" branch like any other enemy -- this function only owns the periodic tree respawn
+// the player explicitly asked for ("trees spawn during the boss wave randomly"), kept modest
+// (a handful at a time, well spaced out) so it's scenery, not a spawnWaveEnemies replacement.
+const BOSS_TREE_RESPAWN_INTERVAL = 14;
+function updateBossFight(dt) {
+  if (!state.bossFight) return;
+  state.bossFight.treeTimer = (state.bossFight.treeTimer ?? BOSS_TREE_RESPAWN_INTERVAL) - dt;
+  if (state.bossFight.treeTimer <= 0) {
+    state.bossFight.treeTimer = BOSS_TREE_RESPAWN_INTERVAL * rand(0.85, 1.25);
+    if (state.trees.length < 6) {
+      const count = 1 + Math.floor(rand(0, 2)); // 1-2 at a time, modest
+      for (let i = 0; i < count; i += 1) {
+        state.trees.push({
+          x: rand(90, W - 90),
+          y: rand(100, H - 90),
+          radius: 22,
+          hp: 30 + state.wave * 4,
+          maxHp: 30 + state.wave * 4,
+          bob: Math.random() * Math.PI * 2
+        });
+      }
+    }
+  }
 }

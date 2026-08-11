@@ -29,6 +29,14 @@ function draw() {
   for (const bullet of state.enemyBullets) drawEnemyBullet(bullet);
   drawDrummerBuffLinks();
   for (const corpse of state.enemyDeaths ?? []) drawEnemyDeath(corpse);
+  // BOSS SYSTEM: telegraphs/ground effects drawn UNDER the boss sprite (ground circles, the
+  // charge path, the slam shockwave ring) so the boss body and its state overlays (drawn by
+  // drawEnemy below) stay on top and readable.
+  if (state.bossFight) {
+    for (const enemy of state.enemies) {
+      if (enemy.behavior === "boss") drawNibblerKingTelegraphs(enemy);
+    }
+  }
   for (const enemy of state.enemies) drawEnemy(enemy);
   drawPlayer(state.player);
   drawArenaWeapon(state.player);
@@ -1571,10 +1579,31 @@ function drawEnemy(enemy) {
     ctx.restore();
   }
 
+  // BOSS SYSTEM: regal aura ring (drawn UNDER the body, like the Drummer buff ring above) plus
+  // a soft radial glow. Drawn here, still inside the enemy's squash transform, so it breathes
+  // with the body the same subtle way the Drummer buff ring does.
+  if (enemy.behavior === "boss") {
+    drawNibblerKingAura(enemy);
+  }
+
   // ---- Body: redesigned PNG when available, otherwise the original code art ----
   if (art) {
     drawEnemyArtBody(enemy, art);
     drawEnemyStateOverlays(enemy);
+    // BOSS SYSTEM: crown (ART HOOK below) and the phase-2 red pulse overlay draw ABOVE the
+    // body/health-bar, and UNDO the enemy's squash/stretch scale first so the crown stays
+    // upright instead of being warped by the body's idle jelly wobble. The red attack
+    // TELEGRAPH itself is drawn separately, in world/ground space, by drawNibblerKingTelegraphs
+    // (called once per boss from the top-level draw() loop, BEFORE any enemy is drawn) -- a
+    // ground-anchored warning circle or a charge path has to stay fixed in the arena, not
+    // ride along with the boss's own local transform the way a crown does.
+    if (enemy.behavior === "boss") {
+      ctx.save();
+      ctx.scale(squash, 1 / squash);
+      drawNibblerKingCrown(enemy);
+      drawNibblerKingPhaseOverlay(enemy);
+      ctx.restore();
+    }
     ctx.restore();
     return;
   }
@@ -2052,6 +2081,234 @@ function drawEnemyStateOverlays(enemy) {
     ctx.fillRect(-enemy.radius, barY, enemy.radius * 2, 5);
     ctx.fillStyle = "#f2c45f";
     ctx.fillRect(-enemy.radius, barY, enemy.radius * 2 * (enemy.hp / enemy.maxHp), 5);
+  }
+}
+
+// =====================================================================================
+// BOSS SYSTEM -- Nibbler King rendering. Everything below is called from drawEnemy() (the
+// crown/aura/phase overlay, drawn in the boss's own local space) or from the top-level
+// draw() loop (the ground telegraphs, drawn in world space before any enemy is drawn -- see
+// the "BOSS SYSTEM" block near the top of draw()). Kept together here, after the generic
+// drawEnemyStateOverlays, so the whole boss visual layer lives in one place.
+// =====================================================================================
+
+// Regal aura: a pulsing purple-gold ring plus a soft radial glow, drawn UNDER the body
+// (called from drawEnemy before drawEnemyArtBody). Copies the Drummer buff-ring pattern
+// (one stroked ring, cheap to draw) but adds the soft glow underneath since there is only
+// ever one boss on screen at a time, unlike the Drummer aura which can appear dozens of
+// times in a crowded late wave.
+function drawNibblerKingAura(enemy) {
+  const pulse = 0.65 + Math.sin(performance.now() / 260 + enemy.bob) * 0.28;
+  const auraRadius = enemy.radius * (1.55 + pulse * 0.12);
+  const glow = ctx.createRadialGradient(0, 0, enemy.radius * 0.6, 0, 0, auraRadius * 1.5);
+  glow.addColorStop(0, "rgba(242, 196, 95, 0.22)");
+  glow.addColorStop(1, "rgba(242, 196, 95, 0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(0, 0, auraRadius * 1.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = `rgba(242, 196, 95, ${0.5 + pulse * 0.3})`;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(0, 0, auraRadius, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+// ART HOOK: this is the ENTIRE procedural crown placeholder. When real boss art exists
+// (either a crown baked directly into a dedicated nibbler-king.png, or a separate
+// crown.png overlay), replace the body of this one function with `ctx.drawImage(...)` --
+// nothing else in the boss render pipeline needs to change, since every caller only ever
+// invokes drawNibblerKingCrown(enemy) and never draws a crown any other way. The crown is
+// drawn in the enemy's local space, ABOVE the head (negative Y), scaled off enemy.radius so
+// it stays proportional if the boss's radius is ever tuned.
+function drawNibblerKingCrown(enemy) {
+  const r = enemy.radius;
+  // Match drawEnemyArtBody's own geometry (js/08-render.js) so the crown sits just above the
+  // ACTUAL drawn sprite's top, not an arbitrary radius multiple -- the King's art is scaled
+  // way up (ENEMY_ART_CONFIG "Nibbler King": scale 4.0, see js/00-assets.js), so a naive
+  // -r*1.02 offset would land the crown around the sprite's belly instead of its head.
+  const cfg = enemyArtConfig(enemy.name);
+  const half = r * cfg.scale;              // half of drawEnemyArtBody's `size`
+  const base = half * 0.82;                // same ground-contact anchor drawEnemyArtBody uses
+  const spriteTopY = r * cfg.yOffset - half - base;
+  const headY = spriteTopY + r * 0.35;     // nudge down slightly onto the head, not floating above it
+  const crownWidth = r * 1.15;
+  const crownHeight = r * 0.62;
+  const spikes = 5;
+
+  ctx.save();
+  ctx.translate(0, headY);
+  ctx.fillStyle = "#f2c45f";
+  ctx.strokeStyle = "#a9791f";
+  ctx.lineWidth = Math.max(1.5, r * 0.045);
+
+  // Zigzag crown silhouette: a base band with alternating spike peaks, drawn as one closed
+  // polygon so the fill/stroke read as a single gold object.
+  ctx.beginPath();
+  ctx.moveTo(-crownWidth / 2, 0);
+  for (let i = 0; i <= spikes; i += 1) {
+    const x = -crownWidth / 2 + (crownWidth * i) / spikes;
+    const peak = i % 2 === 0;
+    const y = peak ? -crownHeight : -crownHeight * 0.42;
+    ctx.lineTo(x, y);
+  }
+  ctx.lineTo(crownWidth / 2, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Base band beneath the spikes, plus small gem accents on the tall peaks so it reads as a
+  // crown rather than a jagged strip at a glance.
+  ctx.fillStyle = "#a9791f";
+  ctx.fillRect(-crownWidth / 2, -r * 0.08, crownWidth, r * 0.12);
+  ctx.fillStyle = "#ff6a5f";
+  for (let i = 0; i <= spikes; i += 2) {
+    const x = -crownWidth / 2 + (crownWidth * i) / spikes;
+    ctx.beginPath();
+    ctx.arc(x, -crownHeight * 0.78, Math.max(1.5, r * 0.07), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// Phase 2: a continuous red pulse over the body once the boss crosses BOSS_PHASE2_HP_FRACTION
+// (see updateNibblerKingBehavior in js/07-combat.js, which sets boss.bossPhase and the
+// one-shot boss.bossFlash transition burst). Two layers: a soft steady tint so phase 2 reads
+// at a glance even from a still screenshot, plus the faster one-shot bossFlash burst that
+// fades out over the first second after the transition.
+function drawNibblerKingPhaseOverlay(enemy) {
+  if ((enemy.bossPhase ?? 1) >= 2) {
+    const pulse = 0.35 + Math.sin(performance.now() / 180) * 0.15;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.fillStyle = `rgba(255, 40, 40, ${pulse * 0.32})`;
+    ctx.beginPath();
+    ctx.arc(0, 0, enemy.radius * 1.05, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  if ((enemy.bossFlash ?? 0) > 0) {
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = clamp(enemy.bossFlash, 0, 1);
+    ctx.fillStyle = "#ff3b3b";
+    ctx.beginPath();
+    ctx.arc(0, 0, enemy.radius * 1.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// Ground-space red attack telegraphs, one per attack kind (see startBossTelegraph in
+// js/07-combat.js for what populates enemy.bossTelegraph). Called once per boss from the
+// top-level draw() loop, in WORLD coordinates (not the boss's local translate/squash space),
+// since a ground warning circle or a charge path must stay fixed in the arena regardless of
+// how the boss's own sprite is currently wobbling.
+function drawNibblerKingTelegraphs(enemy) {
+  // GROUND SLAM shockwave: the actual expanding ring at the moment of impact (as opposed to
+  // the red warning ring during telegraph, drawn by the "slam" branch below). Independent of
+  // bossState -- it plays out during "strike"/"recover" after the telegraph has already ended,
+  // decaying on its own via boss.bossSlamRing.life (ticked in updateNibblerKingBehavior).
+  if (enemy.bossSlamRing) {
+    const ring = enemy.bossSlamRing;
+    const p = 1 - clamp(ring.life / ring.maxLife, 0, 1);
+    const eased = easeOutCubic(p);
+    ctx.save();
+    ctx.globalAlpha = 1 - eased;
+    ctx.strokeStyle = "#ff6a5f";
+    ctx.lineWidth = 6 * (1 - eased * 0.6);
+    ctx.beginPath();
+    ctx.arc(ring.x, ring.y, ring.radius * (0.3 + eased * 0.7), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  if (enemy.bossState !== "telegraph" || !enemy.bossTelegraph) return;
+  const telegraph = enemy.bossTelegraph;
+  const timing = bossAttackTiming(enemy.bossAttack, enemy.bossPhase ?? 1);
+  const progress = clamp((telegraph.elapsed ?? 0) / Math.max(0.001, timing.telegraph), 0, 1);
+  // Warnings intensify (faster strobe, higher peak alpha) as the strike approaches, so the
+  // last instant before it lands is the most visually urgent moment.
+  const strobeHz = 3 + progress * 7;
+  const strobe = 0.35 + Math.max(0, Math.sin(performance.now() / 1000 * strobeHz * Math.PI * 2)) * 0.4;
+
+  if (telegraph.kind === "swing") {
+    // ATTACK 1 telegraph: a widening red cone/arc in the swing direction, anchored at the
+    // boss. Matches executeBossStrike's own range/arc math (js/07-combat.js) so the warning
+    // honestly represents where the hit will land.
+    const range = enemy.radius * 3.2;
+    const halfArc = (enemy.bossPhase ?? 1) >= 2 ? 0.95 : 0.8;
+    const grow = 0.4 + progress * 0.6;
+    ctx.save();
+    ctx.fillStyle = `rgba(255, 60, 60, ${strobe * 0.4})`;
+    ctx.beginPath();
+    ctx.moveTo(enemy.x, enemy.y);
+    ctx.arc(enemy.x, enemy.y, range * grow, telegraph.angle - halfArc, telegraph.angle + halfArc);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255, 90, 90, ${strobe})`;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.restore();
+  } else if (telegraph.kind === "summonSpots") {
+    // ATTACK 2 telegraph: a red warning ring at each spot a Nibbler is about to materialize.
+    for (const spot of telegraph.spots) {
+      ctx.save();
+      ctx.strokeStyle = `rgba(255, 70, 70, ${strobe})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(spot.x, spot.y, 22 + progress * 10, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = `rgba(255, 70, 70, ${strobe * 0.22})`;
+      ctx.beginPath();
+      ctx.arc(spot.x, spot.y, 22 + progress * 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  } else if (telegraph.kind === "flash") {
+    // ATTACK 3 (phase 2 only) telegraph: the boss itself flashes gold/white with a growing
+    // ring, rather than a ground marker -- the launch is omnidirectional, so there is no
+    // single spot on the ground to warn about.
+    ctx.save();
+    ctx.strokeStyle = `rgba(255, 226, 138, ${strobe})`;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(enemy.x, enemy.y, enemy.radius * (1.2 + progress * 1.4), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  } else if (telegraph.kind === "slam") {
+    // ATTACK 4 telegraph: an expanding red circle on the ground at the slam's centre, matching
+    // executeBossStrike's slamRadius math so the warning is an honest preview of the shockwave.
+    const slamRadius = enemy.radius * ((enemy.bossPhase ?? 1) >= 2 ? 5.5 : 4.5);
+    const grow = 0.25 + progress * 0.85;
+    ctx.save();
+    ctx.strokeStyle = `rgba(255, 60, 60, ${strobe})`;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(telegraph.x, telegraph.y, slamRadius * grow, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = `rgba(255, 60, 60, ${strobe * 0.16})`;
+    ctx.beginPath();
+    ctx.arc(telegraph.x, telegraph.y, slamRadius * grow, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  } else if (telegraph.kind === "chargePath") {
+    // ATTACK 5 telegraph: a straight red line/path from the boss toward where the player was
+    // when the telegraph started, matching executeBossStrike's charge direction so the line is
+    // an honest preview of the dash line -- the player can see exactly where to step off it.
+    const pathLength = Math.max(W, H) * 1.2;
+    const endX = telegraph.fromX + Math.cos(telegraph.toAngle) * pathLength;
+    const endY = telegraph.fromY + Math.sin(telegraph.toAngle) * pathLength;
+    ctx.save();
+    ctx.strokeStyle = `rgba(255, 60, 60, ${strobe * 0.85})`;
+    ctx.lineWidth = enemy.radius * 0.55;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(telegraph.fromX, telegraph.fromY);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+    ctx.restore();
   }
 }
 
