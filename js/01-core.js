@@ -150,8 +150,19 @@ const enemyTypes = [
   // own enemyScaling()/sizeHpMultiplier() math is tuned for swarm enemies, not a single boss, so
   // it is overridden rather than fought). speed is deliberately slow -- a massive, lumbering
   // Nibbler that wins through attacks and adds, not by outrunning the player. damage is its
-  // CONTACT damage only; attack damage is set per-attack in the boss attack state machine.
-  { name: "Nibbler King", behavior: "boss", size: "large", color: "#f1766e", hp: 1400, speed: 58, radius: 52, damage: 22, scrap: 260, minWave: Infinity, weight: 0, spawnable: false }
+  // CONTACT damage only (touching its body -- see the generic contact-damage loop in
+  // updateEnemies(), js/07-combat.js, which the boss goes through unmodified like any other
+  // enemy); attack damage is set per-attack in the boss attack state machine.
+  // radius bumped 52 -> 66 (+27%) so the King's body is genuinely dangerous to stand in --
+  // spawnEnemy() copies template.radius straight onto the instance with no separate scaling,
+  // and drawEnemyArtBody() sizes the sprite as `enemy.radius * 2 * cfg.scale`, so this single
+  // number drives BOTH the collision circle and the rendered size together: bumping it alone
+  // cannot desync hitbox from what the player sees, unlike a fixed pixel hitbox would.
+  // damage bumped 22 -> 34 (contact-only; ~1.5x) to make standing in the enlarged body actually
+  // punishing rather than a minor chip -- see enemyContactDamage()/ENEMY_CONTACT_COOLDOWN in
+  // js/07-combat.js for the tick mechanism this number feeds, reused unmodified from every
+  // other enemy's contact damage (no separate boss-only system).
+  { name: "Nibbler King", behavior: "boss", size: "large", color: "#f1766e", hp: 1400, speed: 58, radius: 66, damage: 34, scrap: 260, minWave: Infinity, weight: 0, spawnable: false }
 ];
 
 const rarities = {

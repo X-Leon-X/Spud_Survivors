@@ -2224,6 +2224,23 @@ function drawNibblerKingTelegraphs(enemy) {
     ctx.restore();
   }
 
+  // SPIN SWEEP shockwave: same idea as the ground-slam ring above, but centred on the boss
+  // itself (it hits everywhere at once, not a chosen ground spot) -- see boss.bossSpinRing,
+  // set in executeBossStrike's "spinSweep" branch and ticked down alongside bossSlamRing.
+  if (enemy.bossSpinRing) {
+    const ring = enemy.bossSpinRing;
+    const p = 1 - clamp(ring.life / ring.maxLife, 0, 1);
+    const eased = easeOutCubic(p);
+    ctx.save();
+    ctx.globalAlpha = 1 - eased;
+    ctx.strokeStyle = "#ff9c5b";
+    ctx.lineWidth = 5 * (1 - eased * 0.6);
+    ctx.beginPath();
+    ctx.arc(ring.x, ring.y, ring.radius * (0.5 + eased * 0.5), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   if (enemy.bossState !== "telegraph" || !enemy.bossTelegraph) return;
   const telegraph = enemy.bossTelegraph;
   const timing = bossAttackTiming(enemy.bossAttack, enemy.bossPhase ?? 1);
@@ -2307,6 +2324,115 @@ function drawNibblerKingTelegraphs(enemy) {
     ctx.beginPath();
     ctx.moveTo(telegraph.fromX, telegraph.fromY);
     ctx.lineTo(endX, endY);
+    ctx.stroke();
+    ctx.restore();
+  } else if (telegraph.kind === "comboSwing") {
+    // ATTACK 6 (SLAM COMBO) telegraph: draws the CURRENT hit's cone (telegraph.hit advances as
+    // runSlamComboTick lands each of the 3 swings), plus faint ghost cones for the remaining
+    // hits so the player can see the whole sequence coming, not just the next one.
+    const range = enemy.radius * 3.0;
+    const halfArc = (enemy.bossPhase ?? 1) >= 2 ? 0.72 : 0.6;
+    const activeIndex = telegraph.hit ?? 0;
+    for (let i = 0; i < telegraph.angles.length; i += 1) {
+      const isActive = i === activeIndex;
+      const grow = isActive ? 0.4 + progress * 0.6 : 1;
+      const alpha = isActive ? strobe : 0.12;
+      ctx.save();
+      ctx.fillStyle = `rgba(255, 60, 60, ${alpha * (isActive ? 0.4 : 1)})`;
+      ctx.beginPath();
+      ctx.moveTo(enemy.x, enemy.y);
+      ctx.arc(enemy.x, enemy.y, range * grow, telegraph.angles[i] - halfArc, telegraph.angles[i] + halfArc);
+      ctx.closePath();
+      ctx.fill();
+      if (isActive) {
+        ctx.strokeStyle = `rgba(255, 90, 90, ${strobe})`;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  } else if (telegraph.kind === "spinRing") {
+    // ATTACK 7 (SPIN SWEEP) telegraph: an expanding ring at club reach around the boss, since
+    // this attack hits every direction at once -- no arc to aim, just a growing danger radius.
+    const range = enemy.radius * ((enemy.bossPhase ?? 1) >= 2 ? 2.7 : 2.3);
+    const grow = 0.3 + progress * 0.7;
+    ctx.save();
+    ctx.strokeStyle = `rgba(255, 156, 91, ${strobe})`;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(enemy.x, enemy.y, range * grow, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = `rgba(255, 156, 91, ${strobe * 0.14})`;
+    ctx.beginPath();
+    ctx.arc(enemy.x, enemy.y, range * grow, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  } else if (telegraph.kind === "overheadMark") {
+    // ATTACK 8 (OVERHEAD SMASH) telegraph: a small precise circle pinned to the player's
+    // position when the telegraph started -- deliberately small and exact, unlike the other
+    // ground-warning attacks, since the whole point is a readable tell you can just step off.
+    const smashRadius = 46;
+    const pulse = 0.85 + Math.sin(performance.now() / 1000 * (4 + progress * 6) * Math.PI * 2) * 0.15;
+    ctx.save();
+    ctx.strokeStyle = `rgba(255, 60, 60, ${strobe})`;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(telegraph.x, telegraph.y, smashRadius * pulse, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = `rgba(255, 60, 60, ${strobe * 0.2})`;
+    ctx.beginPath();
+    ctx.arc(telegraph.x, telegraph.y, smashRadius * pulse, 0, Math.PI * 2);
+    ctx.fill();
+    // A thin line from the boss to the mark so it's clear WHO is about to slam it, even
+    // though the hit lands wherever the mark is regardless of where the boss ends up.
+    ctx.strokeStyle = `rgba(255, 60, 60, ${strobe * 0.3})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(enemy.x, enemy.y);
+    ctx.lineTo(telegraph.x, telegraph.y);
+    ctx.stroke();
+    ctx.restore();
+  } else if (telegraph.kind === "cone") {
+    // ATTACK 9 (SEED SPRAY) telegraph: a red cone matching the pellet fan's spread, anchored at
+    // the boss, honestly previewing the safe lanes just outside the cone's edges.
+    const range = Math.max(W, H);
+    ctx.save();
+    ctx.fillStyle = `rgba(255, 60, 60, ${strobe * 0.3})`;
+    ctx.beginPath();
+    ctx.moveTo(enemy.x, enemy.y);
+    ctx.arc(enemy.x, enemy.y, range, telegraph.angle - telegraph.halfArc, telegraph.angle + telegraph.halfArc);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255, 90, 90, ${strobe})`;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.restore();
+  } else if (telegraph.kind === "lobSpots") {
+    // ATTACK 10 (SPIT VOLLEY) telegraph: a small red ground marker at each spot a lob will
+    // land, same visual language as summonSpots but sized down to read as "incoming shot"
+    // rather than "something is about to spawn here".
+    for (const spot of telegraph.spots) {
+      ctx.save();
+      ctx.strokeStyle = `rgba(255, 70, 70, ${strobe})`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(spot.x, spot.y, 14 + progress * 8, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = `rgba(255, 70, 70, ${strobe * 0.22})`;
+      ctx.beginPath();
+      ctx.arc(spot.x, spot.y, 14 + progress * 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  } else if (telegraph.kind === "radialFlash") {
+    // ATTACK 11 (RADIAL BURST) telegraph: the boss flashes plus an expanding ring, distinct in
+    // colour from nibblerLaunch's gold "flash" (that one throws real Nibblers, this throws
+    // projectiles) so the two omnidirectional warnings never read as the same threat.
+    ctx.save();
+    ctx.strokeStyle = `rgba(255, 156, 91, ${strobe})`;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(enemy.x, enemy.y, enemy.radius * (1.1 + progress * 1.8), 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   }
@@ -3318,6 +3444,29 @@ function drawEnemyBullet(bullet) {
     ctx.lineTo(-4, 0);
     ctx.lineTo(-1, -1.6);
     ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  // Nibbler King ranged attacks (seedSpray/radialBurst pellets, spitVolley lobs -- see
+  // shootBossPellet/shootBossLob in js/07-combat.js). Bigger and redder than a Spitter's glob
+  // so a boss projectile is instantly distinguishable from a regular enemy's shot.
+  if (bullet.kind === "kingSeed" || bullet.kind === "kingLob") {
+    ctx.fillStyle = "rgba(255, 106, 95, 0.22)";
+    ctx.beginPath();
+    ctx.ellipse(-16, 0, 15, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#ff6a5f";
+    ctx.strokeStyle = "#5a1712";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 9, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+    ctx.beginPath();
+    ctx.arc(-2, -2, 2.2, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
     return;

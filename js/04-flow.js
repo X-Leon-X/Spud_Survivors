@@ -44,9 +44,9 @@ function freshState() {
     treeOneShot: false,
     // BOSS SYSTEM: null outside a boss fight. See startBossFight() below for the shape
     // (index/phase/timers) and js/07-combat.js updateBossEnemy for the attack machine that
-    // lives on the boss enemy instance itself. bossFightClearedForWave records the wave
-    // NUMBER (e.g. 11) whose boss has already been beaten, so a dev-panel wave jump or a
-    // re-entrant startWave() call can't re-trigger the same interstitial twice.
+    // lives on the boss enemy instance itself. bossFightClearedForWave records the completed
+    // wave NUMBER (e.g. 10, 20...) whose boss has already been beaten, so a dev-panel wave
+    // jump or a re-entrant startWave() call can't re-trigger the same interstitial twice.
     bossFight: null,
     bossFightClearedForWave: null,
     extraWeaponSlots: 0,
@@ -164,22 +164,24 @@ function applyCharacter(character) {
 
 // BOSS SYSTEM -- the single entry point every "advance past a wave" path goes through
 // (the shop's Start Next Wave button and the dev panel's wave-jump both call startWave()
-// directly), so intercepting here is the one place that reliably catches every route into
-// wave 11, 21, 31, etc. A boss fight is an INTERSTITIAL: it must NOT consume a wave number,
-// so this fires BEFORE state.wave is incremented, using the wave the player is about to
-// enter (state.wave + 1) as the trigger. If that wave would be a multiple of
-// BOSS_WAVE_INTERVAL and no boss fight has happened for it yet, redirect into
-// startBossFight() instead of incrementing -- when the fight ends (see endBossFight in
-// js/07-combat.js) it calls startWave() again itself, and by then bossFightClearedForWave
-// has been stamped so this check falls through and wave 11 (etc.) starts normally.
+// directly), so intercepting here is the one place that reliably catches every route out of
+// wave 10, 20, 30, etc. A boss fight is an INTERSTITIAL that happens AFTER a multiple-of-10
+// wave has been fully played (normal enemies, normal timer, normal end, normal shop) -- it
+// must NOT replace that wave. So the trigger checks state.wave (the wave the player just
+// finished and shopped after), not state.wave + 1: if state.wave is already a multiple of
+// BOSS_WAVE_INTERVAL and that interval's boss hasn't been cleared yet, redirect into
+// startBossFight() instead of incrementing to wave 11/21/31. When the fight ends (see
+// endBossFight below) it calls startWave() again itself; state.wave is still 10 (unchanged
+// by the boss fight) and bossFightClearedForWave has been stamped to 10, so this check falls
+// through and wave 11 starts normally on that second call.
 function startWave() {
-  const nextWave = state.wave + 1;
   if (
-    nextWave % BOSS_WAVE_INTERVAL === 0 &&
-    state.bossFightClearedForWave !== nextWave &&
+    state.wave > 0 &&
+    state.wave % BOSS_WAVE_INTERVAL === 0 &&
+    state.bossFightClearedForWave !== state.wave &&
     !state.bossFight
   ) {
-    startBossFight(nextWave / BOSS_WAVE_INTERVAL);
+    startBossFight(state.wave / BOSS_WAVE_INTERVAL);
     return;
   }
 
@@ -269,7 +271,11 @@ function endBossFight(isSoftLockSafety = false) {
     // can no longer end. Logged so it's visible during testing if it ever fires.
     console.warn("Boss fight ended via soft-lock safety: no boss enemy found while state.bossFight was active.");
   }
-  const clearedWave = bossFight.index * BOSS_WAVE_INTERVAL + 1;
+  // Stamped as the completed wave NUMBER the boss guards (10, 20, 30...), matching what
+  // startWave() compares state.wave against above -- NOT +1. The old +1 offset compared
+  // bossFightClearedForWave (11) against a trigger check of nextWave===10, so it could never
+  // actually suppress anything; this keeps both sides of the guard in the same units.
+  const clearedWave = bossFight.index * BOSS_WAVE_INTERVAL;
   state.bossFight = null;
   state.bossFightClearedForWave = clearedWave;
   state.mode = "bagging";

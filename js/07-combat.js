@@ -2588,30 +2588,145 @@ function addFloater(x, y, text, options = {}) {
 // It is null/undefined outside of a boss fight.
 // =====================================================================================
 
-// HP FORMULA: base 1400 (see the Nibbler King's enemyTypes entry -- that field is only a
-// placeholder read by nowhere else) is replaced by this curve once the fight actually starts.
-// Aiming for a 45-75s fight against a "reasonably equipped wave-10 build". This is a TUNED
-// TARGET, not derived from a precise DPS model -- a wave-10 build's real damage output varies
-// enormously with weapon RNG/tier and stat rolls, so instead of chasing a false-precision
-// formula this starts from "the fight should last about a minute" and picks an HP pool sized
-// for that, to be adjusted from actual playtesting (UNTESTED -- see the honest gaps in the
-// final report; this number has not been verified against a real run).
-// Sanity-checked against real weapon numbers rather than guessed: a wave-10 player typically
-// carries 4-6 weapons around tier 2-3, i.e. roughly 20 damage per shot on a ~0.7s cooldown
-// (see baseDamage/cooldown arrays in js/03-data.js), which lands somewhere near 110-250 DPS
-// depending on how the stat/tier rolls went. Crucially, this is a dodge-heavy fight where the
-// player spends a large share of the time avoiding telegraphs rather than attacking, so plan
-// for roughly 60% damage uptime, not 100%.
-//   5200 HP  ->  ~35s (250 dps) to ~79s (110 dps) at 60% uptime.
-// That brackets the intended 45-75s band for a typical build. An earlier pass used 12000 here,
-// which works out to a 2-3 minute slog for anything but a top-end build.
-// Boss 1: 5200. Boss 2 (wave 20): 8060. Boss 3 (wave 30): ~12493. Growth of 1.55x per boss
-// index roughly mirrors how much the player's own DPS grows between encounters (weapon tiers +
-// stat stacking over 10 more waves), keeping later fights in the same band.
-// STILL UNTESTED against a real run -- adjust from playtesting.
+// ---- DPS-scaled HP ----------------------------------------------------------------------
+// PROBLEM (measured, not theoretical): a flat 5200 HP was sized against an ESTIMATED
+// wave-10 build of 110-250 DPS (4-6 weapons around tier 2-3). Real builds blow past that --
+// weaponTierStatScalingMultiplier goes up to 4.85x at tier 5 (see that function above), and
+// damagePercent/attackSpeed stack multiplicatively with no cap (brotatoPercentMultiplier),
+// so a lucky/greedy build can reach 1700+ DPS. Against flat 5200 HP that is a 3-second boss.
+//
+// FIX (user's explicit decision): scale boss HP off the player's ACTUAL estimated DPS at the
+// moment the fight starts, instead of a single flat number tuned for an "average" build --
+// but with a HIGH MINIMUM FLOOR so a stripped-down/sold-everything build still gets a real
+// fight instead of a 100 HP joke.
+
+// Single lookup point for "the player" this estimator scales against. Deliberately reads
+// state.player rather than assuming a global singleton elsewhere baked in — if/when
+// multiplayer is added, this is the one function that needs to change (e.g. to take a
+// specific player object or sum/average across several), nothing else in this formula does.
+function currentPlayerForDpsEstimate() {
+  return state.player;
+}
+
+// Estimates the player's current total sustained DPS across every EQUIPPED weapon, using the
+// exact same helpers the real firing code uses (weaponShotDamage, weaponCooldown,
+// weaponProjectileCount, getWeaponStatProfile().splitDamageAcrossProjectiles) so this can
+// never drift out of sync with how damage is actually computed in fireProjectileWeapon/
+// fireSwingWeapon. APPROXIMATE by nature: it assumes every shot lands (real play has misses,
+// travel time, and pierce/falloff this does not model), so treat it as a fair upper-middle
+// estimate of raw output, not a guarantee.
+//
+// Per weapon:
+//   shots        = weaponProjectileCount(weapon)              (1 for swing weapons)
+//   perShotDmg   = weaponShotDamage(weapon), divided by `shots` first when the weapon's
+//                  profile sets splitDamageAcrossProjectiles (e.g. Seed Shotgun) -- otherwise
+//                  a 4-pellet shotgun would be counted as 4x its real total-per-trigger damage,
+//                  mirroring the exact same divide fireProjectileWeapon does before it spawns
+//                  bullets (see the `if (profile.splitDamageAcrossProjectiles)` block there).
+//   totalPerTrigger = perShotDmg * shots                       (back to the full trigger-pull total)
+//   critMultiplier  = 1 + (critChance/100) * (weaponCritMultiplier(weapon) - 1)   (expected value)
+//   weaponDps       = totalPerTrigger * critMultiplier / weaponCooldown(weapon)
+// Summed across every weapon in the player's equipped slots (state.weapons sliced to
+// maxWeaponSlots(), same as syncDerivedStats() does for the HUD damage stat).
+function estimatePlayerDps() {
+  const player = currentPlayerForDpsEstimate();
+  if (!player) return 0;
+  const equipped = state.weapons.slice(0, maxWeaponSlots());
+  let totalDps = 0;
+  for (const weapon of equipped) {
+    const profile = getWeaponStatProfile(weapon);
+    const shots = weaponProjectileCount(weapon);
+    let perShotDamage = weaponShotDamage(weapon);
+    // Same divide fireProjectileWeapon uses before crit is applied -- without it, multi-pellet
+    // weapons (shots > 1 AND splitDamageAcrossProjectiles) would be counted `shots` times over.
+    if (profile.splitDamageAcrossProjectiles) {
+      perShotDamage = Math.max(1, Math.round(perShotDamage / shots));
+    }
+    const totalPerTrigger = perShotDamage * shots;
+    const critChance = Math.min(95, Math.max(0, weaponCritChance(weapon))) / 100;
+    const critMultiplier = weaponCritMultiplier(weapon);
+    const critFactor = 1 + critChance * (critMultiplier - 1);
+    const cooldown = Math.max(0.001, weaponCooldown(weapon));
+    totalDps += (totalPerTrigger * critFactor) / cooldown;
+  }
+  return totalDps;
+}
+
+// Fight-length target: ~60 seconds of WALL-CLOCK time.
+//
+// CAREFUL -- the uptime fraction must be applied EXACTLY ONCE. estimatePlayerDps() returns a
+// theoretical maximum: it assumes every shot fires on cooldown and every shot connects (it
+// says so in its own comment). Real uptime in a dodge-heavy telegraph fight is well under
+// that, so the HP pool is scaled DOWN by UPTIME_FRACTION to match what the player will
+// actually land, giving a fight close to TARGET_SECONDS of wall-clock time.
+//
+// An earlier pass DIVIDED by the fraction instead of multiplying, which double-counted it:
+// the pool was inflated 1.67x AND then chewed through at ~60% uptime, yielding ~167s fights
+// at every DPS level instead of 60s. Multiply here; do not divide.
+//   e.g. 500 dps theoretical -> 500 * 60 * 0.6 = 18000 HP -> ~60s at 60% real uptime.
+const BOSS_DPS_TARGET_SECONDS = 60;
+const BOSS_DPS_UPTIME_FRACTION = 0.6;
+
+// HARD MINIMUM FLOOR (explicit user requirement): "we don't want the hp to be like only 100
+// because the player sold everything and bought the worst item." Boss 1 never drops below
+// 8000 HP no matter how weak the estimated DPS is -- a stripped/sold-off build still faces a
+// real fight, just a slower one. Grows 1.55x per boss index, same curve as the DPS-scaled
+// value below, so the floor stays proportionate at every boss instead of becoming irrelevant
+// (too low) or dominant (too high) at bosses 2/3+.
+const BOSS_HP_FLOOR_BASE = 8000;
+// HARD MAXIMUM CAP: a pathological low-DPS build (e.g. 0 weapons after a bad crate recycle
+// run) must not turn this into a 10-minute slog just because the floor logic has no ceiling.
+// Capped at 25x the floor -- generous enough that it only ever engages for genuinely broken
+// builds, while still bounding worst-case fight length to something finishable.
+const BOSS_HP_CAP_MULTIPLIER = 25;
+
+function bossIndexGrowth(bossIndex) {
+  return Math.pow(1.55, Math.max(0, bossIndex - 1));
+}
+
+// Computed ONCE per fight, at spawn time (see spawnNibblerKing below) -- NOT per frame. The
+// DPS estimate is a snapshot of the player's build the instant the fight starts; mid-fight
+// purchases don't retroactively resize an in-progress boss.
+//   dpsScaledHp = estimatePlayerDps() * BOSS_DPS_TARGET_SECONDS * BOSS_DPS_UPTIME_FRACTION
+//   growth      = bossIndexGrowth(bossIndex)     -- 1.55x per boss index (1, 1.55, 2.4025, ...)
+//   floor       = BOSS_HP_FLOOR_BASE * growth    -- 8000 for boss 1, 12400 for boss 2, ...
+//   cap         = floor * BOSS_HP_CAP_MULTIPLIER -- 25x the floor
+//   result      = clamp(dpsScaledHp, floor, cap)
+// The 1.55x per-boss-index growth is carried entirely by the floor/cap (both scale with it),
+// so later bosses are guaranteed to be at least as tough as the last even for a build whose
+// DPS barely grew, while a build that DID get much stronger is still governed by its own
+// fresh DPS estimate at each fight rather than a second multiplicative layer on top of it.
+//
+// WORKED EXAMPLES against boss 1 (growth = 1, floor = 8000, cap = 200000). "Predicted fight"
+// divides the pool by (theoretical dps * uptime), i.e. what the player actually lands:
+//   weak build    (~120 dps -- 1-2 low-tier weapons, e.g. after selling most of a run):
+//                 dpsScaledHp = 120 * 60 * 0.6 = 4320 -> BELOW the 8000 floor -> HP = 8000.
+//                 Predicted fight: 8000 / (120 * 0.6) = ~111s. Long, but that is the floor
+//                 doing exactly its job rather than handing a stripped build a joke boss.
+//   typical build (~500 dps -- several tier-2/3 weapons, a wave-10 build in reasonable shape):
+//                 dpsScaledHp = 500 * 60 * 0.6 = 18000 -> between floor and cap -> HP = 18000.
+//                 Predicted fight: 18000 / (500 * 0.6) = 60s, exactly the target.
+//   monster build (~1700 dps -- tier-5 weapons, stacked damagePercent/attackSpeed):
+//                 dpsScaledHp = 1700 * 60 * 0.6 = 61200 -> under the 200000 cap -> HP = 61200.
+//                 Predicted fight: 61200 / (1700 * 0.6) = 60s. This is the case the whole
+//                 rewrite exists for: the old flat 5200 HP died to this build in ~3 seconds
+//                 (5200/1700), whereas scaling holds the same 60s target no matter how strong
+//                 the build gets, instead of trivializing the harder the player is winning.
+//                 The cap only engages past ~5600 theoretical dps.
+// Note the "predicted fight" arithmetic above (hp / (dps * uptime)) is the inverse of the
+// formula and is included only to sanity-check it -- it is not itself part of the formula.
+// APPROXIMATE BY DESIGN: estimatePlayerDps() assumes every shot lands with no travel-time
+// misses, so real fights likely run a bit longer than the target even at full assumed uptime.
+// Treat 60s/60% as a tuning target, not a guarantee -- UNTESTED against a real playthrough,
+// adjust from actual playtesting.
 function nibblerKingHp(bossIndex) {
-  const base = 5200;
-  return Math.round(base * Math.pow(1.55, Math.max(0, bossIndex - 1)));
+  const growth = bossIndexGrowth(bossIndex);
+  const estimatedDps = Math.max(0, estimatePlayerDps());
+  const dpsScaledHp = estimatedDps * BOSS_DPS_TARGET_SECONDS * BOSS_DPS_UPTIME_FRACTION;
+  const floor = BOSS_HP_FLOOR_BASE * growth;
+  const cap = floor * BOSS_HP_CAP_MULTIPLIER;
+  const clamped = Math.min(cap, Math.max(floor, dpsScaledHp));
+  return Math.round(clamped);
 }
 
 // Generous scrap reward, scaling with boss index the same way its HP does so a later boss
@@ -2655,7 +2770,24 @@ const BOSS_ATTACK_TIMING = {
   summonNibblers: { p1: { telegraph: 1.1, strike: 0.05, recover: 0.7 }, p2: { telegraph: 0.8, strike: 0.05, recover: 0.45 } },
   nibblerLaunch: { p1: { telegraph: 0.9, strike: 0.05, recover: 1.1 }, p2: { telegraph: 0.6, strike: 0.05, recover: 0.75 } },
   groundSlam: { p1: { telegraph: 1.0, strike: 0.25, recover: 1.0 }, p2: { telegraph: 0.65, strike: 0.2, recover: 0.6 } },
-  charge: { p1: { telegraph: 0.95, strike: 0.55, recover: 1.1 }, p2: { telegraph: 0.65, strike: 0.4, recover: 0.7 } }
+  charge: { p1: { telegraph: 0.95, strike: 0.55, recover: 1.1 }, p2: { telegraph: 0.65, strike: 0.4, recover: 0.7 } },
+  // ---- New attacks below (v0.16.0) ----
+  // SLAM COMBO (melee): 3 chained swings. "strike" here covers all 3 hits back to back (each
+  // hit has its own short internal telegraph blip handled inside executeBossStrike/the combo
+  // ticker), so the strike duration is roughly 3x a single swing's telegraph+strike.
+  slamCombo: { p1: { telegraph: 0.5, strike: 1.5, recover: 1.0 }, p2: { telegraph: 0.35, strike: 1.05, recover: 0.65 } },
+  // SPIN SWEEP (melee): full 360 whirl, punishes hugging. Longer telegraph (expanding ring
+  // needs time to read clearly) so a close player has a real chance to back off.
+  spinSweep: { p1: { telegraph: 1.1, strike: 0.4, recover: 1.0 }, p2: { telegraph: 0.8, strike: 0.32, recover: 0.65 } },
+  // OVERHEAD SMASH (melee): long telegraph, precise small circle on the player's CURRENT spot.
+  // Rewards reading the tell and simply walking away.
+  overheadSmash: { p1: { telegraph: 1.35, strike: 0.3, recover: 1.0 }, p2: { telegraph: 1.0, strike: 0.24, recover: 0.65 } },
+  // SEED SPRAY (ranged): fan of projectiles, cone telegraph.
+  seedSpray: { p1: { telegraph: 0.8, strike: 0.12, recover: 0.9 }, p2: { telegraph: 0.55, strike: 0.1, recover: 0.55 } },
+  // SPIT VOLLEY (ranged): several lobbed shots with individual ground markers.
+  spitVolley: { p1: { telegraph: 1.0, strike: 0.1, recover: 1.0 }, p2: { telegraph: 0.7, strike: 0.1, recover: 0.65 } },
+  // RADIAL BURST (ranged): full-circle projectile ring with gaps.
+  radialBurst: { p1: { telegraph: 0.9, strike: 0.08, recover: 0.95 }, p2: { telegraph: 0.6, strike: 0.08, recover: 0.6 } }
 };
 
 function bossAttackTiming(name, phase) {
@@ -2670,7 +2802,13 @@ function pickBossAttack(boss) {
     { name: "weaponSwing", weight: 3 },
     { name: "summonNibblers", weight: 2 },
     { name: "groundSlam", weight: 2 },
-    { name: "charge", weight: 2 }
+    { name: "charge", weight: 2 },
+    { name: "slamCombo", weight: 2 },
+    { name: "spinSweep", weight: 2 },
+    { name: "overheadSmash", weight: 2 },
+    { name: "seedSpray", weight: 2 },
+    { name: "spitVolley", weight: 2 },
+    { name: "radialBurst", weight: 2 }
   ];
   if (boss.bossPhase >= 2) {
     pool.push({ name: "nibblerLaunch", weight: 2 });
@@ -2724,6 +2862,12 @@ function updateNibblerKingBehavior(boss, dt, angleToPlayer, distanceToPlayer, sp
     boss.bossSlamRing.life -= dt;
     if (boss.bossSlamRing.life <= 0) boss.bossSlamRing = null;
   }
+  // SPIN SWEEP shockwave ring: same decay pattern as bossSlamRing above, just its own field so
+  // the two attacks' visual rings can never stomp on each other if their windows overlap.
+  if (boss.bossSpinRing) {
+    boss.bossSpinRing.life -= dt;
+    if (boss.bossSpinRing.life <= 0) boss.bossSpinRing = null;
+  }
 
   // ---- Idle: ambient chase (slow -- see the Nibbler King's template speed) until the
   // attack cooldown between actions elapses, then queue a new attack.
@@ -2761,6 +2905,9 @@ function updateNibblerKingBehavior(boss, dt, angleToPlayer, distanceToPlayer, sp
   // ---- Strike: the actual hit/spawn/dash happens once, at the moment executeBossStrike ran
   // (called above the instant telegraph ends). This state just holds for the strike's visible
   // duration (charge/slam already move the boss themselves inside their own strike handlers).
+  // SLAM COMBO is the one exception: its "strike" window covers all 3 chained hits, so this
+  // block also ticks a sub-timer and fires each subsequent hit partway through the window
+  // (see runSlamComboTick below) instead of everything landing at strike-start.
   if (boss.bossState === "strike") {
     boss.bossTimer -= dt;
     if (boss.bossAttack === "charge" && boss._chargeVX !== undefined) {
@@ -2776,6 +2923,9 @@ function updateNibblerKingBehavior(boss, dt, angleToPlayer, distanceToPlayer, sp
       boss.vx = 0;
       boss.vy = 0;
     }
+    if (boss.bossAttack === "slamCombo") {
+      runSlamComboTick(boss, dt);
+    }
     if (boss.bossTimer <= 0) {
       const timing = bossAttackTiming(boss.bossAttack, boss.bossPhase);
       boss.bossState = "recover";
@@ -2784,6 +2934,8 @@ function updateNibblerKingBehavior(boss, dt, angleToPlayer, distanceToPlayer, sp
       boss._chargeVX = undefined;
       boss._chargeVY = undefined;
       boss.chargeTimer = 0;
+      boss._comboHitsLanded = 0;
+      boss._comboNextHitAt = undefined;
     }
     return;
   }
@@ -2834,6 +2986,54 @@ function startBossTelegraph(boss) {
       toAngle: Math.atan2(player.y - boss.y, player.x - boss.x),
       elapsed: 0
     };
+  } else if (boss.bossAttack === "slamCombo") {
+    // MELEE: three swings in a row, each a bit rotated from the last so it isn't a single
+    // dodge -- angles are rolled now, up front, so the whole combo's directions are fixed the
+    // instant the telegraph starts (an honest preview, not decided on the fly mid-strike).
+    const baseAngle = Math.atan2(player.y - boss.y, player.x - boss.x);
+    const spread = 0.55;
+    boss.bossTelegraph = {
+      kind: "comboSwing",
+      angles: [baseAngle - spread, baseAngle, baseAngle + spread],
+      hit: 0,
+      elapsed: 0
+    };
+  } else if (boss.bossAttack === "spinSweep") {
+    // MELEE: full 360 whirl -- the telegraph is an expanding ring at club reach, no direction
+    // to read because it hits everywhere around the boss.
+    boss.bossTelegraph = { kind: "spinRing", elapsed: 0 };
+  } else if (boss.bossAttack === "overheadSmash") {
+    // MELEE: precise small circle pinned to the player's CURRENT position at telegraph start
+    // (not tracked afterward) -- rewards simply walking off the marked spot.
+    boss.bossTelegraph = { kind: "overheadMark", x: player.x, y: player.y, elapsed: 0 };
+  } else if (boss.bossAttack === "seedSpray") {
+    // RANGED: a fan of pellets straight at the player. Telegraph is a red cone matching the
+    // fan's spread so the warning honestly previews where the pellets will fly.
+    boss.bossTelegraph = {
+      kind: "cone",
+      angle: Math.atan2(player.y - boss.y, player.x - boss.x),
+      halfArc: 0.42,
+      elapsed: 0
+    };
+  } else if (boss.bossAttack === "spitVolley") {
+    // RANGED: several lobbed shots landing near (not exactly on) the player, each with its
+    // own small ground marker rolled now so the warning matches where they will actually land.
+    const count = boss.bossPhase >= 2 ? 5 : 4;
+    const spots = [];
+    for (let i = 0; i < count; i += 1) {
+      const angle = rand(0, Math.PI * 2);
+      const dist = rand(0, 90);
+      spots.push({
+        x: clamp(player.x + Math.cos(angle) * dist, 30, W - 30),
+        y: clamp(player.y + Math.sin(angle) * dist, 30, H - 30)
+      });
+    }
+    boss.bossTelegraph = { kind: "lobSpots", spots, elapsed: 0 };
+  } else if (boss.bossAttack === "radialBurst") {
+    // RANGED: full-circle burst with gaps the player can slip through. Telegraph is a brief
+    // flash plus an expanding ring, distinct from the phase-2 nibblerLaunch's own flash (that
+    // one throws real Nibblers, this one throws projectiles).
+    boss.bossTelegraph = { kind: "radialFlash", elapsed: 0 };
   }
 }
 
@@ -2948,7 +3148,161 @@ function executeBossStrike(boss) {
     }
     burst(boss.x, boss.y, "#ffd15f", 16);
     playSfx("hit");
+  } else if (boss.bossAttack === "slamCombo") {
+    // ATTACK 6 (MELEE): SLAM COMBO. First of 3 hits lands here, at strike-start, using the
+    // combo's angles[0]. Hits 2 and 3 are fired later, mid-strike, by runSlamComboTick (called
+    // from updateNibblerKingBehavior's "strike" state) -- see landSlamComboHit for the shared
+    // per-hit damage/arc logic all 3 swings use.
+    boss._comboHitsLanded = 0;
+    boss._comboNextHitAt = undefined;
+    landSlamComboHit(boss, 0);
+  } else if (boss.bossAttack === "spinSweep") {
+    // ATTACK 7 (MELEE): SPIN SWEEP. Full 360 whirl at club reach -- unlike weaponSwing this has
+    // no arc to dodge sideways out of, so range is slightly shorter and damage a bit lower to
+    // compensate for punishing every angle at once. Deliberately punishes players who stand
+    // right next to the boss (melee builds), which is the whole point of this attack.
+    const range = boss.radius * (phase2 ? 2.7 : 2.3);
+    const dist = Math.hypot(player.x - boss.x, player.y - boss.y);
+    if (dist <= range + playerHitRadius()) {
+      const damage = Math.round(boss.damage * (phase2 ? 2.0 : 1.5));
+      damagePlayer(damage, boss.x, boss.y, "Nibbler King");
+    }
+    boss.bossSpinRing = { x: boss.x, y: boss.y, radius: range, life: 0.35, maxLife: 0.35 };
+    addShake(8, true);
+    playSfx("swing");
+    burst(boss.x, boss.y, "#ff6a5f", 22);
+  } else if (boss.bossAttack === "overheadSmash") {
+    // ATTACK 8 (MELEE): OVERHEAD SMASH. Long telegraph already gave a clear warning pinned to
+    // where the player WAS when it started (boss.bossTelegraph.x/y) -- big damage if they never
+    // moved off that spot, nothing if they stepped away, regardless of where the boss itself is.
+    const cx = boss.bossTelegraph?.x ?? player.x;
+    const cy = boss.bossTelegraph?.y ?? player.y;
+    const smashRadius = 46;
+    const dist = Math.hypot(player.x - cx, player.y - cy);
+    if (dist <= smashRadius + playerHitRadius()) {
+      // 1.9/1.6x (down from an earlier 2.8/2.3x): with the boss's contact damage scaled up
+      // (see js/01-core.js), the old multiplier could approach a one-shot on a lean, low-HP,
+      // no-armor wave-10 build. This keeps it the hardest-hitting punish attack in the kit
+      // while still leaving real margin to survive a missed dodge.
+      const damage = Math.round(boss.damage * (phase2 ? 1.9 : 1.6));
+      damagePlayer(damage, cx, cy, "Nibbler King");
+    }
+    addShake(10, true);
+    playSfx("explosion");
+    burst(cx, cy, "#ff6a5f", 26);
+    spawnRing(cx, cy, "#ff3b3b", smashRadius * 1.4, 0.35);
+  } else if (boss.bossAttack === "seedSpray") {
+    // ATTACK 9 (RANGED): SEED SPRAY. A fan of real projectiles via shootEnemyProjectile, spread
+    // across the telegraphed cone. Count/speed tuned so sidestepping clears the fan easily.
+    const angle = boss.bossTelegraph?.angle ?? Math.atan2(player.y - boss.y, player.x - boss.x);
+    const halfArc = boss.bossTelegraph?.halfArc ?? 0.42;
+    const count = phase2 ? 7 : 5;
+    for (let i = 0; i < count; i += 1) {
+      const offset = count === 1 ? 0 : -halfArc + (halfArc * 2 * i) / (count - 1);
+      shootBossPellet(boss, angle + offset, phase2);
+    }
+    playSfx("shoot");
+    burst(boss.x, boss.y, "#f2d35f", 10);
+  } else if (boss.bossAttack === "spitVolley") {
+    // ATTACK 10 (RANGED): SPIT VOLLEY. Several arcing lobs toward the pre-rolled ground spots
+    // (already shown as markers during telegraph) -- one real projectile per spot, aimed so it
+    // lands roughly on its marker rather than tracking the player live.
+    const spots = boss.bossTelegraph?.spots ?? [];
+    for (const spot of spots) {
+      const angle = Math.atan2(spot.y - boss.y, spot.x - boss.x);
+      shootBossLob(boss, angle, spot, phase2);
+    }
+    playSfx("shoot");
+    burst(boss.x, boss.y, "#66c7d8", 10);
+  } else if (boss.bossAttack === "radialBurst") {
+    // ATTACK 11 (RANGED): RADIAL BURST. Full ring of projectiles fired outward with gaps a
+    // player can slip through -- distinct from nibblerLaunch (phase 2's real-Nibbler burst).
+    const count = phase2 ? 14 : 10;
+    const gapEvery = 4; // skip one shot every 4th slot to leave a slip-through lane
+    for (let i = 0; i < count; i += 1) {
+      if (i % gapEvery === gapEvery - 1) continue;
+      const angle = (i / count) * Math.PI * 2;
+      shootBossPellet(boss, angle, phase2);
+    }
+    addShake(7, true);
+    playSfx("explosion");
+    burst(boss.x, boss.y, "#ff9c5b", 20);
+    spawnRing(boss.x, boss.y, "#ff9c5b", boss.radius * 2, 0.3);
   }
+}
+
+// SLAM COMBO's per-frame ticker, called from updateNibblerKingBehavior's "strike" state while
+// bossAttack === "slamCombo". The 3 hits are spaced evenly across the strike window (hit 0 has
+// already landed in executeBossStrike at strike-start) so the combo reads as 3 distinct blows
+// rather than one lump of damage.
+function runSlamComboTick(boss, dt) {
+  const timing = bossAttackTiming("slamCombo", boss.bossPhase);
+  const hitCount = 3;
+  const hitSpacing = timing.strike / hitCount;
+  if (boss._comboNextHitAt === undefined) {
+    boss._comboNextHitAt = hitSpacing;
+  }
+  const elapsedInStrike = timing.strike - boss.bossTimer;
+  if (boss._comboHitsLanded < hitCount - 1 && elapsedInStrike >= boss._comboNextHitAt) {
+    boss._comboHitsLanded += 1;
+    boss._comboNextHitAt += hitSpacing;
+    if (boss.bossTelegraph) boss.bossTelegraph.hit = boss._comboHitsLanded;
+    landSlamComboHit(boss, boss._comboHitsLanded);
+  }
+}
+
+// Lands one hit of the slam combo (index 0/1/2). Shares the same range/arc shape as the
+// ordinary weaponSwing attack, just at a slightly shorter range/narrower arc and lower
+// per-hit damage since a player caught flat-footed can take more than one of these in a row.
+function landSlamComboHit(boss, index) {
+  const player = state.player;
+  const phase2 = boss.bossPhase >= 2;
+  const angle = boss.bossTelegraph?.angles?.[index] ?? Math.atan2(player.y - boss.y, player.x - boss.x);
+  const range = boss.radius * 3.0;
+  const halfArc = phase2 ? 0.72 : 0.6;
+  const toPlayer = Math.hypot(player.x - boss.x, player.y - boss.y);
+  if (toPlayer <= range) {
+    const angleDiff = Math.abs(angleDifference(Math.atan2(player.y - boss.y, player.x - boss.x), angle));
+    if (angleDiff <= halfArc) {
+      const damage = Math.round(boss.damage * (phase2 ? 1.5 : 1.15));
+      damagePlayer(damage, boss.x, boss.y, "Nibbler King");
+    }
+  }
+  playSfx("swing");
+  burst(boss.x + Math.cos(angle) * range * 0.6, boss.y + Math.sin(angle) * range * 0.6, "#ff6a5f", 12);
+  addShake(4, true);
+}
+
+// Fires a single fast-ish projectile from the boss toward `angle`, reusing the enemy bullet
+// pipeline (shootEnemyProjectile) rather than inventing a parallel one -- lands in
+// state.enemyBullets and gets movement/collision/removal for free from updateEnemyBullets.
+// Damage is expressed as a multiple of the boss's own contact damage, same convention as every
+// melee boss attack above, so ranged and melee attacks stay comparable at a glance.
+function shootBossPellet(boss, angle, phase2) {
+  shootEnemyProjectile(boss, angle);
+  const bullet = state.enemyBullets[state.enemyBullets.length - 1];
+  if (bullet) {
+    bullet.damage = Math.round(boss.damage * (phase2 ? 0.55 : 0.4));
+    bullet.kind = "kingSeed";
+  }
+}
+
+// Fires one arcing lob toward a specific ground spot (used by spitVolley). Reuses
+// shootEnemyProjectile for the bullet's plumbing, then overrides velocity so it actually
+// travels toward the marked spot instead of a fixed range, and gives it a modest lifetime so it
+// despawns shortly after passing the target rather than flying clean across the arena.
+function shootBossLob(boss, angle, spot, phase2) {
+  shootEnemyProjectile(boss, angle);
+  const bullet = state.enemyBullets[state.enemyBullets.length - 1];
+  if (!bullet) return;
+  const dist = Math.hypot(spot.x - boss.x, spot.y - boss.y);
+  const speed = 180;
+  const travelTime = Math.max(0.35, dist / speed);
+  bullet.vx = ((spot.x - boss.x) / travelTime);
+  bullet.vy = ((spot.y - boss.y) / travelTime);
+  bullet.life = travelTime + 0.4;
+  bullet.damage = Math.round(boss.damage * (phase2 ? 0.7 : 0.55));
+  bullet.kind = "kingLob";
 }
 
 // Boss death: a bigger, longer death beat than a normal kill, generous scrap already stamped
@@ -2981,6 +3335,17 @@ function killBossEnemy(boss) {
 // the player explicitly asked for ("trees spawn during the boss wave randomly"), kept modest
 // (a handful at a time, well spaced out) so it's scenery, not a spawnWaveEnemies replacement.
 const BOSS_TREE_RESPAWN_INTERVAL = 14;
+
+// SIDE-NIBBLER TRICKLE: a steady drip of Nibblers entering from the arena edges throughout the
+// boss fight, separate from the boss's own "summonNibblers" attack (which materializes them
+// near the boss itself, not at the edges). The timer lives on state.bossFight (same precedent
+// as treeTimer above) rather than a module-level variable so it resets cleanly the instant a
+// new fight starts (startBossFight in js/04-flow.js creates a fresh state.bossFight object every
+// time, so there is nothing to manually reset here).
+const BOSS_TRICKLE_INTERVAL_P1 = [2.5, 4];   // phase 1: one every 2.5-4s
+const BOSS_TRICKLE_INTERVAL_P2 = [1.5, 2.5]; // phase 2: faster, one every 1.5-2.5s
+const BOSS_TRICKLE_CAP = 8; // hard cap on trickle-spawned Nibblers alive at once
+
 function updateBossFight(dt) {
   if (!state.bossFight) return;
   state.bossFight.treeTimer = (state.bossFight.treeTimer ?? BOSS_TREE_RESPAWN_INTERVAL) - dt;
@@ -3000,4 +3365,32 @@ function updateBossFight(dt) {
       }
     }
   }
+
+  updateBossTrickle(dt);
+}
+
+// Ticks the side-nibbler trickle timer and spawns one Nibbler from a random arena edge when it
+// elapses, respecting both the trickle's own hard cap and the shared enemyActiveCap(). Reuses
+// spawnEnemy's own default edge-positioning (called here with no presetPos, exactly like a
+// normal wave spawn) rather than inventing new placement logic.
+function updateBossTrickle(dt) {
+  const bossFight = state.bossFight;
+  const boss = state.enemies.find((e) => e.behavior === "boss");
+  const phase2 = (boss?.bossPhase ?? 1) >= 2;
+  const [minInterval, maxInterval] = phase2 ? BOSS_TRICKLE_INTERVAL_P2 : BOSS_TRICKLE_INTERVAL_P1;
+
+  bossFight.trickleTimer = (bossFight.trickleTimer ?? rand(minInterval, maxInterval)) - dt;
+  if (bossFight.trickleTimer > 0) return;
+  bossFight.trickleTimer = rand(minInterval, maxInterval);
+
+  const trickleAlive = state.enemies.filter((e) => e._bossTrickle).length;
+  if (trickleAlive >= BOSS_TRICKLE_CAP) return;
+  if (state.enemies.length >= enemyActiveCap()) return;
+
+  const nibblerTemplate = enemyTypes.find((type) => type.name === "Nibbler");
+  if (!nibblerTemplate) return;
+  spawnEnemy(nibblerTemplate); // no presetPos -- reuses spawnEnemy's own random-edge placement
+  const spawned = state.enemies[state.enemies.length - 1];
+  spawned._bossTrickle = true; // tags it so the cap above only counts trickle spawns, not the
+                                // boss's own summonNibblers/nibblerLaunch adds or the boss itself
 }

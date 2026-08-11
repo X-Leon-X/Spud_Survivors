@@ -20,6 +20,19 @@
 
 const CHANGELOG = [
   {
+    version: "0.16.0",
+    date: "2026-08-11",
+    title: "The King's Court",
+    notes: [
+      "The Nibbler King now shows up as its own fight AFTER wave 10 finishes, instead of replacing it, so wave 10 always plays out normally first.",
+      "The King is a lot tougher now and scales itself to how strong your build actually is, so it stays a real fight whether you are stacked or still scrapping by.",
+      "Touching the King directly now actually hurts, so charging straight into it is a real risk, not a free ride.",
+      "Many new attacks: a three-hit club combo, a spinning sweep that punishes standing too close, a heavy overhead smash that telegraphs exactly where it will land, plus new ranged attacks including a spray of seeds, lobbed shots, and a bursting ring of projectiles.",
+      "Every attack still shows a clear red warning first, so you always get a chance to read it and react.",
+      "Nibblers now trickle in from the edges of the arena throughout the fight, on top of anything the King summons itself, so you can never fully stop moving."
+    ]
+  },
+  {
     version: "0.15.1",
     date: "2026-08-10",
     title: "Buckshot",
