@@ -2278,14 +2278,6 @@ function drawNibblerKingCrown(enemy) {
   // high above the head. The correct absolute top edge, with both terms removed (net zero), is:
   const bodyTopY = r * cfg.yOffset - half + size - bodyDrawH; // == real absolute top edge of the body sprite
   const spriteTopY = bodyTopY;
-  const headY = spriteTopY + r * 0.10;     // small deliberate nudge DOWN onto the head so the
-                                            // crown sits ON it rather than floating exactly at
-                                            // the sprite's bounding-box top edge.
-  // Ride the body's hop offset exactly like the health bar does (drawEnemyStateOverlays),
-  // so the crown stays welded to the head instead of detaching while the boss bobs. This
-  // outer draw call is OUTSIDE drawEnemyArtBody's own save/restore (see drawEnemy), so it
-  // does not automatically inherit the body's internal hopY translate -- it must reapply it.
-  const hopY = enemy._renderHopY ?? 0;
 
   const crownWidth = r * 1.15;
   const crownHeight = r * 0.62;
@@ -2298,6 +2290,33 @@ function drawNibblerKingCrown(enemy) {
     drawH = crownHeight;
     drawW = drawH * aspect;
   }
+
+  // headY nudge (v0.19.1 crown-height fix): bodyTopY above is the top of the body sprite's ALPHA
+  // bounding box, not where the King's actual head starts, and the crown art has its own dead
+  // space below its solid band -- both errors independently push a bottom-anchored crown too
+  // high, so both must be corrected in the same nudge:
+  //  1) HEAD_TOP_FRACTION (0.12): measured directly from nibbler-king.png (1269x1004) -- the
+  //     sprite's top ~10% is only sparse glow/sparkle pixels (avg 48px opaque width out of 1269),
+  //     not solid head, so the real head top sits ~12% of the drawn body height BELOW the alpha
+  //     bbox top (previously assumed to be ~3.8%, which floated the crown well above the head).
+  //  2) CROWN_BAND_FRACTION (0.78): measured directly from nibbler-king-crown.png (860x795) --
+  //     the crown's solid band (the part that should rest ON the head) sits at ~78% down the
+  //     crown's own drawn height (drawH above); the remaining ~22% below it is the tapering back
+  //     rim, which is why bottom-anchoring the whole crown box at headY also floats the crown by
+  //     that same amount.
+  // Combined: headY must drop by (head-top offset, in body-sprite space) + (crown rim below its
+  // band, in crown-sprite space) below the raw alpha-bbox top. At the reference r=132/scale=1.2
+  // numbers (bodyDrawH ~250.6, drawH ~81.8) this works out to r * 0.364 total (was r * 0.10 --
+  // see the v0.19.1 changelog entry for the derivation), i.e. the crown drops ~35px lower than
+  // before so it actually sits on the head instead of floating above it.
+  const HEAD_TOP_FRACTION = 0.12;   // fraction of bodyDrawH the real head top sits below the bbox top
+  const CROWN_BAND_FRACTION = 0.78; // fraction of the crown's OWN drawn height (drawH) where its solid band sits
+  const headY = spriteTopY + HEAD_TOP_FRACTION * bodyDrawH + (1 - CROWN_BAND_FRACTION) * drawH;
+  // Ride the body's hop offset exactly like the health bar does (drawEnemyStateOverlays),
+  // so the crown stays welded to the head instead of detaching while the boss bobs. This
+  // outer draw call is OUTSIDE drawEnemyArtBody's own save/restore (see drawEnemy), so it
+  // does not automatically inherit the body's internal hopY translate -- it must reapply it.
+  const hopY = enemy._renderHopY ?? 0;
 
   ctx.save();
   ctx.translate(0, headY + hopY);
@@ -2384,20 +2403,37 @@ function nibblerKingClubGeometry(enemy, angle) {
   return { pivotX, pivotY, tipX, tipY, thickness, pivotReach, clubLength };
 }
 
-function drawNibblerKingClub(enemy) {
-  const art = artFor("boss:nibblerKingClub");
-  if (!art) return;
-
+// SINGLE SOURCE OF TRUTH for the club's current swing angle (v0.19.1 club-angle-sync fix).
+// Previously drawNibblerKingClub computed this tweened/eased angle inline for its own drawing,
+// while js/07-combat.js's damage tests (weaponSwing/landSlamComboHit) read the RAW, un-eased
+// telegraph angle -- the drawn club (mid wind-up/follow-through) and the tested hitbox angle
+// could disagree by up to ~0.9 rad (the windBack offset alone), i.e. the club could visibly miss
+// the player and still deal damage, or visibly connect and deal none. This function contains the
+// exact angle-derivation math that used to live inline in drawNibblerKingClub, unchanged, so
+// BOTH the renderer and the combat code call this ONE function and can never disagree again.
+// Returns the angle (radians) the club should be drawn/tested at RIGHT NOW for the enemy's
+// current bossState/bossAttack/bossTimer/bossTelegraph, or null if the club isn't out at all
+// (not mid-melee-attack, or past the recover tail window).
+//
+// TIME SOURCE: spinSweep needs a "now" timestamp for its continuous spin. Reads
+// enemy._clubFrameTime if set (updateNibblerKingBehavior in js/07-combat.js caches this ONCE per
+// frame at the top of the function, before any per-frame tickers run) so that the renderer's
+// draw call and the combat code's damage test -- which may each call this function multiple
+// times, or on different logical "frames" of the same tick -- always agree on "now" instead of
+// each independently calling performance.now() and drifting apart by however many microseconds
+// elapsed between the two calls (worth 6-13 degrees of spin angle on a slow frame at spinRate 14).
+// Falls back to a fresh performance.now() if the cache isn't set (e.g. called outside the normal
+// update loop, such as from the dev panel).
+function nibblerKingClubAngle(enemy) {
   const melee = enemy.bossAttack === "weaponSwing" || enemy.bossAttack === "slamCombo" ||
     enemy.bossAttack === "spinSweep" || enemy.bossAttack === "overheadSmash";
-  if (!melee) return;
+  if (!melee) return null;
 
   const RECOVER_TAIL = 0.35; // fraction of "recover" the club still draws through, easing to rest
-  if (enemy.bossState !== "telegraph" && enemy.bossState !== "strike" && enemy.bossState !== "recover") return;
+  if (enemy.bossState !== "telegraph" && enemy.bossState !== "strike" && enemy.bossState !== "recover") return null;
 
-  const r = enemy.radius;
   const telegraph = enemy.bossTelegraph;
-  const time = performance.now();
+  const time = enemy._clubFrameTime ?? performance.now();
   const timing = bossAttackTiming(enemy.bossAttack, enemy.bossPhase ?? 1);
 
   // Progress (0..1) through the CURRENT bossState, derived from bossTimer counting down from
@@ -2409,7 +2445,7 @@ function drawNibblerKingClub(enemy) {
     stateP = timing.strike > 0 ? clamp(1 - enemy.bossTimer / timing.strike, 0, 1) : 1;
   } else if (enemy.bossState === "recover") {
     const recoverP = timing.recover > 0 ? clamp(1 - enemy.bossTimer / timing.recover, 0, 1) : 1;
-    if (recoverP > RECOVER_TAIL) return; // past the tail window -- fully at rest, stop drawing
+    if (recoverP > RECOVER_TAIL) return null; // past the tail window -- fully at rest, stop drawing
     stateP = recoverP / RECOVER_TAIL; // 0..1 across just the tail window
   }
 
@@ -2471,6 +2507,15 @@ function drawNibblerKingClub(enemy) {
       angle = Math.PI / 2 + 0.35 * easeOutCubic(stateP);
     }
   }
+  return angle;
+}
+
+function drawNibblerKingClub(enemy) {
+  const art = artFor("boss:nibblerKingClub");
+  if (!art) return;
+
+  const angle = nibblerKingClubAngle(enemy);
+  if (angle === null || angle === undefined) return;
 
   // Geometry (pivot reach + club length) comes from the SAME shared helper the combat code
   // uses for its damage check (nibblerKingClubGeometry, defined above), so the drawn club and

@@ -20,6 +20,15 @@
 
 const CHANGELOG = [
   {
+    version: "0.19.1",
+    date: "2026-08-12",
+    title: "Club and Crown, Fixed",
+    notes: [
+      "The King's club now damages exactly where it visibly swings, instead of a moment too early.",
+      "The crown sits properly on his head instead of floating a little too high above it."
+    ]
+  },
+  {
     version: "0.19.0",
     date: "2026-08-12",
     title: "Crowned and Loaded",

@@ -2928,6 +2928,15 @@ function pickBossAttack(boss) {
 function updateNibblerKingBehavior(boss, dt, angleToPlayer, distanceToPlayer, speed) {
   const player = state.player;
 
+  // v0.19.1 club-angle-sync fix: cache ONE timestamp for this whole frame/tick that
+  // nibblerKingClubAngle (js/08-render.js) reads instead of each caller independently calling
+  // performance.now(). Both the renderer's draw call and the combat code's per-frame damage
+  // ticks (runWeaponSwingTick/runSpinSweepTick, called below) end up asking "what angle is the
+  // club at right now" -- without a shared timestamp, two performance.now() calls microseconds
+  // apart could put spinSweep's continuously-spinning club (spinRate 14) up to 6-13 degrees off
+  // between what's drawn and what's tested on a slow frame.
+  boss._clubFrameTime = performance.now();
+
   // Defensive defaults: normally every field here is set by spawnNibblerKing() the instant the
   // boss is created, but the dev panel's "Spawn Enemy" tool can create a raw Nibbler King
   // template directly (enemyTypes lists every template, including spawnable:false ones, for
@@ -3078,6 +3087,13 @@ function updateNibblerKingBehavior(boss, dt, angleToPlayer, distanceToPlayer, sp
     }
     if (boss.bossAttack === "spinSweep") {
       runSpinSweepTick(boss);
+    }
+    if (boss.bossAttack === "weaponSwing") {
+      // v0.19.1 club-angle-sync fix: test every frame during "strike" against the live,
+      // currently-drawn club angle (nibblerKingClubAngle) instead of only once at strike-start
+      // (already done above in executeBossStrike, which still covers the very first frame).
+      // boss._swingHitLanded latches so this can still only land once per swing.
+      runWeaponSwingTick(boss);
     }
     if (boss.bossTimer <= 0) {
       const timing = bossAttackTiming(boss.bossAttack, boss.bossPhase);
@@ -3327,40 +3343,22 @@ function executeBossStrike(boss) {
   const phase2 = boss.bossPhase >= 2;
 
   if (boss.bossAttack === "weaponSwing") {
-    // ATTACK 1: WEAPON SWING (v0.19.0 club-hit rework). The user's core complaint: "the
-    // warnings shouldn't do the damage, the weapon should" / "if the player gets hit by or
-    // touches the club, they take damage." Damage now tests against the CLUB'S ACTUAL SWEPT
-    // SEGMENT (pivot->tip, from the shared js/08-render.js geometry helper the renderer itself
-    // draws the club with) instead of a cone from the boss's centre, so the hitbox and the
-    // visible weapon can never disagree. Checked once, at strike start, matching the previous
-    // convention (no multi-frame sweep -- the strike duration is just how long the swing plays).
-    const angle = boss.bossTelegraph?.angle ?? Math.atan2(player.y - boss.y, player.x - boss.x);
-    let hit = false;
-    if (typeof nibblerKingClubGeometry === "function") {
-      const geo = nibblerKingClubGeometry(boss, angle);
-      const dist = pointToSegmentDistance(player.x, player.y, geo.pivotX, geo.pivotY, geo.tipX, geo.tipY);
-      hit = dist <= geo.thickness / 2 + playerHitRadius();
-    } else {
-      // Fallback: cone from the boss's centre, reading the SAME range/halfArc the telegraph
-      // payload carries (see startBossTelegraph) so the check and the drawn warning at least
-      // stay in sync with each other even without the club geometry helper.
-      const range = boss.bossTelegraph?.range ?? boss.radius * BOSS_CLUB_REACH_MULT;
-      const halfArc = boss.bossTelegraph?.halfArc ?? (phase2 ? BOSS_CLUB_ARC_HALF.p2 : BOSS_CLUB_ARC_HALF.p1);
-      const toPlayer = Math.hypot(player.x - boss.x, player.y - boss.y);
-      if (toPlayer <= range) {
-        const angleDiff = Math.abs(angleDifference(Math.atan2(player.y - boss.y, player.x - boss.x), angle));
-        hit = angleDiff <= halfArc;
-      }
-    }
-    if (hit && !boss._swingHitLanded) {
-      boss._swingHitLanded = true; // latch: this strike can only land once, same pattern as boss._laserHitLanded
-      const damage = Math.round(boss.damage * (phase2 ? 2.6 : 2.0));
-      damagePlayer(damage, boss.x, boss.y, "Nibbler King");
-    }
+    // ATTACK 1: WEAPON SWING (v0.19.0 club-hit rework; v0.19.1 club-angle-sync fix). The user's
+    // core complaint: "the warnings shouldn't do the damage, the weapon should" / "if the player
+    // gets hit by or touches the club, they take damage." Damage tests against the CLUB'S ACTUAL
+    // SWEPT SEGMENT (pivot->tip, from the shared js/08-render.js geometry helper the renderer
+    // itself draws the club with). This only fires the SFX/VFX/damage-cooldown-reset side effects
+    // once at strike start -- the actual per-frame hit test now happens in runWeaponSwingTick
+    // (called every frame during "strike" from updateNibblerKingBehavior), so the player is hit
+    // when the swinging club visually reaches them instead of at strike-start when the club is
+    // still fully wound back (the angle bug this version fixes).
+    const angle = (typeof nibblerKingClubAngle === "function" ? nibblerKingClubAngle(boss) : null)
+      ?? boss.bossTelegraph?.angle ?? Math.atan2(player.y - boss.y, player.x - boss.x);
     const range = boss.bossTelegraph?.range ?? boss.radius * BOSS_CLUB_REACH_MULT;
     playSfx("swing");
     burst(boss.x + Math.cos(angle) * range * 0.6, boss.y + Math.sin(angle) * range * 0.6, "#ff6a5f", 14);
     addShake(6, true);
+    runWeaponSwingTick(boss); // also does the strike-start frame's own hit test
   } else if (boss.bossAttack === "summonNibblers") {
     // ATTACK 2: SUMMON NIBBLERS. Materialize a Nibbler at each warned spot, respecting the
     // active enemy cap so this can never run away with the enemy count.
@@ -3819,10 +3817,19 @@ function runSlamComboTick(boss, dt) {
 // Lands one hit of the slam combo (index 0/1/2). Same club-segment hit test as weaponSwing
 // (v0.19.0 club-hit rework), just at each combo swing's own angle, with a lower per-hit
 // damage since a player caught flat-footed can take more than one of these in a row.
+// v0.19.1 club-angle-sync fix: this still fires once per hit at a fixed checkpoint (not tested
+// every frame like weaponSwing now is -- runSlamComboTick's 3 evenly-spaced checkpoints already
+// land near the visual peak of each of the 3 tweened sub-swings, and each hit's own damage
+// window is much shorter than weaponSwing's single strike, so the "wound back at strike-start"
+// failure mode doesn't apply the same way here). What DOES change: it now reads the shared
+// nibblerKingClubAngle(boss) -- the exact angle the renderer is drawing the club at THIS
+// instant -- instead of the raw, un-eased angles[index] telegraph value, so the checkpoint hit
+// test matches what's on screen at the moment it fires rather than the combo's final rest angle.
 function landSlamComboHit(boss, index) {
   const player = state.player;
   const phase2 = boss.bossPhase >= 2;
-  const angle = boss.bossTelegraph?.angles?.[index] ?? Math.atan2(player.y - boss.y, player.x - boss.x);
+  const angle = (typeof nibblerKingClubAngle === "function" ? nibblerKingClubAngle(boss) : null)
+    ?? boss.bossTelegraph?.angles?.[index] ?? Math.atan2(player.y - boss.y, player.x - boss.x);
   let hit = false;
   if (typeof nibblerKingClubGeometry === "function") {
     const geo = nibblerKingClubGeometry(boss, angle);
@@ -3859,21 +3866,61 @@ function landSlamComboHit(boss, index) {
   addShake(4, true);
 }
 
+// WEAPON SWING's per-frame ticker (v0.19.1 club-angle-sync fix), called every frame during
+// "strike" from updateNibblerKingBehavior (and once from executeBossStrike at strike-start, same
+// pattern as runSpinSweepTick below). Previously the swing's damage was tested exactly ONCE, at
+// strike-start, against the RAW un-eased telegraph angle -- the worst possible moment, since the
+// renderer (drawNibblerKingClub / nibblerKingClubAngle in js/08-render.js) draws the club wound
+// back at that instant and only sweeps through to the visible impact angle over the course of
+// the strike. Now this reads the SAME shared nibblerKingClubAngle(boss) the renderer draws with,
+// every frame, so the player is hit exactly when the swinging club visually reaches them. A
+// single latch (boss._swingHitLanded, reset in executeBossStrike's caller/strike-end cleanup)
+// means only the first frame the sweeping club touches the player deals damage.
+function runWeaponSwingTick(boss) {
+  const player = state.player;
+  const phase2 = boss.bossPhase >= 2;
+  const angle = (typeof nibblerKingClubAngle === "function" ? nibblerKingClubAngle(boss) : null)
+    ?? boss.bossTelegraph?.angle ?? Math.atan2(player.y - boss.y, player.x - boss.x);
+  let hit = false;
+  if (typeof nibblerKingClubGeometry === "function") {
+    const geo = nibblerKingClubGeometry(boss, angle);
+    const dist = pointToSegmentDistance(player.x, player.y, geo.pivotX, geo.pivotY, geo.tipX, geo.tipY);
+    hit = dist <= geo.thickness / 2 + playerHitRadius();
+  } else {
+    // Fallback: cone from the boss's centre, reading the SAME range/halfArc the telegraph
+    // payload carries (see startBossTelegraph) so the check and the drawn warning at least
+    // stay in sync with each other even without the club geometry helper.
+    const range = boss.bossTelegraph?.range ?? boss.radius * BOSS_CLUB_REACH_MULT;
+    const halfArc = boss.bossTelegraph?.halfArc ?? (phase2 ? BOSS_CLUB_ARC_HALF.p2 : BOSS_CLUB_ARC_HALF.p1);
+    const toPlayer = Math.hypot(player.x - boss.x, player.y - boss.y);
+    if (toPlayer <= range) {
+      const angleDiff = Math.abs(angleDifference(Math.atan2(player.y - boss.y, player.x - boss.x), angle));
+      hit = angleDiff <= halfArc;
+    }
+  }
+  if (hit && !boss._swingHitLanded) {
+    boss._swingHitLanded = true; // latch: this strike can only land once, same pattern as boss._laserHitLanded
+    const damage = Math.round(boss.damage * (phase2 ? 2.6 : 2.0));
+    damagePlayer(damage, boss.x, boss.y, "Nibbler King");
+  }
+}
+
 // SPIN SWEEP's per-frame ticker (v0.19.0 club-hit rework), called every frame during "strike"
 // from updateNibblerKingBehavior (and once from executeBossStrike at strike-start). The club
-// spins continuously (see the angle formula in drawNibblerKingClub, js/08-render.js -- angle =
-// time * spinRate during "strike", spinRate 14), so this reads the SAME time-based formula to
-// get the exact current swing angle each frame, builds the club segment via the shared
-// geometry helper, and tests the player against it. A single latch (boss._spinHitLanded, reset
-// in executeBossStrike) means only the FIRST frame the sweeping club touches the player deals
+// spins continuously (see nibblerKingClubAngle, js/08-render.js -- angle = time * spinRate
+// during "strike", spinRate 14), so this reads that SAME shared function (v0.19.1: previously
+// reimplemented the formula locally with its own performance.now() call, which could drift from
+// the renderer's angle by 6-13 degrees on a slow frame -- see nibblerKingClubAngle's per-frame
+// timestamp cache) to get the exact current swing angle each frame, builds the club segment via
+// the shared geometry helper, and tests the player against it. A single latch (boss._spinHitLanded,
+// reset in executeBossStrike) means only the FIRST frame the sweeping club touches the player deals
 // damage -- without it, the player could take damage every single frame the club overlaps them
 // (a continuous circle-based tick), which would erase any benefit of dodging out mid-spin.
 function runSpinSweepTick(boss) {
   const player = state.player;
   const phase2 = boss.bossPhase >= 2;
-  const time = performance.now();
-  const spinRate = boss.bossState === "strike" ? 14 : 4; // matches drawNibblerKingClub exactly
-  const angle = (time / 1000) * spinRate;
+  const angle = (typeof nibblerKingClubAngle === "function" ? nibblerKingClubAngle(boss) : null)
+    ?? (performance.now() / 1000) * (boss.bossState === "strike" ? 14 : 4);
   let hit = false;
   if (typeof nibblerKingClubGeometry === "function") {
     const geo = nibblerKingClubGeometry(boss, angle);
