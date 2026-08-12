@@ -232,7 +232,14 @@ function startBossFight(bossIndex) {
     // Trees respawn periodically through the fight (a modest trickle, not a full
     // spawnTrees() reset) so the arena doesn't go bare over a long fight -- see
     // updateBossFight()'s tick, called from update() in js/07-combat.js.
-    treeTimer: 22
+    treeTimer: 22,
+    // v0.20.0: seed the side-nibbler trickle timer to a fixed post-arrival GRACE PERIOD instead
+    // of the normal rand(1.2, 2.2) roll (see BOSS_TRICKLE_INTERVAL_P1 in js/07-combat.js), so the
+    // first trickle nibbler can't spawn until the boss has actually landed and had a real chance
+    // to act. updateBossTrickle doesn't tick this timer at all while boss.bossState === "arriving"
+    // (0.6s), so combined with this 3s seed the first spawn lands at roughly arrival + 3s into the
+    // fight -- comfortably past the boss's opening idle window and its first telegraph.
+    trickleTimer: 3.0
   };
   state.spawnTimer = 0;
   state.enemies.length = 0;
@@ -247,7 +254,10 @@ function startBossFight(bossIndex) {
   state.swings.length = 0;
   state.enemyBullets.length = 0;
   state.crateBudget = 0; // no crates during a boss fight -- see updateCrateSpawns' guard
-  state.player.hp = Math.min(state.player.maxHp, state.player.hp + 8);
+  // Full heal on boss-fight entry (not the normal +8 top-up used between regular waves): a boss
+  // fight is a discrete set-piece, not a continuation of the wave that came before it, so a rough
+  // previous wave shouldn't mean starting the fight already low. See js/00-changelog.js v0.20.0.
+  state.player.hp = state.player.maxHp;
   spawnTrees();
   hideShop();
   hideReward();

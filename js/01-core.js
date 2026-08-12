@@ -221,7 +221,7 @@ const statDefs = [
 ];
 
 const BASE_PLAYER_STATS = {
-  maxHp: 80,
+  maxHp: 100,
   hpRegen: 0,
   lifeSteal: 0,
   damagePercent: 0,

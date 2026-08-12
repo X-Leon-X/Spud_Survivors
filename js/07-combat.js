@@ -2882,32 +2882,35 @@ function bossAttackTiming(name, phase) {
 
 // Weighted random attack pick. nibblerLaunch is PHASE 2 ONLY (see its weight below), so it
 // never appears in the phase-1 pool at all rather than being weighted to near-zero.
-// v0.18.0: reweighted so RANGED attacks (which respect a real dodge -- sidestep a projectile)
-// draw noticeably more often than MELEE attacks (which demand close-range positioning/movement
-// away from the boss). Total ranged weight 21 vs melee weight 14 -- see js/00-changelog.js and
-// the final report table for the full breakdown.
+// v0.20.0: reweighted the OTHER way from v0.18.0's ranged-favoring pass. The fight is themed
+// and named around the King's club, but at the old weights (melee 14 / ranged 21) weaponSwing
+// itself was only 3/35 (8.6%) of all rolls -- players were reporting they'd die to ranged chip
+// damage over 10-20s of a fight without ever actually seeing the signature club swing land. Now
+// melee is the dominant identity (weaponSwing's weight roughly doubled, the rest of the melee
+// pool raised modestly) while ranged attacks are dialed back but stay a real, common threat --
+// see js/00-changelog.js and the final balance report for the resulting percentage breakdown.
 function pickBossAttack(boss) {
   const pool = [
     // -- melee --
-    { name: "weaponSwing", weight: 3 },
-    { name: "groundSlam", weight: 2 },
-    { name: "charge", weight: 2 },
-    { name: "slamCombo", weight: 2 },
-    { name: "spinSweep", weight: 2 },
-    { name: "overheadSmash", weight: 2 },
-    { name: "stompQuake", weight: 1 },
+    { name: "weaponSwing", weight: 6 },
+    { name: "groundSlam", weight: 3 },
+    { name: "charge", weight: 3 },
+    { name: "slamCombo", weight: 3 },
+    { name: "spinSweep", weight: 3 },
+    { name: "overheadSmash", weight: 3 },
+    { name: "stompQuake", weight: 2 },
     // -- ranged --
-    { name: "seedSpray", weight: 3 },
-    { name: "spitVolley", weight: 3 },
-    { name: "radialBurst", weight: 3 },
-    { name: "crownToss", weight: 3 },
-    { name: "gapWall", weight: 3 },
-    { name: "tripleVolley", weight: 3 },
-    { name: "groundPoundShockwave", weight: 3 },
+    { name: "seedSpray", weight: 2 },
+    { name: "spitVolley", weight: 2 },
+    { name: "radialBurst", weight: 2 },
+    { name: "crownToss", weight: 2 },
+    { name: "gapWall", weight: 2 },
+    { name: "tripleVolley", weight: 2 },
+    { name: "groundPoundShockwave", weight: 2 },
     // -- neither ranged-damage nor melee-damage (summon utility) --
     { name: "summonNibblers", weight: 2 },
     // -- melee/multi-tick --
-    { name: "laserSweep", weight: 2 }
+    { name: "laserSweep", weight: 3 }
   ];
   if (boss.bossPhase >= 2) {
     pool.push({ name: "nibblerLaunch", weight: 2 });
@@ -4046,6 +4049,12 @@ function updateBossFight(dt) {
 function updateBossTrickle(dt) {
   const bossFight = state.bossFight;
   const boss = state.enemies.find((e) => e.behavior === "boss");
+  // v0.20.0: don't pressure the player while the King is still arriving. Before this gate, the
+  // trickle timer (seeded ~1.2-2.2s, see startBossFight) could fire WHILE the boss was still
+  // dropping in (0.6s arrival) + sitting in its opening idle window (0.6-1.2s) -- so nibblers
+  // started chipping the player before the boss had thrown a single attack. Simply not ticking
+  // during "arriving" holds the timer at whatever it was seeded to until the boss actually lands.
+  if (boss?.bossState === "arriving") return;
   const phase2 = (boss?.bossPhase ?? 1) >= 2;
   const [minInterval, maxInterval] = phase2 ? BOSS_TRICKLE_INTERVAL_P2 : BOSS_TRICKLE_INTERVAL_P1;
 

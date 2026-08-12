@@ -20,6 +20,17 @@
 
 const CHANGELOG = [
   {
+    version: "0.20.0",
+    date: "2026-08-12",
+    title: "Tougher, and He Actually Swings",
+    notes: [
+      "More max health across the board, so you can survive longer against the King and everything else.",
+      "Boss fights now start at full health, every time, instead of topping off whatever you had left.",
+      "The King swings his club far more often now, instead of mostly shooting from range.",
+      "Nibblers hold off at the start of a boss fight until the King has actually landed and had a turn."
+    ]
+  },
+  {
     version: "0.19.1",
     date: "2026-08-12",
     title: "Club and Crown, Fixed",
