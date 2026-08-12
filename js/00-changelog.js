@@ -20,6 +20,20 @@
 
 const CHANGELOG = [
   {
+    version: "0.19.0",
+    date: "2026-08-12",
+    title: "Crowned and Loaded",
+    notes: [
+      "The King's crown now sits properly on his head instead of floating above him.",
+      "When he throws his crown, that's the real crown flying at you, and he's bare-headed until it comes back.",
+      "The King now holds his club against his body and swings it from there, and the club itself is what hurts you, so if it touches you, you take damage.",
+      "Warnings only warn now, they no longer deal damage on their own.",
+      "The King has real animation: he winds up, lunges, and recovers instead of sliding around.",
+      "Enemies scale up less aggressively in late waves.",
+      "Your bullets hit harder and fly faster."
+    ]
+  },
+  {
     version: "0.18.0",
     date: "2026-08-12",
     title: "A Fair Fight",

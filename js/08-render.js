@@ -1914,6 +1914,41 @@ function enemyLocomotion(enemy, time) {
     };
   }
 
+  // BOSS SYSTEM: Nibbler King -- a heavier, slower, more deliberate stomp than the Bruiser's,
+  // reflecting a much bigger body. Bigger squash on the plant (this is the whole screen's boss,
+  // it should feel like it has real weight) and a slight forward lean while moving so it reads
+  // as advancing with intent rather than just bobbing in place. Checked BEFORE the Bruiser/
+  // "large" fallback below (the King is also size:"large") so it doesn't fall through to the
+  // generic stomp -- see FIX 4 in the original brief ("no bespoke locomotion... falls through
+  // to the generic large/Bruiser stomp").
+  if (name === "Nibbler King" || behavior === "boss") {
+    const phase2 = (enemy.bossPhase ?? 1) >= 2;
+    // Phase 2: faster, more agitated cadence -- the King is hurt and angrier.
+    const stompRate = (phase2 ? 1.55 : 1.0) * rate;
+    const stompClock = time / 1000 * 1.7 * stompRate + phase;
+    const step = Math.pow(Math.abs(Math.sin(stompClock)), 1.6);  // sharp plant, slow heavy rise
+    const grounded = 1 - step;
+    const squashAmount = (phase2 ? 0.2 : 0.16);
+    // Forward lean while walking under its own steering (bossState "idle"/"arriving") -- a
+    // small persistent tilt in the direction of travel, on top of the stomp squash, so
+    // advancing reads as purposeful rather than just standing and bobbing. Suppressed during
+    // telegraph/strike/recover, where the attack-reaction lean in drawEnemyArtBody takes over
+    // so the two lean sources never fight each other.
+    // Lean only while the King is actually free to move under its own steering ("idle" is the
+    // between-attacks state where it walks toward the player, "arriving" is its entrance walk-
+    // in) -- not mid-telegraph/strike/recover, where the attack-reaction lean below takes over.
+    let lean = 0;
+    if (enemy.bossState === "idle" || enemy.bossState === "arriving" || !enemy.bossState) {
+      lean = clamp((enemy.vx ?? 0) * 0.012, -0.06, 0.06);
+    }
+    return {
+      hopY: -step * r * 0.22,
+      jellyX: 1 + grounded * squashAmount,
+      jellyY: 1 - grounded * squashAmount,
+      lean
+    };
+  }
+
   // Bruiser (and any other large 'strong' body not already handled above by name): subtle
   // heavy stomp. Long slow cadence, weighty squash near the ground, barely leaves it — reads
   // as mass, not bounce. Kept AFTER the name-specific branches above (Husk/Thistle/Blight
@@ -1958,7 +1993,7 @@ function drawEnemyArtBody(enemy, art) {
 
   // Idle wobble: gentle breathing plus a slight lean, unique per enemy.
   const breathe = 1 + Math.sin(time / 300 + enemy.bob) * 0.035;
-  const lean = Math.sin(time / 420 + enemy.bob * 1.4) * 0.05;
+  let lean = Math.sin(time / 420 + enemy.bob * 1.4) * 0.05;
 
   // --- Per-enemy locomotion animation. Each enemy TYPE moves differently instead of the
   // old shared jelly-hop. anim returns the vertical offset (hopY), squash/stretch
@@ -1969,6 +2004,64 @@ function drawEnemyArtBody(enemy, art) {
   let jellyX = anim.jellyX;
   let jellyY = anim.jellyY;
   enemy._renderHopY = hopY;
+  // Nibbler King locomotion (see enemyLocomotion) adds its own forward-lean-while-moving on top
+  // of the idle sway, instead of replacing it, so the boss still breathes while walking.
+  if (anim.lean) lean += anim.lean;
+
+  // BOSS SYSTEM: body reaction to its own melee attacks -- wind-up lean-back during
+  // "telegraph", forward lunge+squash on "strike", settle back during "recover". Derives a
+  // 0..1 progress within the current bossState the SAME way drawNibblerKingClub computes
+  // stateP (bossTimer counts down from the state's full duration, from bossAttackTiming), so
+  // the body's reaction always stays in lockstep with the club's swing and the telegraph
+  // warning, rather than using separately-tuned timing that can drift out of sync.
+  let bossLean = 0;
+  let bossLunge = 0;   // forward translate along the attack angle, in local (pre-scale) px
+  let bossSquashKick = 0; // extra squash/stretch on top of the locomotion squash
+  if (enemy.behavior === "boss" && enemy.bossState && enemy.bossAttack) {
+    const meleeAttack = enemy.bossAttack === "weaponSwing" || enemy.bossAttack === "slamCombo" ||
+      enemy.bossAttack === "spinSweep" || enemy.bossAttack === "overheadSmash" ||
+      enemy.bossAttack === "groundSlam" || enemy.bossAttack === "stompQuake" ||
+      enemy.bossAttack === "charge" || enemy.bossAttack === "groundPoundShockwave";
+    if (meleeAttack && (enemy.bossState === "telegraph" || enemy.bossState === "strike" || enemy.bossState === "recover")) {
+      const timing = bossAttackTiming(enemy.bossAttack, enemy.bossPhase ?? 1);
+      let stateP = 0;
+      if (enemy.bossState === "telegraph") {
+        stateP = timing.telegraph > 0 ? clamp(1 - enemy.bossTimer / timing.telegraph, 0, 1) : 1;
+      } else if (enemy.bossState === "strike") {
+        stateP = timing.strike > 0 ? clamp(1 - enemy.bossTimer / timing.strike, 0, 1) : 1;
+      } else {
+        stateP = timing.recover > 0 ? clamp(1 - enemy.bossTimer / timing.recover, 0, 1) : 1;
+      }
+      const swingAngle = enemy.bossTelegraph?.angle ?? 0;
+      const towardX = Math.cos(swingAngle);
+      if (enemy.bossState === "telegraph") {
+        // Wind up: lean back away from the swing direction, slight stretch, building over the
+        // telegraph so the attack is honestly readable before it lands.
+        const eased = easeOutCubic(stateP);
+        bossLean = -towardX * 0.12 * eased;
+        bossLunge = -towardX * enemy.radius * 0.06 * eased;
+        bossSquashKick = -0.05 * eased; // slight stretch (negative squash) while winding up
+      } else if (enemy.bossState === "strike") {
+        // Lunge forward into the swing direction, squashing hardest right at impact (early in
+        // the strike window) then relaxing slightly as the strike plays out.
+        const eased = easeOutCubic(Math.min(stateP * 1.6, 1));
+        const impact = 1 - Math.abs(stateP - 0.18) / 0.5; // peaks near the start of the strike
+        const impactKick = clamp(impact, 0, 1);
+        bossLean = towardX * 0.16 * eased;
+        bossLunge = towardX * enemy.radius * 0.1 * eased;
+        bossSquashKick = 0.14 * impactKick;
+      } else {
+        // Recover: ease back from the strike's lunge/squash to neutral.
+        const eased = 1 - easeOutCubic(stateP);
+        bossLean = towardX * 0.16 * eased * 0.4;
+        bossLunge = towardX * enemy.radius * 0.1 * eased * 0.4;
+        bossSquashKick = 0;
+      }
+    }
+  }
+  lean += bossLean;
+  jellyX += bossSquashKick;
+  jellyY -= bossSquashKick;
 
   // Darter lunge: squash on wind-up, then stretch along the lunge. enemyLocomotion already
   // returns a neutral body while charging, so this deformation stacks cleanly on top.
@@ -1989,7 +2082,7 @@ function drawEnemyArtBody(enemy, art) {
   const base = half * 0.82;   // approximate ground contact within the sprite box
 
   ctx.save();
-  ctx.translate(0, y + hopY + base);
+  ctx.translate(bossLunge, y + hopY + base);
   ctx.rotate(lean);
   ctx.scale(facing * breathe * stretchX * jellyX, breathe * stretchY * jellyY);
   ctx.imageSmoothingEnabled = true;
@@ -2141,6 +2234,14 @@ function drawNibblerKingAura(enemy) {
 // (see drawEnemyArtBody/drawCrate/drawFortuneCookie: `if (art) { ctx.drawImage(...) }`,
 // where `art` comes from a `.ready`-gated lookup — see artFor() in js/00-assets.js).
 function drawNibblerKingCrown(enemy) {
+  // Crown toss: while the crown is in flight (bossAttack === "crownToss" && bossState ===
+  // "strike"), it must not ALSO still be sitting on the King's head -- draw nothing here so
+  // there is never a frame with two crowns (this one + the in-flight one drawn from
+  // drawNibblerKingTelegraphs) or, if this condition and the in-flight condition ever drift
+  // apart, a frame with zero crowns. This MUST stay textually identical to the guard on the
+  // in-flight draw below (search "CROWN TOSS in-flight").
+  if (enemy.bossAttack === "crownToss" && enemy.bossState === "strike") return;
+
   const art = artFor("boss:nibblerKingCrown");
   if (!art) return;
 
@@ -2163,9 +2264,23 @@ function drawNibblerKingCrown(enemy) {
     ? bodyArt.naturalWidth / bodyArt.naturalHeight
     : 1;
   const bodyDrawH = artRatio >= 1 ? size / artRatio : size;
-  const bodyTopY = r * cfg.yOffset - half - base + size - bodyDrawH; // matches drawEnemyArtBody's drawY exactly
+  // NOTE ON `base` (do not reintroduce a lone `- base` here -- this has regressed 3 times):
+  // drawEnemyArtBody translates the whole body draw by (y + hopY + base) -- i.e. `base` shifts
+  // the ORIGIN down by the ground-contact anchor -- and THEN draws at local drawY =
+  // (-half - base + size - drawH) -- i.e. `base` shifts the SPRITE back up by the same amount
+  // within that shifted origin. The two `base` terms are algebraically opposite and CANCEL:
+  // translate(+base) followed by drawY(-base) nets to zero `base` contribution in absolute
+  // (world/parent) space. Any reimplementation of that positioning (like this crown anchor,
+  // which computes the body's absolute top edge directly instead of via a translate+drawY pair)
+  // must therefore include BOTH `base` terms or NEITHER -- never just one. The previous two
+  // "fixes" here kept only the `- base` term (from the local drawY half) while dropping the
+  // offsetting `+ base` (from the translate), which is exactly what pushed the crown 83.7px too
+  // high above the head. The correct absolute top edge, with both terms removed (net zero), is:
+  const bodyTopY = r * cfg.yOffset - half + size - bodyDrawH; // == real absolute top edge of the body sprite
   const spriteTopY = bodyTopY;
-  const headY = spriteTopY + r * 0.35;     // nudge down slightly onto the head, not floating above it
+  const headY = spriteTopY + r * 0.10;     // small deliberate nudge DOWN onto the head so the
+                                            // crown sits ON it rather than floating exactly at
+                                            // the sprite's bounding-box top edge.
   // Ride the body's hop offset exactly like the health bar does (drawEnemyStateOverlays),
   // so the crown stays welded to the head instead of detaching while the boss bobs. This
   // outer draw call is OUTSIDE drawEnemyArtBody's own save/restore (see drawEnemy), so it
@@ -2212,6 +2327,63 @@ function drawNibblerKingCrown(enemy) {
 // shared global like every other helper in these plain scripts, already used elsewhere in this
 // file e.g. drawNibblerKingTelegraphs) is reused for every tween below instead of new easing
 // math; there is no easeInCubic/easeInOutCubic anywhere in the codebase to call instead.
+// SHARED CLUB GEOMETRY -- the single source of truth for where the club actually is, in WORLD
+// space, for a given swing angle. Both this renderer (drawNibblerKingClub, converting these
+// world coordinates back to the boss's local space since it draws inside a translate/rotate)
+// AND the combat code (js/07-combat.js, testing the boss's melee damage against the club's
+// actual swept segment) call this SAME function, so the visual club and the damage-dealing club
+// can never disagree about length or pivot. Defined at module level as a plain global function
+// (these are plain scripts sharing global scope, not ES modules -- same convention as
+// bossAttackTiming/easeOutCubic/etc), so js/07-combat.js can call it directly.
+//
+// PIVOT CHOICE: the grip sits at r*0.6 from the boss's centre (previously r*0.75/0.85/0.5
+// depending on attack, floating detached in mid-air per the user's report -- "the club should
+// rotate with the end still connected to the king"). The body's rendered half-width is
+// bodyDrawW/2 = ~158px and half-height ~125px at the reference r=132/scale=1.2 numbers from the
+// crown fix above, so r*0.6 (~79px) lands the grip well inside the visible silhouette -- read as
+// held at the body -- rather than at the collision-radius edge or beyond it. spinSweep uses a
+// slightly longer reach (r*0.7, arms extended for the whirl) and overheadSmash a slightly
+// shorter one (r*0.55, raised in close overhead) but both stay within the "attached" r*0.55-0.7
+// band the fix calls for, instead of the old 0.75-0.85 range that floated past the body edge.
+function nibblerKingClubGeometry(enemy, angle) {
+  const r = enemy.radius;
+
+  let pivotReach = r * 0.6;
+  if (enemy.bossAttack === "spinSweep") pivotReach = r * 0.7;
+  else if (enemy.bossAttack === "overheadSmash") pivotReach = r * 0.55;
+
+  // Club length off the body's ACTUAL rendered half-width (aspect-fit, not the raw radius), the
+  // same aspect-fit math drawEnemyArtBody/drawNibblerKingCrown use, so it stays proportioned if
+  // the art changes. This is the SAME clubLength used for both the drawn sprite length and the
+  // damage-check reach, so they cannot drift apart the way the old renderedHalfWidth*1.9 (301px
+  // visual vs a separate ~264px damage range) did.
+  const cfg = enemyArtConfig(enemy.name);
+  const bodySize = r * 2 * cfg.scale;
+  const bodyArt = enemyArt(enemy.name);
+  const bodyArtRatio = (bodyArt && bodyArt.naturalWidth && bodyArt.naturalHeight)
+    ? bodyArt.naturalWidth / bodyArt.naturalHeight
+    : 1;
+  const bodyDrawW = bodyArtRatio >= 1 ? bodySize : bodySize * bodyArtRatio;
+  const renderedHalfWidth = bodyDrawW / 2;
+  const clubLength = renderedHalfWidth * 1.9;
+
+  const art = artFor("boss:nibblerKingClub");
+  const aspect = art ? art.width / art.height : 3;
+  const thickness = clubLength / aspect;
+
+  // World-space pivot: boss centre + pivotReach along the swing angle (plus the body's current
+  // hop lift, so the damage segment rides the same vertical bob the sprite does).
+  const hopY = enemy._renderHopY ?? 0;
+  const pivotX = enemy.x + Math.cos(angle) * pivotReach;
+  const pivotY = enemy.y + Math.sin(angle) * pivotReach + hopY;
+  // World-space tip: pivot + the full club length further along the same angle (the club is
+  // drawn/anchored at its handle/left edge and extends outward along `angle`).
+  const tipX = pivotX + Math.cos(angle) * clubLength;
+  const tipY = pivotY + Math.sin(angle) * clubLength;
+
+  return { pivotX, pivotY, tipX, tipY, thickness, pivotReach, clubLength };
+}
+
 function drawNibblerKingClub(enemy) {
   const art = artFor("boss:nibblerKingClub");
   if (!art) return;
@@ -2247,7 +2419,6 @@ function drawNibblerKingClub(enemy) {
   // club spins continuously to sell the whirl (unchanged, already smooth); overheadSmash tweens
   // the 180 degrees across the strike instead of snapping in one frame.
   let angle;
-  let pivotReach = r * 0.75; // how far the grip sits from the boss centre, i.e. arm length
   if (enemy.bossAttack === "weaponSwing") {
     const target = telegraph?.angle ?? 0;
     const windBack = target - 0.9; // wound back opposite the swing direction during telegraph
@@ -2285,7 +2456,6 @@ function drawNibblerKingClub(enemy) {
     // through the recover tail so the spin winds down rather than freezing.
     const spinRate = enemy.bossState === "strike" ? 14 : 4;
     angle = (time / 1000) * spinRate;
-    pivotReach = r * 0.85;
   } else if (enemy.bossAttack === "overheadSmash") {
     // Raised overhead: pointing straight up (-90deg) during telegraph (wind-up), tweened down
     // to straight ahead/down (+90deg) over the course of the strike (not a single-frame snap),
@@ -2300,32 +2470,27 @@ function drawNibblerKingClub(enemy) {
       // Recover tail: settle slightly further down from the straight-down strike end angle.
       angle = Math.PI / 2 + 0.35 * easeOutCubic(stateP);
     }
-    pivotReach = r * 0.5;
   }
 
-  // Base the club's length on the body art's ACTUAL rendered half-width (aspect-fit, not the
-  // raw radius) so it stays correctly proportioned if the art ever changes -- see the same
-  // aspect-fit math in drawEnemyArtBody/drawNibblerKingCrown.
-  const cfg = enemyArtConfig(enemy.name);
-  const bodySize = r * 2 * cfg.scale;
-  const bodyArt = enemyArt(enemy.name);
-  const bodyArtRatio = (bodyArt && bodyArt.naturalWidth && bodyArt.naturalHeight)
-    ? bodyArt.naturalWidth / bodyArt.naturalHeight
-    : 1;
-  const bodyDrawW = bodyArtRatio >= 1 ? bodySize : bodySize * bodyArtRatio;
-  const renderedHalfWidth = bodyDrawW / 2;
-  const clubLength = renderedHalfWidth * 1.9;
-  const aspect = art.width / art.height;
-  const clubHeight = clubLength / aspect;
+  // Geometry (pivot reach + club length) comes from the SAME shared helper the combat code
+  // uses for its damage check (nibblerKingClubGeometry, defined above), so the drawn club and
+  // the hitbox can never disagree. That helper returns WORLD-space coordinates; this draw call
+  // happens inside the boss's own local translate (see drawEnemy: ctx.translate(enemy.x,
+  // enemy.y) before drawNibblerKingClub is called), so convert back to local space by
+  // subtracting the boss's own position.
+  const geo = nibblerKingClubGeometry(enemy, angle);
+  const localPivotX = geo.pivotX - enemy.x;
+  const localPivotY = geo.pivotY - enemy.y;
+  const clubHeight = geo.thickness;
 
   ctx.save();
-  ctx.translate(Math.cos(angle) * pivotReach, Math.sin(angle) * pivotReach + (enemy._renderHopY ?? 0));
+  ctx.translate(localPivotX, localPivotY);
   ctx.rotate(angle);
   ctx.imageSmoothingEnabled = true;
   // Anchor at the LEFT edge of the image (the handle, per the source art's convention: drawn
   // pointing right with the handle at the left end) so the club pivots around the grip with
   // the head sweeping through the arc, the way a held weapon actually swings.
-  ctx.drawImage(art, 0, -clubHeight / 2, clubLength, clubHeight);
+  ctx.drawImage(art, 0, -clubHeight / 2, geo.clubLength, clubHeight);
   ctx.restore();
 }
 
@@ -2336,12 +2501,15 @@ function drawNibblerKingClub(enemy) {
 // fades out over the first second after the transition.
 function drawNibblerKingPhaseOverlay(enemy) {
   if ((enemy.bossPhase ?? 1) >= 2) {
-    const pulse = 0.35 + Math.sin(performance.now() / 180) * 0.15;
+    // FIX 4c: a more pronounced phase-2 pulse (bigger amplitude, slightly faster) than the
+    // original quiet tint, so "the King got angrier" reads clearly at a glance, paired with
+    // the faster/heavier stomp cadence added in enemyLocomotion's boss branch.
+    const pulse = 0.4 + Math.sin(performance.now() / 150) * 0.22;
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
-    ctx.fillStyle = `rgba(255, 40, 40, ${pulse * 0.32})`;
+    ctx.fillStyle = `rgba(255, 40, 40, ${pulse * 0.4})`;
     ctx.beginPath();
-    ctx.arc(0, 0, enemy.radius * 1.05, 0, Math.PI * 2);
+    ctx.arc(0, 0, enemy.radius * (1.05 + pulse * 0.08), 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -2467,18 +2635,40 @@ function drawNibblerKingTelegraphs(enemy) {
     }
   }
 
-  // CROWN TOSS in-flight marker: a small solid dot tracing the crown's out-and-back arc while
-  // the strike plays, so the boomerang path itself reads clearly. Drawn in addition to (not
-  // instead of) the boss's own head-mounted crown from drawNibblerKingCrown -- simplest to
-  // read as "a second crown" flying out rather than adding a suppress-during-toss branch to
-  // the unrelated idle-crown draw path.
+  // CROWN TOSS in-flight: draws the REAL crown sprite tracing the crown's out-and-back arc
+  // while the strike plays, spinning as it flies so it reads as a thrown object rather than a
+  // floating dot. This guard (bossAttack === "crownToss" && bossState === "strike") MUST stay
+  // textually identical to the early-return guard at the top of drawNibblerKingCrown, so the
+  // King is never drawing its head-mounted crown in the same frame as this in-flight one (and
+  // never zero crowns either). This is drawn in WORLD space (like the telegraph rings above,
+  // NOT inside the boss's local translate/squash), matching where bossCrownPos itself is
+  // computed (runCrownTossTick, js/07-combat.js -- boss.x/y + world offsets).
   if (enemy.bossCrownPos && enemy.bossAttack === "crownToss" && enemy.bossState === "strike") {
-    ctx.save();
-    ctx.fillStyle = "#f2c45f";
-    ctx.beginPath();
-    ctx.arc(enemy.bossCrownPos.x, enemy.bossCrownPos.y, 22, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
+    const crownArt = artFor("boss:nibblerKingCrown");
+    if (crownArt) {
+      // Same on-screen size the head-mounted crown uses (drawNibblerKingCrown's crownWidth),
+      // slightly smaller so the flying crown doesn't read as bigger than the worn one.
+      const flyWidth = enemy.radius * 1.0;
+      const aspect = crownArt.width / crownArt.height;
+      const flyHeight = flyWidth / aspect;
+      // Spin based on elapsed flight time so it visibly tumbles as it travels, rather than
+      // just translating in a straight line.
+      const spin = (performance.now() / 1000) * 9;
+      ctx.save();
+      ctx.translate(enemy.bossCrownPos.x, enemy.bossCrownPos.y);
+      ctx.rotate(spin);
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(crownArt, -flyWidth / 2, -flyHeight / 2, flyWidth, flyHeight);
+      ctx.restore();
+    } else {
+      // Fallback: the old plain gold dot, only while the art hasn't loaded yet.
+      ctx.save();
+      ctx.fillStyle = "#f2c45f";
+      ctx.beginPath();
+      ctx.arc(enemy.bossCrownPos.x, enemy.bossCrownPos.y, 22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
   }
 
   if (enemy.bossState !== "telegraph" || !enemy.bossTelegraph) return;

@@ -688,20 +688,25 @@ function enemyScaling() {
   // HP compounds the whole way, but the rate STEPS DOWN in the late game rather than
   // stopping. Player power isn't unbounded (weapons cap at tier 5, six slots, stat gains
   // taper), so a flat compounding rate eventually outruns any build; but going fully linear
-  // makes the late game feel like it stops scaling at all. Instead: 10% per wave through
-  // wave ~18, then a gentler 4% per wave forever after. Still exponential, just a shallower
+  // makes the late game feel like it stops scaling at all. Instead: 8.5% per wave through
+  // wave ~14, then a gentler 3% per wave forever after. Still exponential, just a shallower
   // curve, with swarm size (see enemySpawnInterval) carrying the rest of the difficulty.
-  // Approx multiplier: w1 1x, w5 1.5x, w10 2.4x, w15 3.8x, w20 5.5x, w30 8.1x, w40 12x,
-  // w50 17.7x -- it overtakes the old linear tail around wave 38 and keeps climbing.
-  const hpCompoundGrowth = Math.min(growth, 17);
-  const hpLateGrowth = Math.max(0, growth - 17);
-  const hp = Math.pow(1.10, hpCompoundGrowth) * Math.pow(1.04, hpLateGrowth);
+  // v0.19.0 late-wave scaling pass: lowered the compounding base (1.10 -> 1.085), moved the
+  // taper start earlier (17 -> 13 growth-waves), and lowered the late exponent (1.04 -> 1.03)
+  // so late waves stop compounding into absurd HP walls, while waves 1-10 are within ~1-3% of
+  // the old curve (unchanged feel early). Approx multiplier: w1 1x, w5 1.4x, w10 2.1x, w15
+  // 3.0x, w20 3.5x, w30 4.6x, w40 6.2x, w50 8.4x (was 1x/1.5x/2.4x/3.8x/5.5x/8.1x/12x/17.7x).
+  const hpCompoundGrowth = Math.min(growth, 13);
+  const hpLateGrowth = Math.max(0, growth - 13);
+  const hp = Math.pow(1.085, hpCompoundGrowth) * Math.pow(1.03, hpLateGrowth);
   // Damage deliberately stays shallow and roughly unchanged from before: the goal is to
   // overwhelm the player with numbers and chip damage, not to let any single hit spike, so
   // relative damage between enemy types matters far more here than the absolute scalar.
+  // v0.19.0: lateGame coefficient trimmed 0.028 -> 0.02 alongside the HP taper, so damage at
+  // wave 50 is ~4.11x instead of ~4.41x (waves 1-10 identical, damage curve untouched there).
   return {
     hp,
-    damage: 1 + growth * 0.03 + midGame * 0.02 + lateGame * 0.028,
+    damage: 1 + growth * 0.03 + midGame * 0.02 + lateGame * 0.02,
     speed: 1 + Math.min(0.18, growth * 0.006)
   };
 }
@@ -2760,9 +2765,22 @@ function spawnNibblerKing(bossIndex) {
   boss.hp = hp;
   boss.maxHp = hp;
   boss.scrap = nibblerKingScrapReward(bossIndex);
+  // ARRIVAL BEAT (v0.19.0): the King used to just materialize fully-formed at pos the instant
+  // the fight started -- an abrupt pop-in with no sense of an opening moment. Now he drops in
+  // from above: spawned well off the top of the screen, then "arriving" (below) tweens him
+  // down to his real spot over ARRIVAL_TIME seconds and fires a landing shockwave on arrival,
+  // before the normal idle/telegraph/strike/recover state machine ever runs. He can't act (no
+  // attacks queue) or be meaningfully hit while off-screen, so this needs no separate
+  // invulnerability flag -- being out of the arena during the drop is enough.
+  boss._arrivalFromY = pos.y - 520;
+  boss._arrivalToY = pos.y;
+  boss.y = boss._arrivalFromY;
+  boss._arrivalTimer = 0;
+  const ARRIVAL_TIME = 0.6;
+  boss._arrivalDuration = ARRIVAL_TIME;
   // Attack state machine fields (see updateNibblerKingBehavior below).
-  boss.bossState = "idle";
-  boss.bossTimer = rand(1.2, 2.2); // brief pause before the first attack so the arrival reads
+  boss.bossState = "arriving";
+  boss.bossTimer = rand(1.2, 2.2); // brief pause before the first attack once idle begins, so the arrival reads
   boss.bossAttack = null;
   boss.bossPhase = 1;
   boss.bossFlash = 0;          // phase-2-transition screen/body flash pulse
@@ -2961,6 +2979,31 @@ function updateNibblerKingBehavior(boss, dt, angleToPlayer, distanceToPlayer, sp
     if (boss.bossQuakeRing.life <= 0) boss.bossQuakeRing = null;
   }
 
+  // ---- Arriving: the opening beat (see spawnNibblerKing). The King drops in from off the top
+  // of the arena to his real spot, sits still the whole time (vx/vy pinned to 0, no attacks can
+  // queue), and lands with a shockwave + shake before handing off to idle. Defensive fallback
+  // for a dev-panel-spawned King (see the defaults block above) that never got _arrivalToY set.
+  if (boss.bossState === "arriving") {
+    boss.vx = 0;
+    boss.vy = 0;
+    if (boss._arrivalToY === undefined) {
+      boss.bossState = "idle";
+    } else {
+      boss._arrivalTimer += dt;
+      const p = boss._arrivalDuration > 0 ? clamp(boss._arrivalTimer / boss._arrivalDuration, 0, 1) : 1;
+      boss.y = boss._arrivalFromY + (boss._arrivalToY - boss._arrivalFromY) * easeOutCubic(p);
+      if (p >= 1) {
+        boss.y = boss._arrivalToY;
+        boss.bossState = "idle";
+        addShake(11, true);
+        playSfx("explosion");
+        spawnRing(boss.x, boss.y, "#ff9c5b", boss.radius * 1.3, 0.45);
+        burst(boss.x, boss.y, "#ff6a5f", 28);
+      }
+    }
+    return;
+  }
+
   // ---- Idle: ambient chase (slow -- see the Nibbler King's template speed) until the
   // attack cooldown between actions elapses, then queue a new attack.
   if (boss.bossState === "idle") {
@@ -3033,6 +3076,9 @@ function updateNibblerKingBehavior(boss, dt, angleToPlayer, distanceToPlayer, sp
     if (boss.bossAttack === "tripleVolley") {
       runTripleVolleyTick(boss, dt);
     }
+    if (boss.bossAttack === "spinSweep") {
+      runSpinSweepTick(boss);
+    }
     if (boss.bossTimer <= 0) {
       const timing = bossAttackTiming(boss.bossAttack, boss.bossPhase);
       boss.bossState = "recover";
@@ -3043,6 +3089,7 @@ function updateNibblerKingBehavior(boss, dt, angleToPlayer, distanceToPlayer, sp
       boss.chargeTimer = 0;
       boss._comboHitsLanded = 0;
       boss._comboNextHitAt = undefined;
+      boss._comboHitLatch = [false, false, false];
       boss._poundRingsFired = 0;
       boss._poundNextRingAt = undefined;
       boss._crownHitsLanded = 0;
@@ -3053,6 +3100,8 @@ function updateNibblerKingBehavior(boss, dt, angleToPlayer, distanceToPlayer, sp
       boss.bossLaserAngle = null;
       boss._volleyRoundsFired = 0;
       boss._volleyNextRoundAt = undefined;
+      boss._swingHitLanded = false;
+      boss._spinHitLanded = false;
     }
     return;
   }
@@ -3078,13 +3127,22 @@ function updateNibblerKingBehavior(boss, dt, angleToPlayer, distanceToPlayer, sp
 function startBossTelegraph(boss) {
   const player = state.player;
   if (boss.bossAttack === "weaponSwing") {
-    // v0.18.0: range/halfArc written into the payload (BOSS_CLUB_REACH_MULT/BOSS_CLUB_ARC_HALF)
-    // so the renderer's cone matches the exact strike geometry instead of a separate literal.
+    // v0.19.0 club-hit rework: range now reads the ACTUAL club reach (pivotReach + clubLength)
+    // from the shared nibblerKingClubGeometry helper (js/08-render.js) when available, instead
+    // of the old BOSS_CLUB_REACH_MULT constant -- the damage check itself now tests the club's
+    // real swept segment (see executeBossStrike), so the telegraph's cone should honestly
+    // preview that same reach rather than a separately-tuned number that could drift from it.
+    // Falls back to the old constant if the geometry helper hasn't loaded yet (should never
+    // happen in practice -- both files load together -- but keeps the payload valid either way).
     const phase2 = boss.bossPhase >= 2;
+    const angle = Math.atan2(player.y - boss.y, player.x - boss.x);
+    const range = typeof nibblerKingClubGeometry === "function"
+      ? (() => { const geo = nibblerKingClubGeometry(boss, angle); return geo.pivotReach + geo.clubLength; })()
+      : boss.radius * BOSS_CLUB_REACH_MULT;
     boss.bossTelegraph = {
       kind: "swing",
-      angle: Math.atan2(player.y - boss.y, player.x - boss.x),
-      range: boss.radius * BOSS_CLUB_REACH_MULT,
+      angle,
+      range,
       halfArc: phase2 ? BOSS_CLUB_ARC_HALF.p2 : BOSS_CLUB_ARC_HALF.p1,
       elapsed: 0
     };
@@ -3129,25 +3187,33 @@ function startBossTelegraph(boss) {
     // instant the telegraph starts (an honest preview, not decided on the fly mid-strike).
     const baseAngle = Math.atan2(player.y - boss.y, player.x - boss.x);
     const spread = 0.55;
-    // v0.18.0: range/halfArc written into the payload (BOSS_COMBO_REACH_MULT/BOSS_COMBO_ARC_HALF)
-    // so the renderer's cones match the exact per-hit geometry from landSlamComboHit.
+    // v0.19.0 club-hit rework: range reads the ACTUAL club reach from the shared
+    // nibblerKingClubGeometry helper (same convention as weaponSwing above), so the cones stay
+    // an honest preview of landSlamComboHit's real club-segment hit test.
     const phase2 = boss.bossPhase >= 2;
+    const range = typeof nibblerKingClubGeometry === "function"
+      ? (() => { const geo = nibblerKingClubGeometry(boss, baseAngle); return geo.pivotReach + geo.clubLength; })()
+      : boss.radius * BOSS_COMBO_REACH_MULT;
     boss.bossTelegraph = {
       kind: "comboSwing",
       angles: [baseAngle - spread, baseAngle, baseAngle + spread],
-      range: boss.radius * BOSS_COMBO_REACH_MULT,
+      range,
       halfArc: phase2 ? BOSS_COMBO_ARC_HALF.p2 : BOSS_COMBO_ARC_HALF.p1,
       hit: 0,
       elapsed: 0
     };
   } else if (boss.bossAttack === "spinSweep") {
     // MELEE: full 360 whirl -- the telegraph is an expanding ring at club reach, no direction
-    // to read because it hits everywhere around the boss. v0.18.0: range written into the
-    // payload so the renderer draws the exact strike radius (BOSS_SPIN_REACH_MULT).
+    // to read because it hits everywhere around the boss. v0.19.0 club-hit rework: range reads
+    // the ACTUAL club reach (pivotReach + clubLength, using spinSweep's own r*0.7 pivot from the
+    // shared geometry helper) so the ring honestly previews runSpinSweepTick's real segment test.
     const phase2 = boss.bossPhase >= 2;
+    const range = typeof nibblerKingClubGeometry === "function"
+      ? (() => { const geo = nibblerKingClubGeometry(boss, 0); return geo.pivotReach + geo.clubLength; })()
+      : boss.radius * (phase2 ? BOSS_SPIN_REACH_MULT.p2 : BOSS_SPIN_REACH_MULT.p1);
     boss.bossTelegraph = {
       kind: "spinRing",
-      range: boss.radius * (phase2 ? BOSS_SPIN_REACH_MULT.p2 : BOSS_SPIN_REACH_MULT.p1),
+      range,
       elapsed: 0
     };
   } else if (boss.bossAttack === "overheadSmash") {
@@ -3261,23 +3327,37 @@ function executeBossStrike(boss) {
   const phase2 = boss.bossPhase >= 2;
 
   if (boss.bossAttack === "weaponSwing") {
-    // ATTACK 1: WEAPON SWING. Real range for a massive boss: a wide arc reaching well past
-    // its body. Damage checked once, at strike start (no arc sweep over multiple frames --
-    // the strike duration is just how long the visual swing plays).
+    // ATTACK 1: WEAPON SWING (v0.19.0 club-hit rework). The user's core complaint: "the
+    // warnings shouldn't do the damage, the weapon should" / "if the player gets hit by or
+    // touches the club, they take damage." Damage now tests against the CLUB'S ACTUAL SWEPT
+    // SEGMENT (pivot->tip, from the shared js/08-render.js geometry helper the renderer itself
+    // draws the club with) instead of a cone from the boss's centre, so the hitbox and the
+    // visible weapon can never disagree. Checked once, at strike start, matching the previous
+    // convention (no multi-frame sweep -- the strike duration is just how long the swing plays).
     const angle = boss.bossTelegraph?.angle ?? Math.atan2(player.y - boss.y, player.x - boss.x);
-    // Reads the SAME range/halfArc the telegraph payload already carries (see startBossTelegraph)
-    // so the damage check and the drawn warning can never drift apart, with a literal fallback
-    // only for the (should-never-happen) case of a missing telegraph.
-    const range = boss.bossTelegraph?.range ?? boss.radius * BOSS_CLUB_REACH_MULT;
-    const halfArc = boss.bossTelegraph?.halfArc ?? (phase2 ? BOSS_CLUB_ARC_HALF.p2 : BOSS_CLUB_ARC_HALF.p1); // radians -- phase 2 swings a wider arc too
-    const toPlayer = Math.hypot(player.x - boss.x, player.y - boss.y);
-    if (toPlayer <= range) {
-      const angleDiff = Math.abs(angleDifference(Math.atan2(player.y - boss.y, player.x - boss.x), angle));
-      if (angleDiff <= halfArc) {
-        const damage = Math.round(boss.damage * (phase2 ? 2.6 : 2.0));
-        damagePlayer(damage, boss.x, boss.y, "Nibbler King");
+    let hit = false;
+    if (typeof nibblerKingClubGeometry === "function") {
+      const geo = nibblerKingClubGeometry(boss, angle);
+      const dist = pointToSegmentDistance(player.x, player.y, geo.pivotX, geo.pivotY, geo.tipX, geo.tipY);
+      hit = dist <= geo.thickness / 2 + playerHitRadius();
+    } else {
+      // Fallback: cone from the boss's centre, reading the SAME range/halfArc the telegraph
+      // payload carries (see startBossTelegraph) so the check and the drawn warning at least
+      // stay in sync with each other even without the club geometry helper.
+      const range = boss.bossTelegraph?.range ?? boss.radius * BOSS_CLUB_REACH_MULT;
+      const halfArc = boss.bossTelegraph?.halfArc ?? (phase2 ? BOSS_CLUB_ARC_HALF.p2 : BOSS_CLUB_ARC_HALF.p1);
+      const toPlayer = Math.hypot(player.x - boss.x, player.y - boss.y);
+      if (toPlayer <= range) {
+        const angleDiff = Math.abs(angleDifference(Math.atan2(player.y - boss.y, player.x - boss.x), angle));
+        hit = angleDiff <= halfArc;
       }
     }
+    if (hit && !boss._swingHitLanded) {
+      boss._swingHitLanded = true; // latch: this strike can only land once, same pattern as boss._laserHitLanded
+      const damage = Math.round(boss.damage * (phase2 ? 2.6 : 2.0));
+      damagePlayer(damage, boss.x, boss.y, "Nibbler King");
+    }
+    const range = boss.bossTelegraph?.range ?? boss.radius * BOSS_CLUB_REACH_MULT;
     playSfx("swing");
     burst(boss.x + Math.cos(angle) * range * 0.6, boss.y + Math.sin(angle) * range * 0.6, "#ff6a5f", 14);
     addShake(6, true);
@@ -3376,16 +3456,17 @@ function executeBossStrike(boss) {
     boss._comboNextHitAt = undefined;
     landSlamComboHit(boss, 0);
   } else if (boss.bossAttack === "spinSweep") {
-    // ATTACK 7 (MELEE): SPIN SWEEP. Full 360 whirl at club reach -- unlike weaponSwing this has
-    // no arc to dodge sideways out of, so range is slightly shorter and damage a bit lower to
-    // compensate for punishing every angle at once. Deliberately punishes players who stand
-    // right next to the boss (melee builds), which is the whole point of this attack.
+    // ATTACK 7 (MELEE, v0.19.0 club-hit rework): SPIN SWEEP. The club sweeps a full circle
+    // continuously through the whole strike (see the spin angle formula in
+    // drawNibblerKingClub, js/08-render.js: angle = time * spinRate during "strike"), so unlike
+    // weaponSwing this can't be a single strike-start check -- the segment has to be tested
+    // every frame as it rotates, which is what runSpinSweepTick (below, called each frame from
+    // updateNibblerKingBehavior's "strike" state) does. This branch only resets the hit latch
+    // and does the initial instant's check (mirrors every other attack firing its first
+    // effects at strike-start) plus the one-time cosmetics (ring/shake/sfx).
+    boss._spinHitLanded = false;
+    runSpinSweepTick(boss);
     const range = boss.bossTelegraph?.range ?? boss.radius * (phase2 ? BOSS_SPIN_REACH_MULT.p2 : BOSS_SPIN_REACH_MULT.p1);
-    const dist = Math.hypot(player.x - boss.x, player.y - boss.y);
-    if (dist <= range + playerHitRadius()) {
-      const damage = Math.round(boss.damage * (phase2 ? 2.0 : 1.5));
-      damagePlayer(damage, boss.x, boss.y, "Nibbler King");
-    }
     boss.bossSpinRing = { x: boss.x, y: boss.y, radius: range, life: 0.35, maxLife: 0.35 };
     addShake(8, true);
     playSfx("swing");
@@ -3735,33 +3816,80 @@ function runSlamComboTick(boss, dt) {
   }
 }
 
-// Lands one hit of the slam combo (index 0/1/2). Shares the same range/arc shape as the
-// ordinary weaponSwing attack, just at a slightly shorter range/narrower arc and lower
-// per-hit damage since a player caught flat-footed can take more than one of these in a row.
+// Lands one hit of the slam combo (index 0/1/2). Same club-segment hit test as weaponSwing
+// (v0.19.0 club-hit rework), just at each combo swing's own angle, with a lower per-hit
+// damage since a player caught flat-footed can take more than one of these in a row.
 function landSlamComboHit(boss, index) {
   const player = state.player;
   const phase2 = boss.bossPhase >= 2;
   const angle = boss.bossTelegraph?.angles?.[index] ?? Math.atan2(player.y - boss.y, player.x - boss.x);
-  const range = boss.bossTelegraph?.range ?? boss.radius * BOSS_COMBO_REACH_MULT;
-  const halfArc = boss.bossTelegraph?.halfArc ?? (phase2 ? BOSS_COMBO_ARC_HALF.p2 : BOSS_COMBO_ARC_HALF.p1);
-  const toPlayer = Math.hypot(player.x - boss.x, player.y - boss.y);
-  if (toPlayer <= range) {
-    const angleDiff = Math.abs(angleDifference(Math.atan2(player.y - boss.y, player.x - boss.x), angle));
-    if (angleDiff <= halfArc) {
-      // 0.85/0.68x (down from 1.0/0.8x, v0.18.0 no-one-shot pass). Per-hit these look mild, but
-      // this attack lands up to THREE times and the multiplier has to be read against the full
-      // chain, not one swing: at 1.0x the phase-2 combo totalled 102 damage, which meets or
-      // exceeds a lean ~90 HP build's ENTIRE health bar from full in one combo. At 0.85x the
-      // full chain is 87 phase-2 / 69 phase-1 -- eating all three is still a catastrophic,
-      // near-death mistake for the leanest build, but no longer a guaranteed kill, and each
-      // individual swing still hurts enough to demand real movement.
-      const damage = Math.round(boss.damage * (phase2 ? 0.85 : 0.68));
-      damagePlayer(damage, boss.x, boss.y, "Nibbler King");
+  let hit = false;
+  if (typeof nibblerKingClubGeometry === "function") {
+    const geo = nibblerKingClubGeometry(boss, angle);
+    const dist = pointToSegmentDistance(player.x, player.y, geo.pivotX, geo.pivotY, geo.tipX, geo.tipY);
+    hit = dist <= geo.thickness / 2 + playerHitRadius();
+  } else {
+    // Fallback: cone from the boss's centre, same convention as weaponSwing's fallback.
+    const range = boss.bossTelegraph?.range ?? boss.radius * BOSS_COMBO_REACH_MULT;
+    const halfArc = boss.bossTelegraph?.halfArc ?? (phase2 ? BOSS_COMBO_ARC_HALF.p2 : BOSS_COMBO_ARC_HALF.p1);
+    const toPlayer = Math.hypot(player.x - boss.x, player.y - boss.y);
+    if (toPlayer <= range) {
+      const angleDiff = Math.abs(angleDifference(Math.atan2(player.y - boss.y, player.x - boss.x), angle));
+      hit = angleDiff <= halfArc;
     }
   }
+  // Per-hit latch keyed by index: each of the 3 swings can only land once (mirrors
+  // boss._laserHitLanded's pattern), tracked in an array so hit 0/1/2 don't share one flag.
+  if (!boss._comboHitLatch) boss._comboHitLatch = [false, false, false];
+  if (hit && !boss._comboHitLatch[index]) {
+    boss._comboHitLatch[index] = true;
+    // 0.85/0.68x (down from 1.0/0.8x, v0.18.0 no-one-shot pass). Per-hit these look mild, but
+    // this attack lands up to THREE times and the multiplier has to be read against the full
+    // chain, not one swing: at 1.0x the phase-2 combo totalled 102 damage, which meets or
+    // exceeds a lean ~90 HP build's ENTIRE health bar from full in one combo. At 0.85x the
+    // full chain is 87 phase-2 / 69 phase-1 -- eating all three is still a catastrophic,
+    // near-death mistake for the leanest build, but no longer a guaranteed kill, and each
+    // individual swing still hurts enough to demand real movement.
+    const damage = Math.round(boss.damage * (phase2 ? 0.85 : 0.68));
+    damagePlayer(damage, boss.x, boss.y, "Nibbler King");
+  }
+  const range = boss.bossTelegraph?.range ?? boss.radius * BOSS_COMBO_REACH_MULT;
   playSfx("swing");
   burst(boss.x + Math.cos(angle) * range * 0.6, boss.y + Math.sin(angle) * range * 0.6, "#ff6a5f", 12);
   addShake(4, true);
+}
+
+// SPIN SWEEP's per-frame ticker (v0.19.0 club-hit rework), called every frame during "strike"
+// from updateNibblerKingBehavior (and once from executeBossStrike at strike-start). The club
+// spins continuously (see the angle formula in drawNibblerKingClub, js/08-render.js -- angle =
+// time * spinRate during "strike", spinRate 14), so this reads the SAME time-based formula to
+// get the exact current swing angle each frame, builds the club segment via the shared
+// geometry helper, and tests the player against it. A single latch (boss._spinHitLanded, reset
+// in executeBossStrike) means only the FIRST frame the sweeping club touches the player deals
+// damage -- without it, the player could take damage every single frame the club overlaps them
+// (a continuous circle-based tick), which would erase any benefit of dodging out mid-spin.
+function runSpinSweepTick(boss) {
+  const player = state.player;
+  const phase2 = boss.bossPhase >= 2;
+  const time = performance.now();
+  const spinRate = boss.bossState === "strike" ? 14 : 4; // matches drawNibblerKingClub exactly
+  const angle = (time / 1000) * spinRate;
+  let hit = false;
+  if (typeof nibblerKingClubGeometry === "function") {
+    const geo = nibblerKingClubGeometry(boss, angle);
+    const dist = pointToSegmentDistance(player.x, player.y, geo.pivotX, geo.pivotY, geo.tipX, geo.tipY);
+    hit = dist <= geo.thickness / 2 + playerHitRadius();
+  } else {
+    // Fallback: full-circle radius check (the pre-rework behavior) at club reach.
+    const range = boss.bossTelegraph?.range ?? boss.radius * (phase2 ? BOSS_SPIN_REACH_MULT.p2 : BOSS_SPIN_REACH_MULT.p1);
+    const dist = Math.hypot(player.x - boss.x, player.y - boss.y);
+    hit = dist <= range + playerHitRadius();
+  }
+  if (hit && !boss._spinHitLanded) {
+    boss._spinHitLanded = true;
+    const damage = Math.round(boss.damage * (phase2 ? 2.0 : 1.5));
+    damagePlayer(damage, boss.x, boss.y, "Nibbler King");
+  }
 }
 
 // Fires a single fast-ish projectile from the boss toward `angle`, reusing the enemy bullet
