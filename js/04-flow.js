@@ -49,6 +49,11 @@ function freshState() {
     // jump or a re-entrant startWave() call can't re-trigger the same interstitial twice.
     bossFight: null,
     bossFightClearedForWave: null,
+    // Set by endBossFight() when a boss dies, consumed by resolveBossFightEnding() at the top
+    // of the next update() tick -- see the comments on both in js/04-flow.js. Deferring this
+    // teardown (instead of mutating state.enemies etc. synchronously) is what stops the crash
+    // where a piercing/explosive/multi-hit kill on the boss truncated arrays mid-loop.
+    bossFightEnding: null,
     extraWeaponSlots: 0,
     temp: { stats: {}, effects: {}, extraWeaponSlots: 0, weapons: [], flags: {} },
     character: selectedCharacter,
@@ -261,23 +266,57 @@ function startBossFight(bossIndex) {
 // the SAME post-wave reward flow every normal wave uses (finishWaveTransition ->
 // showBodyReward -> continueRewards -> crate/fortune/shop), so the boss reward is not a
 // special case the player has to learn separately.
+//
+// ITERATION-SAFETY: this used to truncate state.enemies (and several other arrays) and hand
+// off to the reward flow SYNCHRONOUSLY, from inside killEnemy() -> killBossEnemy(). But
+// killEnemy() is itself called from loops that are still iterating state.enemies/state.bullets
+// at the time (explodeBullet, updateBullets, processWeaponSwingHits, the dev panel's kill-all),
+// so truncating those arrays mid-loop invalidated the iteration and crashed. killEnemy() already
+// removes the boss from state.enemies itself (a single splice(index, 1) at the loop's current
+// index, which those backwards loops already tolerate) before calling killBossEnemy(), so the
+// fight visibly ends and the soft-lock safety sees no boss immediately -- that part needs no
+// change here. What this function now defers is everything ELSE: the wholesale array
+// truncation, the mode change, and the reward handoff. It only records what needs to happen and
+// returns; the actual teardown runs from resolveBossFightEnding(), invoked at the top of the
+// next frame (see the one-line dispatch added at the top of update() in js/07-combat.js) once
+// no caller can possibly still be mid-loop over this frame's arrays.
 function endBossFight(isSoftLockSafety = false) {
   const bossFight = state.bossFight;
   if (!bossFight) return;
-  if (isSoftLockSafety) {
+  // DOUBLE-END GUARD: once a teardown is pending, state.bossFight is still non-null (cleared
+  // only inside resolveBossFightEnding below) but no boss enemy is present in state.enemies --
+  // exactly the condition the soft-lock safety in update() looks for. Without this guard, the
+  // safety would call endBossFight(true) again on every frame between the boss's death and the
+  // deferred teardown running, each call re-entering this function. This flag makes every such
+  // re-entry a no-op.
+  if (state.bossFightEnding) return;
+  state.bossFightEnding = {
+    // Stamped as the completed wave NUMBER the boss guards (10, 20, 30...), matching what
+    // startWave() compares state.wave against above -- NOT +1. The old +1 offset compared
+    // bossFightClearedForWave (11) against a trigger check of nextWave===10, so it could never
+    // actually suppress anything; this keeps both sides of the guard in the same units.
+    clearedWave: bossFight.index * BOSS_WAVE_INTERVAL,
+    isSoftLockSafety
+  };
+}
+
+// BOSS SYSTEM -- the actual teardown deferred by endBossFight() above. Must only ever run at a
+// point where nothing is mid-iteration over state.enemies/state.bullets/etc: called once at the
+// very top of update() (js/07-combat.js), before any of this frame's simulation loops start.
+// A no-op whenever nothing is pending, so it's safe to call unconditionally every frame.
+function resolveBossFightEnding() {
+  const pending = state.bossFightEnding;
+  if (!pending) return;
+  state.bossFightEnding = null;
+  if (pending.isSoftLockSafety) {
     // Should never happen in normal play (the boss only leaves state.enemies via
     // killBossEnemy, which calls endBossFight(false) itself) -- this path exists purely so a
     // boss vanishing some other way can never permanently strand the player on a wave that
     // can no longer end. Logged so it's visible during testing if it ever fires.
     console.warn("Boss fight ended via soft-lock safety: no boss enemy found while state.bossFight was active.");
   }
-  // Stamped as the completed wave NUMBER the boss guards (10, 20, 30...), matching what
-  // startWave() compares state.wave against above -- NOT +1. The old +1 offset compared
-  // bossFightClearedForWave (11) against a trigger check of nextWave===10, so it could never
-  // actually suppress anything; this keeps both sides of the guard in the same units.
-  const clearedWave = bossFight.index * BOSS_WAVE_INTERVAL;
   state.bossFight = null;
-  state.bossFightClearedForWave = clearedWave;
+  state.bossFightClearedForWave = pending.clearedWave;
   state.mode = "bagging";
   clearTempModifiers();
   state.enemies.length = 0;

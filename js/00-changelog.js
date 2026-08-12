@@ -20,6 +20,23 @@
 
 const CHANGELOG = [
   {
+    version: "0.18.0",
+    date: "2026-08-12",
+    title: "A Fair Fight",
+    notes: [
+      "Fixed a crash that could happen right when you killed the Nibbler King.",
+      "The King's hitbox now matches its actual body, so hits land exactly where they look like they should instead of whiffing or connecting from farther away than expected.",
+      "Warnings are now honest warnings, and the club is what actually deals the damage, not the red glow itself.",
+      "Every attack gives noticeably more warning time before it lands, so you have a real chance to react.",
+      "The charge attack is faster and lunges further, making it a genuine threat instead of a slow-motion tell.",
+      "Several brand new attacks join the King's arsenal.",
+      "The King shoots more often during the fight.",
+      "Far more nibblers swarm in once the King enrages.",
+      "The club now swings smoothly through its motion instead of snapping between poses.",
+      "Melee weapons reach further, so close-range builds hit harder."
+    ]
+  },
+  {
     version: "0.17.0",
     date: "2026-08-11",
     title: "Stand Your Ground",

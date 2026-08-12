@@ -162,7 +162,15 @@ const enemyTypes = [
   // punishing rather than a minor chip -- see enemyContactDamage()/ENEMY_CONTACT_COOLDOWN in
   // js/07-combat.js for the tick mechanism this number feeds, reused unmodified from every
   // other enemy's contact damage (no separate boss-only system).
-  { name: "Nibbler King", behavior: "boss", size: "large", color: "#f1766e", hp: 1400, speed: 58, radius: 66, damage: 34, scrap: 260, minWave: Infinity, weight: 0, spawnable: false }
+  // v0.18.0: dropped 34 -> 20. At 34, standing inside the boss's now-doubled body (contact
+  // overlap = playerHitRadius() + 132 radius) hit a lean 90 HP player every ENEMY_CONTACT_COOLDOWN
+  // (0.48s) for 3 hits (0/0.48/0.96s) -- dead in under 1s, effectively a standing one-shot. At 20,
+  // the same player needs 5 hits (0/0.48/0.96/1.44/1.92s) to die, pushing survival past ~1.9s of
+  // continuous contact -- enough time to react and step out. Every attack's damage below is
+  // expressed as boss.damage * a multiplier, so this single field change also scales every
+  // attack down proportionally (~59% of its old value) -- see the final v0.18.0 balance report
+  // for confirmation none of them one-shot a 90 HP player after this change.
+  { name: "Nibbler King", behavior: "boss", size: "large", color: "#f1766e", hp: 1400, speed: 58, radius: 132, damage: 20, scrap: 260, minWave: Infinity, weight: 0, spawnable: false }
 ];
 
 const rarities = {

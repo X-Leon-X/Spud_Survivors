@@ -2194,49 +2194,112 @@ function drawNibblerKingCrown(enemy) {
 }
 
 // CLUB: drawn only during the 4 melee attacks (weaponSwing, slamCombo, spinSweep,
-// overheadSmash), and only through their "telegraph" and "strike" bossStates -- once an
-// attack enters "recover" the swing is over and the club should vanish until the next one
-// (matching how bossTelegraph itself is cleared entering "recover", see
-// updateNibblerKingBehavior in js/07-combat.js). Reads the SAME angle data the telegraph
-// and executeBossStrike use (boss.bossTelegraph.angle / .angles[.hit]) so the drawn club
-// always points exactly where the hit is honestly telegraphed/landing, never a
+// overheadSmash), through their "telegraph" and "strike" bossStates, plus roughly the first
+// 35% of "recover" (see the early return below) so the swing eases back to rest instead of
+// popping out of existence mid-arc the instant the attack ends. Reads the SAME angle data the
+// telegraph and executeBossStrike use (boss.bossTelegraph.angle / .angles[.hit]) so the drawn
+// club always points exactly where the hit is honestly telegraphed/landing, never a
 // re-derived or approximate angle. Drawn in the boss's local space (translated to
 // enemy.x/y, un-squashed), like the crown, so it rides the body's position but stays
 // upright/undistorted by the idle jelly wobble.
+//
+// Progress within the current bossState: boss.bossTimer counts DOWN from the state's full
+// duration (set in updateNibblerKingBehavior in js/07-combat.js, e.g.
+// `boss.bossTimer = timing.telegraph` on entering "telegraph"), so `1 - bossTimer/duration`
+// is elapsed 0..1 through that state -- the same convention already used by
+// runSlamComboTick/runGroundPoundTick/etc via `timing.strike - boss.bossTimer`.
+// easeOutCubic (the only easing helper defined in the codebase -- js/07-combat.js:1587, a
+// shared global like every other helper in these plain scripts, already used elsewhere in this
+// file e.g. drawNibblerKingTelegraphs) is reused for every tween below instead of new easing
+// math; there is no easeInCubic/easeInOutCubic anywhere in the codebase to call instead.
 function drawNibblerKingClub(enemy) {
   const art = artFor("boss:nibblerKingClub");
   if (!art) return;
-  if (enemy.bossState !== "telegraph" && enemy.bossState !== "strike") return;
 
   const melee = enemy.bossAttack === "weaponSwing" || enemy.bossAttack === "slamCombo" ||
     enemy.bossAttack === "spinSweep" || enemy.bossAttack === "overheadSmash";
   if (!melee) return;
 
+  const RECOVER_TAIL = 0.35; // fraction of "recover" the club still draws through, easing to rest
+  if (enemy.bossState !== "telegraph" && enemy.bossState !== "strike" && enemy.bossState !== "recover") return;
+
   const r = enemy.radius;
   const telegraph = enemy.bossTelegraph;
   const time = performance.now();
+  const timing = bossAttackTiming(enemy.bossAttack, enemy.bossPhase ?? 1);
+
+  // Progress (0..1) through the CURRENT bossState, derived from bossTimer counting down from
+  // the state's full duration.
+  let stateP = 0;
+  if (enemy.bossState === "telegraph") {
+    stateP = timing.telegraph > 0 ? clamp(1 - enemy.bossTimer / timing.telegraph, 0, 1) : 1;
+  } else if (enemy.bossState === "strike") {
+    stateP = timing.strike > 0 ? clamp(1 - enemy.bossTimer / timing.strike, 0, 1) : 1;
+  } else if (enemy.bossState === "recover") {
+    const recoverP = timing.recover > 0 ? clamp(1 - enemy.bossTimer / timing.recover, 0, 1) : 1;
+    if (recoverP > RECOVER_TAIL) return; // past the tail window -- fully at rest, stop drawing
+    stateP = recoverP / RECOVER_TAIL; // 0..1 across just the tail window
+  }
 
   // Resolve the swing angle per attack kind. weaponSwing/slamCombo have an honest fixed
-  // angle from the telegraph payload; spinSweep has no single angle (it hits everywhere at
-  // once) so the club spins continuously to sell the whirl; overheadSmash is raised
-  // straight up over the head rather than swung sideways.
+  // target angle from the telegraph payload but now WIND UP/interpolate/follow-through around
+  // it instead of snapping; spinSweep has no single angle (it hits everywhere at once) so the
+  // club spins continuously to sell the whirl (unchanged, already smooth); overheadSmash tweens
+  // the 180 degrees across the strike instead of snapping in one frame.
   let angle;
   let pivotReach = r * 0.75; // how far the grip sits from the boss centre, i.e. arm length
   if (enemy.bossAttack === "weaponSwing") {
-    angle = telegraph?.angle ?? 0;
+    const target = telegraph?.angle ?? 0;
+    const windBack = target - 0.9; // wound back opposite the swing direction during telegraph
+    const followThrough = target + 0.5; // past the impact angle, sold as follow-through
+    if (enemy.bossState === "telegraph") {
+      // Wind the club back over the course of the telegraph, arriving at windBack by the end.
+      angle = target + (windBack - target) * easeOutCubic(stateP);
+    } else if (enemy.bossState === "strike") {
+      // Fast sweep from windBack, through the impact angle, out to followThrough.
+      angle = windBack + (followThrough - windBack) * easeOutCubic(stateP);
+    } else {
+      // Recover tail: ease from followThrough back toward resting at the boss's front (target).
+      angle = followThrough + (target - followThrough) * easeOutCubic(stateP);
+    }
   } else if (enemy.bossAttack === "slamCombo") {
     const hit = telegraph?.hit ?? 0;
-    angle = telegraph?.angles?.[hit] ?? 0;
+    const angles = telegraph?.angles ?? [0, 0, 0];
+    const current = angles[hit] ?? 0;
+    if (enemy.bossState === "telegraph") {
+      // Before the first hit there is no "previous" swing to interpolate from -- just wind back
+      // from the current target the same way weaponSwing does.
+      const windBack = current - 0.9;
+      angle = current + (windBack - current) * easeOutCubic(stateP);
+    } else if (enemy.bossState === "strike") {
+      // Interpolate from the PREVIOUS hit's angle (or the pre-swing wind-back, for hit 0) to
+      // the current hit's angle, instead of teleporting between the 3 fixed telegraph angles.
+      const prev = hit > 0 ? (angles[hit - 1] ?? current) : current - 0.9;
+      angle = prev + (current - prev) * easeOutCubic(stateP);
+    } else {
+      angle = current;
+    }
   } else if (enemy.bossAttack === "spinSweep") {
     // Fast continuous spin, sped up further during the "strike" (the actual whirl) vs the
-    // slower telegraph wind-up rotation.
+    // slower telegraph wind-up rotation. Already smooth/time-based -- left as-is, including
+    // through the recover tail so the spin winds down rather than freezing.
     const spinRate = enemy.bossState === "strike" ? 14 : 4;
     angle = (time / 1000) * spinRate;
     pivotReach = r * 0.85;
   } else if (enemy.bossAttack === "overheadSmash") {
-    // Raised overhead: pointing straight up (-90deg) during telegraph (wind-up), swinging
-    // down to straight ahead/down at the moment of strike.
-    angle = enemy.bossState === "strike" ? Math.PI / 2 : -Math.PI / 2;
+    // Raised overhead: pointing straight up (-90deg) during telegraph (wind-up), tweened down
+    // to straight ahead/down (+90deg) over the course of the strike (not a single-frame snap),
+    // then eased slightly further down through the recover tail before vanishing.
+    if (enemy.bossState === "telegraph") {
+      angle = -Math.PI / 2;
+    } else if (enemy.bossState === "strike") {
+      // easeOutCubic front-loads the motion (fast start, slow finish) which reads well for an
+      // overhead smash: the club whips down quickly then settles into the final pose.
+      angle = -Math.PI / 2 + Math.PI * easeOutCubic(stateP);
+    } else {
+      // Recover tail: settle slightly further down from the straight-down strike end angle.
+      angle = Math.PI / 2 + 0.35 * easeOutCubic(stateP);
+    }
     pivotReach = r * 0.5;
   }
 
@@ -2431,8 +2494,11 @@ function drawNibblerKingTelegraphs(enemy) {
     // ATTACK 1 telegraph: a widening red cone/arc in the swing direction, anchored at the
     // boss. Matches executeBossStrike's own range/arc math (js/07-combat.js) so the warning
     // honestly represents where the hit will land.
-    const range = enemy.radius * 3.2;
-    const halfArc = (enemy.bossPhase ?? 1) >= 2 ? 0.95 : 0.8;
+    // v0.18.0: reads the range/halfArc the telegraph payload itself carries (written in
+    // startBossTelegraph, js/07-combat.js) so this warning can never drift from the real
+    // damage-check geometry in executeBossStrike. Literal fallback only for safety.
+    const range = telegraph.range ?? enemy.radius * BOSS_CLUB_REACH_MULT;
+    const halfArc = telegraph.halfArc ?? ((enemy.bossPhase ?? 1) >= 2 ? 0.95 : 0.8);
     const grow = 0.4 + progress * 0.6;
     ctx.save();
     ctx.fillStyle = `rgba(255, 60, 60, ${strobe * 0.4})`;
@@ -2477,7 +2543,9 @@ function drawNibblerKingTelegraphs(enemy) {
     // executeBossStrike's slamRadius math so the warning is an honest preview of the shockwave.
     // ART: the cracked-stone ring texture replaces the plain filled disc underneath; the
     // stroked rim on top (same strobe colour/timing as before) is unchanged.
-    const slamRadius = enemy.radius * ((enemy.bossPhase ?? 1) >= 2 ? 5.5 : 4.5);
+    // v0.18.0: reads telegraph.radius (written in startBossTelegraph) so this ring always
+    // matches the real shockwave radius from executeBossStrike's slamRadius.
+    const slamRadius = telegraph.radius ?? enemy.radius * ((enemy.bossPhase ?? 1) >= 2 ? BOSS_SLAM_REACH_MULT.p2 : BOSS_SLAM_REACH_MULT.p1);
     const grow = 0.25 + progress * 0.85;
     ctx.save();
     drawWarningRingArt(telegraph.x, telegraph.y, slamRadius * grow, strobe * 0.5);
@@ -2507,8 +2575,10 @@ function drawNibblerKingTelegraphs(enemy) {
     // ATTACK 6 (SLAM COMBO) telegraph: draws the CURRENT hit's cone (telegraph.hit advances as
     // runSlamComboTick lands each of the 3 swings), plus faint ghost cones for the remaining
     // hits so the player can see the whole sequence coming, not just the next one.
-    const range = enemy.radius * 3.0;
-    const halfArc = (enemy.bossPhase ?? 1) >= 2 ? 0.72 : 0.6;
+    // v0.18.0: reads telegraph.range/halfArc (written in startBossTelegraph) so these cones
+    // always match landSlamComboHit's real per-hit geometry.
+    const range = telegraph.range ?? enemy.radius * BOSS_COMBO_REACH_MULT;
+    const halfArc = telegraph.halfArc ?? ((enemy.bossPhase ?? 1) >= 2 ? 0.72 : 0.6);
     const activeIndex = telegraph.hit ?? 0;
     for (let i = 0; i < telegraph.angles.length; i += 1) {
       const isActive = i === activeIndex;
@@ -2533,7 +2603,9 @@ function drawNibblerKingTelegraphs(enemy) {
     // this attack hits every direction at once -- no arc to aim, just a growing danger radius.
     // ART: the cracked-stone ring texture replaces the plain filled disc underneath; the
     // stroked rim on top (same strobe colour/timing as before) is unchanged.
-    const range = enemy.radius * ((enemy.bossPhase ?? 1) >= 2 ? 2.7 : 2.3);
+    // v0.18.0: reads telegraph.range (written in startBossTelegraph via BOSS_SPIN_REACH_MULT)
+    // so this ring always matches the real spinSweep strike radius.
+    const range = telegraph.range ?? enemy.radius * ((enemy.bossPhase ?? 1) >= 2 ? BOSS_SPIN_REACH_MULT.p2 : BOSS_SPIN_REACH_MULT.p1);
     const grow = 0.3 + progress * 0.7;
     ctx.save();
     drawWarningRingArt(enemy.x, enemy.y, range * grow, strobe * 0.45);
@@ -2549,7 +2621,10 @@ function drawNibblerKingTelegraphs(enemy) {
     // ground-warning attacks, since the whole point is a readable tell you can just step off.
     // ART: the cracked-stone ring texture replaces the plain filled disc underneath; the
     // stroked rim on top (same strobe colour/timing as before) is unchanged.
-    const smashRadius = 46;
+    // v0.18.0 FIX: this was hardcoded to 46, but the real damage radius is BOSS_SMASH_RADIUS
+    // (130, js/07-combat.js) -- the warning was drawing a circle less than half the size of the
+    // actual hit, exactly the "warning hitbox too small" complaint this whole pass exists to fix.
+    const smashRadius = BOSS_SMASH_RADIUS;
     const pulse = 0.85 + Math.sin(performance.now() / 1000 * (4 + progress * 6) * Math.PI * 2) * 0.15;
     ctx.save();
     drawWarningRingArt(telegraph.x, telegraph.y, smashRadius * pulse, strobe * 0.6);
@@ -2613,7 +2688,9 @@ function drawNibblerKingTelegraphs(enemy) {
   } else if (telegraph.kind === "poundWarn") {
     // ATTACK 12 (GROUND POUND SHOCKWAVE) telegraph: a growing warning ring centred on the boss,
     // previewing the first (and largest-window) of the 3 staggered rings to come.
-    const range = enemy.radius * ((enemy.bossPhase ?? 1) >= 2 ? 3.2 : 2.6);
+    // v0.18.0: reads telegraph.range (written in startBossTelegraph via BOSS_POUND_REACH_MULT)
+    // so this preview ring matches the real first-ring radius from fireGroundPoundRing.
+    const range = telegraph.range ?? enemy.radius * ((enemy.bossPhase ?? 1) >= 2 ? BOSS_POUND_REACH_MULT.p2 : BOSS_POUND_REACH_MULT.p1);
     const grow = 0.3 + progress * 0.7;
     ctx.save();
     drawWarningRingArt(enemy.x, enemy.y, range * grow, strobe * 0.5);
@@ -2626,7 +2703,9 @@ function drawNibblerKingTelegraphs(enemy) {
   } else if (telegraph.kind === "crownArc") {
     // ATTACK 13 (CROWN TOSS) telegraph: a straight line toward the throw angle, previewing the
     // boomerang's out-leg (same visual language as chargePath) plus a small mark at the peak.
-    const throwRange = enemy.radius * 3.4;
+    // v0.18.0: reads telegraph.throwRange (written in startBossTelegraph via
+    // BOSS_CROWN_THROW_MULT) so this line matches runCrownTossTick's real throw distance.
+    const throwRange = telegraph.throwRange ?? enemy.radius * BOSS_CROWN_THROW_MULT;
     const endX = telegraph.fromX + Math.cos(telegraph.angle) * throwRange;
     const endY = telegraph.fromY + Math.sin(telegraph.angle) * throwRange;
     ctx.save();
@@ -2647,7 +2726,9 @@ function drawNibblerKingTelegraphs(enemy) {
   } else if (telegraph.kind === "quakeWarn") {
     // ATTACK 14 (STOMP QUAKE) telegraph: a tight pulsing ring right around the boss, short and
     // urgent since this attack is meant to punish players who don't react to being in melee.
-    const range = enemy.radius * 1.8;
+    // v0.18.0: reads telegraph.range (written in startBossTelegraph via BOSS_QUAKE_REACH_MULT)
+    // so this ring matches fireStompQuakePulse's real pulse radius.
+    const range = telegraph.range ?? enemy.radius * BOSS_QUAKE_REACH_MULT;
     const pulse = 0.85 + Math.sin(performance.now() / 1000 * (5 + progress * 6) * Math.PI * 2) * 0.15;
     ctx.save();
     drawWarningRingArt(enemy.x, enemy.y, range * pulse, strobe * 0.55);
@@ -2656,6 +2737,128 @@ function drawNibblerKingTelegraphs(enemy) {
     ctx.beginPath();
     ctx.arc(enemy.x, enemy.y, range * pulse, 0, Math.PI * 2);
     ctx.stroke();
+    ctx.restore();
+  } else if (telegraph.kind === "laserSweep") {
+    // ATTACK 15 (LASER SWEEP) telegraph: the line rotates from telegraph.startAngle to
+    // telegraph.endAngle over the strike window (see runLaserSweepTick, js/07-combat.js), so
+    // the honest preview here is the whole swept arc (a wedge from startAngle to endAngle at
+    // telegraph.range) plus a brighter line at the CURRENT angle (interpolated the same way
+    // runLaserSweepTick does) so the player can read which way the beam is about to travel.
+    const range = telegraph.range ?? enemy.radius * BOSS_LASER_REACH_MULT;
+    const startAngle = telegraph.startAngle;
+    const endAngle = telegraph.endAngle;
+    const curAngle = startAngle + (endAngle - startAngle) * progress;
+    ctx.save();
+    // faint wedge covering the whole arc the beam will sweep through
+    ctx.fillStyle = `rgba(126, 242, 255, ${strobe * 0.18})`;
+    ctx.beginPath();
+    ctx.moveTo(enemy.x, enemy.y);
+    ctx.arc(enemy.x, enemy.y, range, Math.min(startAngle, endAngle), Math.max(startAngle, endAngle));
+    ctx.closePath();
+    ctx.fill();
+    // starting position of the line, dim
+    ctx.strokeStyle = `rgba(126, 242, 255, ${strobe * 0.35})`;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(enemy.x, enemy.y);
+    ctx.lineTo(enemy.x + Math.cos(startAngle) * range, enemy.y + Math.sin(startAngle) * range);
+    ctx.stroke();
+    // current sweep position, bright -- this is where the beam is about to be at strike start
+    ctx.strokeStyle = `rgba(255, 90, 90, ${strobe})`;
+    ctx.lineWidth = 6;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(enemy.x, enemy.y);
+    ctx.lineTo(enemy.x + Math.cos(curAngle) * range, enemy.y + Math.sin(curAngle) * range);
+    ctx.stroke();
+    ctx.restore();
+  } else if (telegraph.kind === "gapWallWarn") {
+    // ATTACK 16 (GAP WALL) telegraph: a row of red warning markers along the wall line
+    // (perpendicular to telegraph.angle), one per bullet slot in executeBossStrike's gapWall
+    // branch (js/07-combat.js), using the EXACT same spacing/offset/wallDist math so each
+    // marker sits right where its bullet will spawn. The gapIndex slot is drawn as a bright
+    // green safe-gap marker instead of a red warning so it's unmistakable.
+    const angle = telegraph.angle;
+    const perp = angle + Math.PI / 2;
+    const count = telegraph.count;
+    const gapIndex = telegraph.gapIndex;
+    const spacing = 60;
+    const wallDist = 40;
+    for (let i = 0; i < count; i += 1) {
+      const offset = (i - (count - 1) / 2) * spacing;
+      const originX = enemy.x + Math.cos(angle) * wallDist + Math.cos(perp) * offset;
+      const originY = enemy.y + Math.sin(angle) * wallDist + Math.sin(perp) * offset;
+      ctx.save();
+      if (i === gapIndex) {
+        // THE SAFE GAP: bright green, pulsing, clearly different from every red slot.
+        const gapPulse = 0.75 + Math.sin(performance.now() / 1000 * 6 * Math.PI * 2) * 0.25;
+        ctx.strokeStyle = `rgba(120, 255, 140, ${gapPulse})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(originX, originY, 22 + progress * 6, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = `rgba(120, 255, 140, ${gapPulse * 0.25})`;
+        ctx.beginPath();
+        ctx.arc(originX, originY, 22 + progress * 6, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.strokeStyle = `rgba(196, 139, 255, ${strobe})`;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(originX, originY, 12 + progress * 6, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = `rgba(196, 139, 255, ${strobe * 0.25})`;
+        ctx.beginPath();
+        ctx.arc(originX, originY, 12 + progress * 6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    // A faint line tracing the whole wall so the gap's position relative to the line reads
+    // clearly even before the individual markers are studied.
+    const halfSpan = ((count - 1) / 2) * spacing;
+    const lineStartX = enemy.x + Math.cos(angle) * wallDist + Math.cos(perp) * -halfSpan;
+    const lineStartY = enemy.y + Math.sin(angle) * wallDist + Math.sin(perp) * -halfSpan;
+    const lineEndX = enemy.x + Math.cos(angle) * wallDist + Math.cos(perp) * halfSpan;
+    const lineEndY = enemy.y + Math.sin(angle) * wallDist + Math.sin(perp) * halfSpan;
+    ctx.save();
+    ctx.strokeStyle = `rgba(196, 139, 255, ${strobe * 0.3})`;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath();
+    ctx.moveTo(lineStartX, lineStartY);
+    ctx.lineTo(lineEndX, lineEndY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  } else if (telegraph.kind === "tripleCone") {
+    // ATTACK 17 (TRIPLE VOLLEY) telegraph: a narrow aimed cone (tighter than the "cone" seedSpray
+    // warning) along telegraph.angle/halfArc, matching fireTripleVolleyRound's straight-at-player
+    // aim (js/07-combat.js). Drawn with 3 overlaid guide lines fanned slightly within the cone to
+    // read as "3 aimed shots incoming", distinct from the single-line laserSweep and the wide
+    // filled "cone" spray warning.
+    const range = Math.max(W, H);
+    const halfArc = telegraph.halfArc;
+    ctx.save();
+    ctx.fillStyle = `rgba(255, 60, 60, ${strobe * 0.22})`;
+    ctx.beginPath();
+    ctx.moveTo(enemy.x, enemy.y);
+    ctx.arc(enemy.x, enemy.y, range, telegraph.angle - halfArc, telegraph.angle + halfArc);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255, 90, 90, ${strobe})`;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    // 3 bright guide lines (left/centre/right of the cone) telegraphing the 3 rounds to come.
+    const lineAngles = [telegraph.angle - halfArc * 0.6, telegraph.angle, telegraph.angle + halfArc * 0.6];
+    ctx.strokeStyle = `rgba(255, 130, 120, ${strobe * 0.9})`;
+    ctx.lineWidth = 2;
+    for (const a of lineAngles) {
+      ctx.beginPath();
+      ctx.moveTo(enemy.x, enemy.y);
+      ctx.lineTo(enemy.x + Math.cos(a) * range, enemy.y + Math.sin(a) * range);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 }

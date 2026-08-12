@@ -183,12 +183,13 @@ const ENEMY_ART_CONFIG = {
   // own alpha bounding box during processing (no transparent padding at all), unlike the old
   // placeholder nibbler.png which had real padding (content bbox ~225x152 inside its 256x256
   // canvas, ~59% of the canvas height). Because the new art fills its whole box, the SAME
-  // scale as the old placeholder would draw noticeably bigger on screen. Scale is tuned down
-  // from the old 4.0 to 2.4 so the boss's on-screen drawn height stays close to what it was
-  // before the art swap (drawn box = radius*2*scale = 132*2.4 = 316.8px, close to the old
-  // effective content height of ~528*0.594 = 313.6px), keeping the swap a like-for-like art
-  // replacement rather than a hitbox-vs-visual mismatch. yOffset unchanged.
-  "Nibbler King": { scale: 2.4, yOffset: -0.05 }
+  // scale as the old placeholder would draw noticeably bigger on screen. Boss radius is 132
+  // (bumped from 66 for hitbox reasons -- see js/01-core.js), so scale is tuned to 1.2 so the
+  // boss's on-screen drawn height stays close to what it was before the art swap (drawn box =
+  // radius*2*scale = 132*2*1.2 = 316.8px, close to the old effective content height of
+  // ~528*0.594 = 313.6px), keeping the swap a like-for-like art replacement rather than a
+  // hitbox-vs-visual mismatch. yOffset unchanged.
+  "Nibbler King": { scale: 1.2, yOffset: -0.05 }
 };
 
 // Enemies whose art faces the camera head-on and is left/right symmetric. These must NOT be

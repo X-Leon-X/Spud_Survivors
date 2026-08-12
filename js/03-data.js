@@ -898,7 +898,7 @@ const weaponStatProfiles = {
     baseDamage: [12, 22, 41, 73, 125],
     scaling: { meleeDamage: 0.9, rangedDamage: 0.12 },
     cooldown: [1.08, 0.9, 0.78, 0.66, 0.56],
-    range: [70, 78, 85, 93, 103],
+    range: [88, 98, 106, 116, 129],
     critChance: [2, 4, 6, 8, 12],
     critMultiplier: 2,
     knockback: [10, 13, 16, 21, 27],
@@ -1020,7 +1020,7 @@ const weaponStatProfiles = {
     baseDamage: [17, 31, 58, 104, 175],
     scaling: { meleeDamage: 1.15, rangedDamage: 0.1 },
     cooldown: [1.35, 1.14, 0.98, 0.84, 0.71],
-    range: [73, 80, 88, 96, 106],
+    range: [91, 100, 110, 120, 133],
     critChance: [2, 4, 6, 8, 12],
     critMultiplier: 2.05,
     knockback: [15, 20, 25, 32, 42],
@@ -1069,9 +1069,11 @@ const weaponStatProfiles = {
     baseDamage: [11, 21, 39, 69, 119],
     scaling: { meleeDamage: 0.85, rangedDamage: 0.1 },
     cooldown: [1.0, 0.86, 0.74, 0.63, 0.53],
-    // Much longer reach than any other melee weapon (Stub Club tops out at 82, Potato
-    // Masher at 85) to sell the "whip" concept.
-    range: [175, 194, 215, 238, 265],
+    // Much longer reach than any other melee weapon (Stub Club tops out at 129, Potato
+    // Masher at 133) to sell the "whip" concept. The lead is deliberate: all three swing
+    // weapons have been raised together twice now, so keep this array proportionally ahead
+    // of the other two whenever melee range is retuned.
+    range: [210, 233, 258, 286, 318],
     critChance: [3, 5, 7, 10, 14],
     critMultiplier: 1.9,
     knockback: [4, 5, 6, 7, 9],
