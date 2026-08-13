@@ -20,6 +20,15 @@
 
 const CHANGELOG = [
   {
+    version: "0.21.0",
+    date: "2026-08-13",
+    title: "The King Digs In",
+    notes: [
+      "The Nibbler King is significantly tougher, with a lot more health and a much longer fight.",
+      "Weaker builds face a tougher King too, since his minimum health went up as well."
+    ]
+  },
+  {
     version: "0.20.0",
     date: "2026-08-12",
     title: "Tougher, and He Actually Swings",

@@ -2677,17 +2677,28 @@ function estimatePlayerDps() {
 // An earlier pass DIVIDED by the fraction instead of multiplying, which double-counted it:
 // the pool was inflated 1.67x AND then chewed through at ~60% uptime, yielding ~167s fights
 // at every DPS level instead of 60s. Multiply here; do not divide.
-//   e.g. 500 dps theoretical -> 500 * 60 * 0.6 = 18000 HP -> ~60s at 60% real uptime.
-const BOSS_DPS_TARGET_SECONDS = 60;
+//   e.g. 500 dps theoretical -> 500 * 90 * 0.6 = 27000 HP -> ~90s at 60% real uptime.
+//
+// BOSS_DPS_TARGET_SECONDS IS the intended fight length in seconds -- not a tuning knob picked
+// arbitrarily, but the literal number of seconds the fight is designed to last. Because the
+// HP pool is derived FROM the player's own estimated DPS, raising a flat HP number does
+// nothing reliable: a strong build shrugs it off in a couple extra seconds, while the same
+// flat number can be an unwinnable wall for a weak build. Raising TARGET_SECONDS instead
+// scales the fight length uniformly for every build, which is the correct lever for "make the
+// boss tankier" -- it lengthens the fight by the same proportion (here +50%, 60s -> 90s)
+// whether the player is doing 120 dps or 1700 dps.
+const BOSS_DPS_TARGET_SECONDS = 90;
 const BOSS_DPS_UPTIME_FRACTION = 0.6;
 
 // HARD MINIMUM FLOOR (explicit user requirement): "we don't want the hp to be like only 100
 // because the player sold everything and bought the worst item." Boss 1 never drops below
-// 8000 HP no matter how weak the estimated DPS is -- a stripped/sold-off build still faces a
-// real fight, just a slower one. Grows 1.55x per boss index, same curve as the DPS-scaled
-// value below, so the floor stays proportionate at every boss instead of becoming irrelevant
-// (too low) or dominant (too high) at bosses 2/3+.
-const BOSS_HP_FLOOR_BASE = 8000;
+// 12000 HP no matter how weak the estimated DPS is -- a stripped/sold-off build still faces a
+// real fight, just a slower one. Kept proportionate to the 90s target: 12000 HP is exactly
+// what a ~222 dps build would reach on its own (12000 / (90 * 0.6) = 222.2 dps), so the floor
+// only overrides builds meaningfully weaker than that. Grows 1.55x per boss index, same curve
+// as the DPS-scaled value below, so the floor stays proportionate at every boss instead of
+// becoming irrelevant (too low) or dominant (too high) at bosses 2/3+.
+const BOSS_HP_FLOOR_BASE = 12000;
 // HARD MAXIMUM CAP: a pathological low-DPS build (e.g. 0 weapons after a bad crate recycle
 // run) must not turn this into a 10-minute slog just because the floor logic has no ceiling.
 // Capped at 25x the floor -- generous enough that it only ever engages for genuinely broken
@@ -2703,7 +2714,7 @@ function bossIndexGrowth(bossIndex) {
 // purchases don't retroactively resize an in-progress boss.
 //   dpsScaledHp = estimatePlayerDps() * BOSS_DPS_TARGET_SECONDS * BOSS_DPS_UPTIME_FRACTION
 //   growth      = bossIndexGrowth(bossIndex)     -- 1.55x per boss index (1, 1.55, 2.4025, ...)
-//   floor       = BOSS_HP_FLOOR_BASE * growth    -- 8000 for boss 1, 12400 for boss 2, ...
+//   floor       = BOSS_HP_FLOOR_BASE * growth    -- 12000 for boss 1, 18600 for boss 2, ...
 //   cap         = floor * BOSS_HP_CAP_MULTIPLIER -- 25x the floor
 //   result      = clamp(dpsScaledHp, floor, cap)
 // The 1.55x per-boss-index growth is carried entirely by the floor/cap (both scale with it),
@@ -2711,27 +2722,27 @@ function bossIndexGrowth(bossIndex) {
 // DPS barely grew, while a build that DID get much stronger is still governed by its own
 // fresh DPS estimate at each fight rather than a second multiplicative layer on top of it.
 //
-// WORKED EXAMPLES against boss 1 (growth = 1, floor = 8000, cap = 200000). "Predicted fight"
+// WORKED EXAMPLES against boss 1 (growth = 1, floor = 12000, cap = 300000). "Predicted fight"
 // divides the pool by (theoretical dps * uptime), i.e. what the player actually lands:
 //   weak build    (~120 dps -- 1-2 low-tier weapons, e.g. after selling most of a run):
-//                 dpsScaledHp = 120 * 60 * 0.6 = 4320 -> BELOW the 8000 floor -> HP = 8000.
-//                 Predicted fight: 8000 / (120 * 0.6) = ~111s. Long, but that is the floor
+//                 dpsScaledHp = 120 * 90 * 0.6 = 6480 -> BELOW the 12000 floor -> HP = 12000.
+//                 Predicted fight: 12000 / (120 * 0.6) = ~167s. Long, but that is the floor
 //                 doing exactly its job rather than handing a stripped build a joke boss.
 //   typical build (~500 dps -- several tier-2/3 weapons, a wave-10 build in reasonable shape):
-//                 dpsScaledHp = 500 * 60 * 0.6 = 18000 -> between floor and cap -> HP = 18000.
-//                 Predicted fight: 18000 / (500 * 0.6) = 60s, exactly the target.
+//                 dpsScaledHp = 500 * 90 * 0.6 = 27000 -> between floor and cap -> HP = 27000.
+//                 Predicted fight: 27000 / (500 * 0.6) = 90s, exactly the target.
 //   monster build (~1700 dps -- tier-5 weapons, stacked damagePercent/attackSpeed):
-//                 dpsScaledHp = 1700 * 60 * 0.6 = 61200 -> under the 200000 cap -> HP = 61200.
-//                 Predicted fight: 61200 / (1700 * 0.6) = 60s. This is the case the whole
+//                 dpsScaledHp = 1700 * 90 * 0.6 = 91800 -> under the 300000 cap -> HP = 91800.
+//                 Predicted fight: 91800 / (1700 * 0.6) = 90s. This is the case the whole
 //                 rewrite exists for: the old flat 5200 HP died to this build in ~3 seconds
-//                 (5200/1700), whereas scaling holds the same 60s target no matter how strong
+//                 (5200/1700), whereas scaling holds the same 90s target no matter how strong
 //                 the build gets, instead of trivializing the harder the player is winning.
-//                 The cap only engages past ~5600 theoretical dps.
+//                 The cap only engages past ~5556 theoretical dps.
 // Note the "predicted fight" arithmetic above (hp / (dps * uptime)) is the inverse of the
 // formula and is included only to sanity-check it -- it is not itself part of the formula.
 // APPROXIMATE BY DESIGN: estimatePlayerDps() assumes every shot lands with no travel-time
 // misses, so real fights likely run a bit longer than the target even at full assumed uptime.
-// Treat 60s/60% as a tuning target, not a guarantee -- UNTESTED against a real playthrough,
+// Treat 90s/60% as a tuning target, not a guarantee -- UNTESTED against a real playthrough,
 // adjust from actual playtesting.
 function nibblerKingHp(bossIndex) {
   const growth = bossIndexGrowth(bossIndex);
