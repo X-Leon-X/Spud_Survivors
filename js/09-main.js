@@ -152,22 +152,15 @@ window.addEventListener("keydown", (event) => {
   if (event.code === "Escape") {
     togglePause();
   }
-  if (event.code === "KeyM") {
-    gameSettings.muted = !gameSettings.muted;
-    ui.muteToggle.checked = gameSettings.muted;
-    applyAudioSettings();
-    saveSettings();
-  }
   if (event.code === "KeyR" && state.mode === "gameover") {
     showStartMenu();
   }
-  // PHASE 1 CO-OP: KeyP toggles Player 2 in/out. Works at the title screen and mid-run;
-  // deliberately excluded while a text input might have focus (none exist in this game, but
-  // guarding on state.mode keeps it from firing during, say, the pause/shop/reward overlays
-  // where a stray P shouldn't silently add a second player behind a menu).
-  if (event.code === "KeyP" && (state.mode === "playing" || state.mode === "menu")) {
-    togglePlayerTwo();
-  }
+  // v0.23.0: the KeyM mute toggle and KeyP co-op toggle were removed -- both were accidental
+  // hotkeys with no on-screen indication they existed. Mute stays fully accessible via the
+  // pause menu checkbox (#muteToggle) and the title Options panel (#titleMuteToggle). Co-op
+  // is now chosen on the character select screen (the "2 Players" checkbox -- see coopToggle/
+  // coopRequested in js/01-core.js and js/04-flow.js) instead of a mid-run hotkey.
+  // togglePlayerTwo() itself is left intact in js/04-flow.js (harmless, just unbound).
 });
 
 window.addEventListener("keyup", (event) => {

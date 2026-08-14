@@ -38,6 +38,9 @@ const ui = {
   titleShakeToggle: document.getElementById("titleShakeToggle"),
   startMenu: document.getElementById("startMenu"),
   characterCards: document.getElementById("characterCards"),
+  // TASK 2: "2 Players" checkbox on character select -- see coopRequested (above) and its
+  // listener/sync in renderCharacterSelect() (js/04-flow.js).
+  coopToggle: document.getElementById("coopToggle"),
   classBonusList: document.getElementById("classBonusList"),
   compendiumButton: document.getElementById("compendiumButton"),
   achievementsButton: document.getElementById("achievementsButton"),
@@ -289,3 +292,9 @@ const characters = [
 ];
 
 let selectedCharacter = characters[0];
+// TASK 2: set by the "2 Players" checkbox on the character select screen (#coopToggle,
+// index.html) -- see renderCharacterSelect()/its listener in js/04-flow.js. Read once by
+// startGame() to decide whether to spawn P2 from wave 1. Module-level (like selectedCharacter
+// above) so it survives showStartMenu()'s state.reset and persists across repeated visits to
+// character select in the same browser session.
+let coopRequested = false;

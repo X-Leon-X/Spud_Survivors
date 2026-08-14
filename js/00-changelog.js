@@ -20,6 +20,16 @@
 
 const CHANGELOG = [
   {
+    version: "0.23.0",
+    date: "2026-08-14",
+    title: "The King Hits Harder",
+    notes: [
+      "The Nibbler King hits harder across the board, in every phase of the fight.",
+      "Two player co-op is now chosen on the character select screen instead of a hotkey.",
+      "The stray mute and co-op hotkeys are gone, so they cannot be hit by accident anymore."
+    ]
+  },
+  {
     version: "0.22.0",
     date: "2026-08-14",
     title: "Local Two Player Co-op",

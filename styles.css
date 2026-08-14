@@ -2338,6 +2338,14 @@ button:active:not(:disabled) {
   text-align: left;
 }
 
+/* Character select's "2 Players" toggle sits inline in .shop-heading (a flex row alongside
+   the title block and the wave counter), so it must not stretch to fill available width like
+   a normal full-bleed .setting-row does in the pause/options panels. */
+.start-menu-coop {
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
 .setting-row {
   align-items: center;
   color: rgba(255, 247, 231, 0.85);

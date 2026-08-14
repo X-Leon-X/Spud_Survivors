@@ -53,12 +53,14 @@ function makePlayer(index) {
   };
 }
 
-// PHASE 1 CO-OP: P2 join/leave toggle, bound to KeyP in js/09-main.js (works both at the title
-// screen and mid-run -- see the keydown handler there). Grepped js/09-main.js's existing
-// keydown handler first: WASD/Arrows/Space/Escape/KeyM/KeyR were already taken, KeyP was free.
-// Joining mid-run spawns P2 next to P1 with full HP (per the design doc); leaving just drops
-// the second player object -- their weapon/HP state is discarded, matching "P2 is optional and
-// only separate DURING a wave" (the shared build/scrap is untouched either way).
+// PHASE 1 CO-OP: P2 join/leave toggle. v0.23.0: no longer bound to any key (previously KeyP in
+// js/09-main.js) -- P2 is now chosen up front via the "2 Players" checkbox on character select
+// (see coopToggle/coopRequested and startGame(), which calls the same spawn logic used here).
+// This function itself is kept as-is (unused by any binding right now) since it's still
+// harmless and cheap to keep around for a future mid-run join/leave feature. Joining spawns P2
+// next to P1 with full HP (per the design doc); leaving just drops the second player object --
+// their weapon/HP state is discarded, matching "P2 is optional and only separate DURING a wave"
+// (the shared build/scrap is untouched either way).
 function togglePlayerTwo() {
   if (!state) return;
   if (state.players.length > 1) {
@@ -129,7 +131,8 @@ function freshState() {
     // for players[0] -- see the Object.defineProperty call right after freshState() runs, at
     // the bottom of this file -- so the ~96 pre-existing `state.player` reads across the
     // codebase keep working unchanged). Single player defaults to exactly one entry; P2 is
-    // opt-in (see togglePlayerTwo() in js/09-main.js).
+    // opt-in (see the "2 Players" checkbox on character select -- coopToggle/coopRequested --
+    // and startGame(), below).
     players: [makePlayer(0)],
     enemies: [],
     enemyDeaths: [],
@@ -219,6 +222,22 @@ function weaponPowerValue(weapon) {
 function startGame() {
   state = freshState();
   applyCharacter(selectedCharacter);
+  // TASK 2: P2 is now chosen on the character select screen (the "2 Players" checkbox --
+  // see coopToggle/coopRequested) instead of the KeyP hotkey mid-run. Pushed AFTER
+  // applyCharacter (so P2 doesn't receive character stats meant only for state.player, same
+  // as togglePlayerTwo's contract) and BEFORE syncDerivedStats (so the shared build's
+  // maxHp/speed/etc. reaches P2 immediately instead of on the next tick). Same +60 x offset
+  // and edge-clamp togglePlayerTwo uses, so joining from the start screen looks and behaves
+  // identically to joining mid-run.
+  if (coopRequested) {
+    const p1 = state.player;
+    const p2 = makePlayer(1);
+    p2.x = clamp((p1?.x ?? W / 2) + 60, p2.radius + 8, W - p2.radius - 8);
+    p2.y = clamp(p1?.y ?? H / 2, p2.radius + 8, H - p2.radius - 8);
+    p2.hp = state.player.stats.maxHp;
+    p2.maxHp = state.player.stats.maxHp;
+    state.players.push(p2);
+  }
   syncDerivedStats();
   spawnTrees();
   hideMessage();
@@ -818,9 +837,23 @@ function hideReward() {
   ui.rewardActions.classList.add("hidden");
 }
 
+// TASK 2: wires the "2 Players" checkbox's change listener exactly once (module load), so
+// repeated calls to renderCharacterSelect() (every time the player returns to character
+// select -- see showStartMenu()) never stack duplicate listeners. Sets the checkbox's
+// CHECKED state from coopRequested every render instead, which is what actually makes the
+// visual state persist across a return trip to this screen.
+if (ui.coopToggle) {
+  ui.coopToggle.addEventListener("change", () => {
+    coopRequested = ui.coopToggle.checked;
+  });
+}
+
 function renderCharacterSelect() {
   ui.characterCards.innerHTML = "";
   characterPortraits.length = 0;   // old portrait canvases are gone; drop stale refs
+  if (ui.coopToggle) {
+    ui.coopToggle.checked = coopRequested;
+  }
   for (const character of characters) {
     const card = document.createElement("article");
     card.className = "character-card";

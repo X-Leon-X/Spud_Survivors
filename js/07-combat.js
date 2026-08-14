@@ -3658,6 +3658,8 @@ function executeBossStrike(boss) {
     boss.bossSlamRing = { x: cx, y: cy, radius: slamRadius, life: 0.4, maxLife: 0.4 };
     const dist = Math.hypot(player.x - cx, player.y - cy);
     if (dist <= slamRadius + playerHitRadius()) {
+      // v0.23.0 boss damage pass: p2 unchanged (already at the 2.2 single-hit cap -- see the
+      // balance report in js/00-changelog.js).
       const damage = Math.round(boss.damage * (phase2 ? 2.2 : 1.7));
       damagePlayer(player, damage, cx, cy, "Nibbler King");
     }
@@ -3679,7 +3681,9 @@ function executeBossStrike(boss) {
     // right at charge start rewards actually being in the boss's way when it launches.
     const dist = Math.hypot(player.x - boss.x, player.y - boss.y);
     if (dist <= boss.radius + playerHitRadius() + 40) {
-      const damage = Math.round(boss.damage * (phase2 ? 2.4 : 1.8));
+      // v0.23.0 boss damage pass: p2 trimmed 2.4 -> 2.2 (the single-hit cap -- see the
+      // balance report in js/00-changelog.js).
+      const damage = Math.round(boss.damage * (phase2 ? 2.2 : 1.8));
       damagePlayer(player, damage, boss.x, boss.y, "Nibbler King");
     }
     burst(boss.x, boss.y, "#ffd15f", 16);
@@ -3717,10 +3721,10 @@ function executeBossStrike(boss) {
     const smashRadius = BOSS_SMASH_RADIUS;
     const dist = Math.hypot(player.x - cx, player.y - cy);
     if (dist <= smashRadius + playerHitRadius()) {
-      // 1.9/1.6x (down from an earlier 2.8/2.3x): with the boss's contact damage scaled up
-      // (see js/01-core.js), the old multiplier could approach a one-shot on a lean, low-HP,
-      // no-armor wave-10 build. This keeps it the hardest-hitting punish attack in the kit
-      // while still leaving real margin to survive a missed dodge.
+      // v0.23.0 boss damage pass: unchanged. Already below the 2.2 single-hit cap (1.9x =
+      // 51 damage at wave-10 phase 2, 63.8% of a lean 80 HP build) and deliberately kept as
+      // the hardest-hitting punish attack in the kit -- see the balance report in
+      // js/00-changelog.js.
       const damage = Math.round(boss.damage * (phase2 ? 1.9 : 1.6));
       damagePlayer(player, damage, cx, cy, "Nibbler King");
     }
@@ -3817,7 +3821,9 @@ function executeBossStrike(boss) {
         bullet.y = originY;
         bullet.vx = Math.cos(angle) * 210;
         bullet.vy = Math.sin(angle) * 210;
-        bullet.damage = Math.round(boss.damage * (phase2 ? 0.5 : 0.4));
+        // v0.23.0 boss damage pass: raised from 0.4/0.5 (both below the 1.4 floor for
+        // low-end multipliers -- see the balance report in js/00-changelog.js).
+        bullet.damage = Math.round(boss.damage * (phase2 ? 0.66 : 0.53));
         bullet.kind = "kingSeed";
       }
     }
@@ -3844,7 +3850,11 @@ function fireGroundPoundRing(boss, index) {
   boss.bossPoundRings.push({ x: boss.x, y: boss.y, radius: ringRadius, life: 0.35, maxLife: 0.35 });
   const dist = Math.hypot(player.x - boss.x, player.y - boss.y);
   if (dist <= ringRadius + playerHitRadius()) {
-    const damage = Math.round(boss.damage * (phase2 ? 0.85 : 0.6));
+    // v0.23.0 boss damage pass (revised): this is a 3-ring SEQUENTIAL chain (same convention
+    // as slamCombo/stompQuake), so the multiplier is capped so the full 3-ring chain stays
+    // around 80% of a lean 80 HP build at wave-10 phase 2 (see the balance report in
+    // js/00-changelog.js: 19 x3 = 57 phase 1, 22 x3 = 66 phase 2, ~83% of a lean 80 HP build).
+    const damage = Math.round(boss.damage * (phase2 ? 0.80 : 0.66));
     damagePlayer(player, damage, boss.x, boss.y, "Nibbler King");
   }
   addShake(5, true);
@@ -3893,7 +3903,11 @@ function runCrownTossTick(boss, dt) {
     boss.bossCrownPos = { x: hitX, y: hitY };
     const dist = Math.hypot(player.x - hitX, player.y - hitY);
     if (dist <= 40 + playerHitRadius()) {
-      const damage = Math.round(boss.damage * (phase2 ? 1.3 : 0.9));
+      // v0.23.0 boss damage pass (revised): a 2-hit SEQUENTIAL chain (out-peak + return-peak),
+      // capped so the full chain stays around 80% of a lean 80 HP build at wave-10 phase 2
+      // (see the balance report in js/00-changelog.js: 27 x2 = 54 phase 1, 32 x2 = 64 phase 2,
+      // ~80% of a lean 80 HP build).
+      const damage = Math.round(boss.damage * (phase2 ? 1.20 : 1.00));
       damagePlayer(player, damage, hitX, hitY, "Nibbler King");
     }
     burst(hitX, hitY, "#f2c45f", 10);
@@ -3902,7 +3916,7 @@ function runCrownTossTick(boss, dt) {
     boss.bossCrownPos = { x: boss.x, y: boss.y };
     const dist = Math.hypot(player.x - boss.x, player.y - boss.y);
     if (dist <= 40 + playerHitRadius()) {
-      const damage = Math.round(boss.damage * (phase2 ? 1.3 : 0.9));
+      const damage = Math.round(boss.damage * (phase2 ? 1.20 : 1.00));
       damagePlayer(player, damage, boss.x, boss.y, "Nibbler King");
     }
     burst(boss.x, boss.y, "#f2c45f", 10);
@@ -3928,10 +3942,11 @@ function fireStompQuakePulse(boss, index) {
   const quakeRadius = boss.radius * BOSS_QUAKE_REACH_MULT;
   const dist = Math.hypot(player.x - boss.x, player.y - boss.y);
   if (dist <= quakeRadius + playerHitRadius()) {
-    // 0.65/0.45x (down from 0.7/0.5x, v0.18.0 no-one-shot pass): this fires 4 pulses per strike,
-    // and at 0.7x the phase-2 chain totalled 96 damage -- over a lean ~90 HP build's entire
-    // health bar. At 0.65x the full 4-pulse chain is 88 phase-2 / 61 phase-1, safely under.
-    const damage = Math.round(boss.damage * (phase2 ? 0.65 : 0.45));
+    // v0.23.0 boss damage pass (revised): this fires 4 pulses per strike, so the multiplier
+    // is capped so the full 4-pulse chain stays around 80% of a lean 80 HP build at wave-10
+    // phase 2 (see the balance report in js/00-changelog.js: 14 x4 = 56 phase 1, 16 x4 = 64
+    // phase 2, ~80% of a lean 80 HP build).
+    const damage = Math.round(boss.damage * (phase2 ? 0.58 : 0.50));
     damagePlayer(player, damage, boss.x, boss.y, "Nibbler King");
   }
   boss.bossQuakeRing = { x: boss.x, y: boss.y, radius: quakeRadius, life: 0.25, maxLife: 0.25 };
@@ -3992,7 +4007,9 @@ function runLaserSweepTick(boss, dt) {
     const beamThickness = 26;
     if (dist <= beamThickness + playerHitRadius()) {
       boss._laserHitLanded = true;
-      const damage = Math.round(boss.damage * (phase2 ? 1.4 : 1.1));
+      // v0.23.0 boss damage pass: p1 raised 1.1 -> 1.4 (was below the 1.4 floor); p2 already
+      // at 1.4, unchanged. Single hit, well under the 2.2 cap.
+      const damage = Math.round(boss.damage * (phase2 ? 1.4 : 1.4));
       damagePlayer(player, damage, closestX, closestY, "Nibbler King");
       burst(closestX, closestY, "#7ef2ff", 12);
     }
@@ -4008,9 +4025,10 @@ function fireTripleVolleyRound(boss, index) {
   shootBossPellet(boss, angle, phase2);
   const bullet = state.enemyBullets[state.enemyBullets.length - 1];
   if (bullet) {
-    // A bit lighter per-shot than a seedSpray pellet since these come 3 in a row -- see the
-    // no-one-shot chain math in the final report.
-    bullet.damage = Math.round(boss.damage * (phase2 ? 0.4 : 0.32));
+    // v0.23.0 boss damage pass: raised from 0.32/0.4 (both were below the 1.4 floor for
+    // low-end multipliers -- see the balance report in js/00-changelog.js). Still a bit
+    // lighter per-shot than a seedSpray pellet since these come 3 in a row.
+    bullet.damage = Math.round(boss.damage * (phase2 ? 0.53 : 0.42));
   }
   playSfx("shoot");
 }
@@ -4089,14 +4107,12 @@ function landSlamComboHit(boss, index) {
   if (!boss._comboHitLatch) boss._comboHitLatch = [false, false, false];
   if (hit && !boss._comboHitLatch[index]) {
     boss._comboHitLatch[index] = true;
-    // 0.85/0.68x (down from 1.0/0.8x, v0.18.0 no-one-shot pass). Per-hit these look mild, but
-    // this attack lands up to THREE times and the multiplier has to be read against the full
-    // chain, not one swing: at 1.0x the phase-2 combo totalled 102 damage, which meets or
-    // exceeds a lean ~90 HP build's ENTIRE health bar from full in one combo. At 0.85x the
-    // full chain is 87 phase-2 / 69 phase-1 -- eating all three is still a catastrophic,
-    // near-death mistake for the leanest build, but no longer a guaranteed kill, and each
-    // individual swing still hurts enough to demand real movement.
-    const damage = Math.round(boss.damage * (phase2 ? 0.85 : 0.68));
+    // v0.23.0 boss damage pass (revised): this attack lands up to THREE times and the
+    // multiplier has to be read against the full chain, not one swing -- capped so the full
+    // 3-hit combo stays around 80% of a lean 80 HP build at wave-10 phase 2 (see the balance
+    // report in js/00-changelog.js: 19 x3 = 57 phase 1, 22 x3 = 66 phase 2, ~83% of a lean 80
+    // HP build).
+    const damage = Math.round(boss.damage * (phase2 ? 0.80 : 0.72));
     damagePlayer(player, damage, boss.x, boss.y, "Nibbler King");
   }
   const range = boss.bossTelegraph?.range ?? boss.radius * BOSS_COMBO_REACH_MULT;
@@ -4139,7 +4155,10 @@ function runWeaponSwingTick(boss) {
   }
   if (hit && !boss._swingHitLanded) {
     boss._swingHitLanded = true; // latch: this strike can only land once, same pattern as boss._laserHitLanded
-    const damage = Math.round(boss.damage * (phase2 ? 2.6 : 2.0));
+    // v0.23.0 boss damage pass: p2 trimmed 2.6 -> 2.2 (the single-hit cap -- 59 damage at
+    // wave-10 phase 2, 73.8% of a lean 80 HP build, down from 88% -- see the balance report
+    // in js/00-changelog.js).
+    const damage = Math.round(boss.damage * (phase2 ? 2.2 : 2.0));
     damagePlayer(player, damage, boss.x, boss.y, "Nibbler King");
   }
 }
@@ -4187,7 +4206,11 @@ function shootBossPellet(boss, angle, phase2) {
   shootEnemyProjectile(boss, angle);
   const bullet = state.enemyBullets[state.enemyBullets.length - 1];
   if (bullet) {
-    bullet.damage = Math.round(boss.damage * (phase2 ? 0.55 : 0.4));
+    // v0.23.0 boss damage pass: raised from 0.4/0.55 (both below the 1.4 floor for low-end
+    // multipliers -- see the balance report in js/00-changelog.js). These are spread,
+    // individually-dodgeable projectiles (seedSpray/radialBurst/tripleVolley all route
+    // through here), not a sequential same-spot chain, so no chain cap applies.
+    bullet.damage = Math.round(boss.damage * (phase2 ? 0.73 : 0.53));
     bullet.kind = "kingSeed";
   }
 }
@@ -4206,7 +4229,9 @@ function shootBossLob(boss, angle, spot, phase2) {
   bullet.vx = ((spot.x - boss.x) / travelTime);
   bullet.vy = ((spot.y - boss.y) / travelTime);
   bullet.life = travelTime + 0.4;
-  bullet.damage = Math.round(boss.damage * (phase2 ? 0.7 : 0.55));
+  // v0.23.0 boss damage pass: raised from 0.55/0.7 (both below the 1.4 floor for low-end
+  // multipliers -- see the balance report in js/00-changelog.js).
+  bullet.damage = Math.round(boss.damage * (phase2 ? 0.93 : 0.73));
   bullet.kind = "kingLob";
 }
 
