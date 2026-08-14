@@ -10,8 +10,75 @@ function maxWeaponSlots() {
   return BASE_WEAPON_SLOTS + (state?.extraWeaponSlots ?? 0) + (state?.temp?.extraWeaponSlots ?? 0);
 }
 
-function freshState() {
+// PHASE 1 CO-OP: builds one player object. `index` 0 = P1 (WASD), 1 = P2 (Arrow keys) -- see
+// getPlayerInput() in js/07-combat.js for the key mapping this feeds. Both players share the
+// same base stat block (BASE_PLAYER_STATS) and, per the design decision, the SAME weapon
+// loadout (state.weapons) -- what's per-player here is only what has to be separate DURING a
+// wave: position, HP, and the small set of per-player cooldown/timer fields already on the
+// original player object. `downed` is the phase-1 death model: a downed player stops moving/
+// firing/taking damage and renders greyed out, but the run only ends once every player is
+// downed (see the game-over check in update(), js/07-combat.js).
+function makePlayer(index) {
   return {
+    index,
+    x: W / 2 + (index === 0 ? 0 : 60),
+    y: H / 2,
+    radius: 21,
+    hp: 80,
+    maxHp: 80,
+    speed: 210,
+    damage: 8,
+    fireRate: 1.7,
+    fireCooldown: 0.25,
+    engineeringCooldown: engineeringZapCooldown(0),
+    meleeCooldown: 0.6,
+    shotSpeed: 540,
+    range: 390,
+    pickupRange: 120,
+    projectiles: 1,
+    hurtTimer: 0,
+    damageCooldown: 0,
+    burnTicksLeft: 0,
+    burnTickTimer: 0,
+    burnTickDamage: 0,
+    burnSourceName: null,
+    lifeStealCooldown: 0,
+    regenTimer: 0,
+    downed: false,
+    stats: { ...BASE_PLAYER_STATS },
+    // Per-player weapon runtime state (cooldown/recoil/fire-anim/airborne), keyed by weapon
+    // slot index -- see weaponRuntimeFor() in js/07-combat.js. Kept OFF the shared
+    // state.weapons objects so P2 firing a shared loadout never blocks/duplicates P1's shots.
+    weaponRuntime: []
+  };
+}
+
+// PHASE 1 CO-OP: P2 join/leave toggle, bound to KeyP in js/09-main.js (works both at the title
+// screen and mid-run -- see the keydown handler there). Grepped js/09-main.js's existing
+// keydown handler first: WASD/Arrows/Space/Escape/KeyM/KeyR were already taken, KeyP was free.
+// Joining mid-run spawns P2 next to P1 with full HP (per the design doc); leaving just drops
+// the second player object -- their weapon/HP state is discarded, matching "P2 is optional and
+// only separate DURING a wave" (the shared build/scrap is untouched either way).
+function togglePlayerTwo() {
+  if (!state) return;
+  if (state.players.length > 1) {
+    state.players.length = 1;
+    showMessage("Player 2 Left", "Back to solo.", 1200);
+  } else {
+    const p1 = state.player;
+    const p2 = makePlayer(1);
+    // Spawn beside P1 (a little inside the arena bounds so a P1 standing at the very edge
+    // doesn't push P2 off it), with full HP regardless of P1's current HP.
+    p2.x = clamp((p1?.x ?? W / 2) + 60, p2.radius + 8, W - p2.radius - 8);
+    p2.y = clamp(p1?.y ?? H / 2, p2.radius + 8, H - p2.radius - 8);
+    state.players.push(p2);
+    syncDerivedStats(); // pick up the shared build's maxHp/speed/etc. immediately, not next tick
+    showMessage("Player 2 Joined", "Arrow keys to move.", 1600);
+  }
+}
+
+function freshState() {
+  const fresh = {
     mode: "menu",
     wave: 1,
     waveDuration: 35,
@@ -58,32 +125,12 @@ function freshState() {
     temp: { stats: {}, effects: {}, extraWeaponSlots: 0, weapons: [], flags: {} },
     character: selectedCharacter,
     runStats: freshRunStats(),
-    player: {
-      x: W / 2,
-      y: H / 2,
-      radius: 21,
-      hp: 80,
-      maxHp: 80,
-      speed: 210,
-      damage: 8,
-      fireRate: 1.7,
-      fireCooldown: 0.25,
-      engineeringCooldown: engineeringZapCooldown(0),
-      meleeCooldown: 0.6,
-      shotSpeed: 540,
-      range: 390,
-      pickupRange: 120,
-      projectiles: 1,
-      hurtTimer: 0,
-      damageCooldown: 0,
-      burnTicksLeft: 0,
-      burnTickTimer: 0,
-      burnTickDamage: 0,
-      burnSourceName: null,
-      lifeStealCooldown: 0,
-      regenTimer: 0,
-      stats: { ...BASE_PLAYER_STATS }
-    },
+    // PHASE 1 CO-OP: players is now an array (state.player stays available as a GETTER alias
+    // for players[0] -- see the Object.defineProperty call right after freshState() runs, at
+    // the bottom of this file -- so the ~96 pre-existing `state.player` reads across the
+    // codebase keep working unchanged). Single player defaults to exactly one entry; P2 is
+    // opt-in (see togglePlayerTwo() in js/09-main.js).
+    players: [makePlayer(0)],
     enemies: [],
     enemyDeaths: [],
     trees: [],
@@ -106,27 +153,63 @@ function freshState() {
     particles: [],
     floaters: []
   };
+  installPlayerAlias(fresh);
+  return fresh;
 }
 
+// PHASE 1 CO-OP: makes `state.player` a read-only GETTER alias for `state.players[0]`, so the
+// large existing body of code that reads/writes state.player.<field> (hp, x, y, stats, etc.)
+// keeps working completely unchanged -- it always sees whichever object is currently
+// players[0]. Deliberately no setter: `state.player = something` must be a hard error rather
+// than silently doing nothing, so a future accidental wholesale reassignment is caught loudly
+// instead of quietly breaking the alias. Grepped the whole codebase for `state.player =` before
+// relying on this -- there are zero such assignments (every existing site only ever does
+// `state.player.<field> = ...`, which mutates the aliased object in place and needs no setter).
+function installPlayerAlias(target) {
+  Object.defineProperty(target, "player", {
+    get() {
+      return target.players[0];
+    },
+    enumerable: true,
+    configurable: true
+  });
+}
+
+// PHASE 1 CO-OP: the build (items/upgrades/weapons) is a SHARED, single decision per the
+// design (one shop, shared scrap), and effectiveStat() reads state.player.stats (i.e.
+// players[0]'s stats -- see applyCharacter/addStat, the only writers of that bag) for every
+// player alike, so both players always end up with identical derived numbers here. What is
+// NOT shared is hp -- each player keeps their own current hp, only re-clamped to the shared
+// maxHp -- so a player who has been hit stays down a chunk of health even though the cap just
+// changed under them.
 function syncDerivedStats() {
-  const player = state.player;
   const ownedEffects = calculateOwnedUpgradeEffects();
   state.shopDiscount = Math.min(0.55, ownedEffects.shopDiscount);
   state.recycleRate = Math.min(0.75, 0.35 + ownedEffects.recycleRateBonus);
   state.treeOneShot = ownedEffects.treeOneShot;
   state.extraWeaponSlots = ownedEffects.extraWeaponSlots;
-  player.projectiles = 1 + ownedEffects.projectiles;
-  player.maxHp = Math.max(1, effectiveStat("maxHp"));
-  player.hp = Math.min(player.hp, player.maxHp);
-  player.speed = 210 * brotatoPercentMultiplier(effectiveStat("speed"));
-  player.fireRate = 1.7 * brotatoPercentMultiplier(effectiveStat("attackSpeed"));
-  player.range = Math.max(80, effectiveStat("range"));
-  player.pickupRange = Math.max(40, effectiveStat("pickupRange"));
-  player.shotSpeed = 540 + effectiveStat("range") * 0.06 + effectiveStat("engineering") * 8;
   const equipped = state.weapons.slice(0, maxWeaponSlots());
-  player.damage = equipped.length
+  const sharedMaxHp = Math.max(1, effectiveStat("maxHp"));
+  const sharedSpeed = 210 * brotatoPercentMultiplier(effectiveStat("speed"));
+  const sharedFireRate = 1.7 * brotatoPercentMultiplier(effectiveStat("attackSpeed"));
+  const sharedRange = Math.max(80, effectiveStat("range"));
+  const sharedPickupRange = Math.max(40, effectiveStat("pickupRange"));
+  const sharedShotSpeed = 540 + effectiveStat("range") * 0.06 + effectiveStat("engineering") * 8;
+  const sharedDamage = equipped.length
     ? equipped.reduce((sum, weapon) => sum + weaponShotDamage(weapon), 0) / equipped.length
     : Math.max(1, effectiveStat("rangedDamage") * brotatoPercentMultiplier(effectiveStat("damagePercent")));
+  const sharedProjectiles = 1 + ownedEffects.projectiles;
+  for (const player of state.players) {
+    player.projectiles = sharedProjectiles;
+    player.maxHp = sharedMaxHp;
+    player.hp = Math.min(player.hp, player.maxHp);
+    player.speed = sharedSpeed;
+    player.fireRate = sharedFireRate;
+    player.range = sharedRange;
+    player.pickupRange = sharedPickupRange;
+    player.shotSpeed = sharedShotSpeed;
+    player.damage = sharedDamage;
+  }
 }
 
 function weaponPowerValue(weapon) {
@@ -161,10 +244,16 @@ function applyCharacter(character) {
   if (characterAchievement && typeof unlockAchievement === "function") {
     unlockAchievement(characterAchievement);
   }
+  // Character stats stay on state.player (players[0]) -- the shared stats bag effectiveStat()
+  // reads for every player alike (see syncDerivedStats). hp is seeded per player here since
+  // this runs before any P2 join in the normal flow; togglePlayerTwo() seeds P2's hp itself
+  // when joining mid-run.
   for (const [key, amount] of Object.entries(character.stats)) {
     state.player.stats[key] += amount;
   }
-  state.player.hp = state.player.stats.maxHp;
+  for (const player of state.players) {
+    player.hp = state.player.stats.maxHp;
+  }
 }
 
 // BOSS SYSTEM -- the single entry point every "advance past a wave" path goes through
@@ -199,7 +288,12 @@ function startWave() {
   if (state.runStats) state.runStats.damageTakenThisWave = 0;
   state.rerollCount = 0;
   state.rerollCost = firstRerollPrice();
-  state.player.hp = Math.min(state.player.maxHp, state.player.hp + 8);
+  // Between-wave top-up: +8 HP for every player, and a downed player is revived with it too
+  // (the only revive path in this phase -- reviving a downed player mid-wave is a follow-up).
+  for (const player of state.players) {
+    player.hp = Math.min(player.maxHp, player.hp + 8);
+    player.downed = false;
+  }
   spawnTrees();
   // Crates appear randomly through the wave, rare early and ramping up with the wave.
   // Each wave gets a small budget of crates (see crateWaveBudget) and a long first delay.
@@ -257,7 +351,10 @@ function startBossFight(bossIndex) {
   // Full heal on boss-fight entry (not the normal +8 top-up used between regular waves): a boss
   // fight is a discrete set-piece, not a continuation of the wave that came before it, so a rough
   // previous wave shouldn't mean starting the fight already low. See js/00-changelog.js v0.20.0.
-  state.player.hp = state.player.maxHp;
+  for (const player of state.players) {
+    player.hp = player.maxHp;
+    player.downed = false;
+  }
   spawnTrees();
   hideShop();
   hideReward();
@@ -335,9 +432,11 @@ function resolveBossFightEnding() {
   state.enemyBullets.length = 0;
   state.bullets.length = 0;
   state.swings.length = 0;
-  state.player.burnTicksLeft = 0;
-  state.player.burnTickTimer = 0;
-  state.player.burnSourceName = null;
+  for (const player of state.players) {
+    player.burnTicksLeft = 0;
+    player.burnTickTimer = 0;
+    player.burnSourceName = null;
+  }
   const looseScrap = state.coins.reduce((sum, coin) => sum + coin.value, 0);
   if (looseScrap > 0) {
     startBagCollection(looseScrap);
@@ -430,9 +529,11 @@ function endWave() {
   state.enemyBullets.length = 0;
   // Don't let a burn started in the final seconds of a wave keep ticking through
   // bagging/shop and into the next wave — it's tied to enemies that no longer exist.
-  state.player.burnTicksLeft = 0;
-  state.player.burnTickTimer = 0;
-  state.player.burnSourceName = null;
+  for (const player of state.players) {
+    player.burnTicksLeft = 0;
+    player.burnTickTimer = 0;
+    player.burnSourceName = null;
+  }
   const looseScrap = state.coins.reduce((sum, coin) => sum + coin.value, 0);
   if (looseScrap > 0) {
     startBagCollection(looseScrap);

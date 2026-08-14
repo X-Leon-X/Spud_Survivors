@@ -240,7 +240,12 @@ function handleDevAction(action, el) {
     updateHud();
     devStatus(`Granted ${item.name}.`);
   } else if (action === "heal") {
-    state.player.hp = state.player.maxHp;
+    // PHASE 1 CO-OP: heal every player, not just P1, so the dev panel's heal button matches
+    // what a player testing co-op would expect.
+    const targets = Array.isArray(state.players) ? state.players : [state.player];
+    for (const player of targets) {
+      if (player) player.hp = player.maxHp;
+    }
     updateHud();
     devStatus("Healed to full.");
   } else if (action === "kill") {
@@ -271,9 +276,14 @@ function clearArenaForDevJump() {
   state.enemyBullets.length = 0;
   state.coins.length = 0;
   // A burn started in the old wave is tied to enemies that no longer exist.
-  state.player.burnTicksLeft = 0;
-  state.player.burnTickTimer = 0;
-  state.player.burnSourceName = null;
+  // PHASE 1 CO-OP: clear it for every player, not just P1.
+  const burnTargets = Array.isArray(state.players) ? state.players : [state.player];
+  for (const player of burnTargets) {
+    if (!player) continue;
+    player.burnTicksLeft = 0;
+    player.burnTickTimer = 0;
+    player.burnSourceName = null;
+  }
 }
 
 function devStatus(text) {

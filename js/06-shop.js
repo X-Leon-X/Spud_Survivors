@@ -974,6 +974,20 @@ function updateHud() {
   ui.hpFill.style.width = `${clamp(state.player.hp / state.player.maxHp, 0, 1) * 100}%`;
   ui.hpText.textContent = `${Math.max(0, Math.round(state.player.hp))} / ${Math.round(state.player.maxHp)}`;
 
+  // PHASE 1 CO-OP: second health bar, shown ONLY while P2 is active -- single-player's HUD
+  // (P2 absent) is untouched, matching the design's "keep the single-player HUD unchanged"
+  // requirement.
+  const p2 = state.players[1];
+  if (ui.hpStat2) {
+    ui.hpStat2.classList.toggle("hidden", !p2);
+    if (p2) {
+      ui.hpFill2.style.width = `${clamp(p2.hp / p2.maxHp, 0, 1) * 100}%`;
+      ui.hpText2.textContent = p2.downed
+        ? "DOWNED"
+        : `${Math.max(0, Math.round(p2.hp))} / ${Math.round(p2.maxHp)}`;
+    }
+  }
+
   // BOSS SYSTEM: boss health bar, visible ONLY during a boss fight, following the same
   // toggle('hidden') pattern the bag chip already uses above. Reads live hp/maxHp off
   // whichever enemy in state.enemies is the boss (behavior:"boss") -- there is ever at most

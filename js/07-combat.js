@@ -78,11 +78,17 @@ function update(dt) {
   state.runStats.timePlayed += dt;
   state.waveTime -= dt;
   state.spawnTimer -= dt;
-  state.player.engineeringCooldown -= dt;
-  state.player.meleeCooldown -= dt;
-  state.player.damageCooldown -= dt;
-  state.player.lifeStealCooldown -= dt;
-  state.player.hurtTimer = Math.max(0, state.player.hurtTimer - dt);
+  // PHASE 1 CO-OP: every player's own per-player cooldown/timer fields tick every frame, not
+  // just P1's -- these are the fields VERIFIED to live on the player object (engineering/
+  // melee/lifesteal cooldowns, hurt flash timer, HP regen via regeneratePlayer, burn ticks via
+  // tickPlayerBurn which already loops internally -- see js/02-stats.js).
+  for (const player of state.players) {
+    player.engineeringCooldown -= dt;
+    player.meleeCooldown -= dt;
+    player.damageCooldown -= dt;
+    player.lifeStealCooldown -= dt;
+    player.hurtTimer = Math.max(0, player.hurtTimer - dt);
+  }
   tickPlayerBurn(dt);
   regeneratePlayer(dt);
 
@@ -111,7 +117,31 @@ function update(dt) {
   updatePoisonPools(dt);
   updateParticles(dt);
 
-  if (state.player.hp <= 0) {
+  // PHASE 1 CO-OP DOWNED-PLAYER MODEL: a player who hits 0 HP becomes DOWNED instead of
+  // instantly ending the run -- they stop moving (movePlayer), stop firing (fireEquippedWeapons/
+  // updateEngineering/updateMeleePulse), stop taking further damage (damagePlayer/
+  // applyPlayerBurn/updatePoisonPools/tickPlayerBurn all early-return on player.downed), and
+  // render greyed out (drawPlayer, js/08-render.js). The run only actually ends -- state.mode
+  // = "gameover", achievements, the gravestone beat, the summary screen -- once EVERY player
+  // is downed. In single-player (state.players.length === 1) this collapses to exactly the
+  // old behavior: the one player going down IS every player being down.
+  // Only plays its own "someone went down" beat when there's a TEAMMATE left to notice it --
+  // in single-player, the allDowned branch right below already covers the full death beat, so
+  // firing this too would double up the sfx/shake/burst on the exact same frame.
+  for (const player of state.players) {
+    if (player.hp <= 0 && !player.downed) {
+      player.downed = true;
+      player.hp = 0;
+      if (state.players.length > 1) {
+        playSfx("gameover");
+        addShake(8, true);
+        burst(player.x, player.y, "#ff8fa3", 20);
+        spawnRing(player.x, player.y, "#ff8fa3", 80, 0.4);
+      }
+    }
+  }
+  const allDowned = state.players.every((player) => player.downed);
+  if (allDowned && state.mode === "playing") {
     state.mode = "gameover";
     if (typeof checkAchievements === "function") checkAchievements();
     if (typeof unlockAchievement === "function") unlockAchievement("rip");
@@ -180,28 +210,40 @@ function updateBagCollection(dt) {
   }
 }
 
+// PHASE 1 CO-OP: hpRegen is a shared owned-item stat (effectiveStat), but each player has
+// their own hp/maxHp/regenTimer, so each regenerates independently -- a topped-up P1 doesn't
+// pause P2's regen timer, and a downed player never regens (matching "stops taking damage,
+// stops acting").
 function regeneratePlayer(dt) {
   const regen = effectiveStat("hpRegen");
-  if (regen <= 0 || state.player.hp >= state.player.maxHp) {
-    state.player.regenTimer = 0;
-    return;
-  }
-
-  state.player.regenTimer -= dt;
-  if (state.player.regenTimer <= 0) {
-    heal(1);
-    state.player.regenTimer = hpRegenHealDelay(regen);
+  for (const player of state.players) {
+    if (player.downed) continue;
+    if (regen <= 0 || player.hp >= player.maxHp) {
+      player.regenTimer = 0;
+      continue;
+    }
+    player.regenTimer -= dt;
+    if (player.regenTimer <= 0) {
+      heal(1, player);
+      player.regenTimer = hpRegenHealDelay(regen);
+    }
   }
 }
 
+// PHASE 1 CO-OP: loops every non-downed player -- engineering is an owned-item effect (shared
+// build, see effectiveStat), but each player has their own body position and their own
+// engineeringCooldown timer, so each can independently zap the nearest enemy TO THEM.
 function updateEngineering() {
-  const player = state.player;
   const engineering = effectiveStat("engineering");
-  if (engineering <= 0 || player.engineeringCooldown > 0) {
-    return;
+  if (engineering <= 0) return;
+  for (const player of state.players) {
+    if (player.downed || player.engineeringCooldown > 0) continue;
+    updateEngineeringFor(player, engineering);
   }
+}
 
-  const target = findNearestEnemy(210);
+function updateEngineeringFor(player, engineering) {
+  const target = findNearestEnemyFrom(player.x, player.y, 210);
   if (!target) {
     return;
   }
@@ -264,13 +306,19 @@ function addZapAsh(x, y, engineering) {
   });
 }
 
+// PHASE 1 CO-OP: loops every non-downed player, same reasoning as updateEngineering above --
+// meleeDamage is a shared owned-item stat, but each player has their own position and their
+// own meleeCooldown, so each independently pulses whatever's touching THEM.
 function updateMeleePulse() {
-  const player = state.player;
   const meleeDamage = effectiveStat("meleeDamage");
-  if (meleeDamage <= 0 || player.meleeCooldown > 0) {
-    return;
+  if (meleeDamage <= 0) return;
+  for (const player of state.players) {
+    if (player.downed || player.meleeCooldown > 0) continue;
+    updateMeleePulseFor(player, meleeDamage);
   }
+}
 
+function updateMeleePulseFor(player, meleeDamage) {
   let hitAny = false;
   for (let i = state.enemies.length - 1; i >= 0; i -= 1) {
     const enemy = state.enemies[i];
@@ -292,6 +340,29 @@ function updateMeleePulse() {
     player.meleeCooldown = 0.72;
     burst(player.x, player.y, "#f6d28f", 12);
   }
+}
+
+// PHASE 1 CO-OP ENEMY TARGETING: every enemy behavior/boss attack that used to read
+// `state.player` directly for aim/chase/telegraph now resolves the NEAREST LIVING (non-downed)
+// player to a given point through this single helper instead. With exactly one player this
+// always returns that player -- identical behavior to before -- so single-player is unaffected.
+// Falls back to state.player (even if downed) only if every player is downed, so callers never
+// have to null-check: a full-party wipe still leaves attacks something to aim at for the one
+// frame before the game-over check in update() ends the run.
+function nearestPlayerTo(x, y) {
+  let best = null;
+  let bestDist = Infinity;
+  for (const player of state.players) {
+    if (player.downed) continue;
+    const dx = player.x - x;
+    const dy = player.y - y;
+    const d = dx * dx + dy * dy;
+    if (d < bestDist) {
+      bestDist = d;
+      best = player;
+    }
+  }
+  return best ?? state.player;
 }
 
 function findNearestEnemy(range) {
@@ -364,19 +435,49 @@ function getWeaponSlotPosition(player, index, count, now = performance.now()) {
   };
 }
 
-function movePlayer(dt) {
-  const player = state.player;
+// PHASE 1 CO-OP INPUT SPLIT: one seam that decides "what does this player's input look like
+// right now", so movement (and, later, any other per-player input) never scatters raw `keys`
+// checks across the file. P2 (index 1) is ALWAYS Arrow keys only. P1 (index 0) is WASD **and**
+// Arrow keys UNLESS P2 is active (state.players.length > 1), in which case P1 drops to WASD
+// only so the two players don't fight over the same keys. This is the bit that actually keeps
+// solo play byte-for-byte identical to before this refactor: previously movePlayer() read WASD
+// OR Arrows into the same dx/dy for the one and only player, so a solo player using arrow keys
+// must keep working exactly as before. Returns a raw (not normalized) {dx, dy} in [-1,1] per
+// axis, matching what movePlayer used to compute inline. Sets up future online play cheaply:
+// swapping this for "read the last input received over the network for player N" touches
+// nothing else in the movement pipeline.
+function getPlayerInput(index) {
   let dx = 0;
   let dy = 0;
+  const coopActive = state.players.length > 1;
+  if (index === 0) {
+    // Matches the pre-refactor single-player movePlayer() exactly: WASD and Arrows are OR'd
+    // per axis (not two independent increments), so holding both KeyW and ArrowUp still only
+    // moves at normal speed instead of an out-of-range dy of -2.
+    if (keys.has("KeyW") || (!coopActive && keys.has("ArrowUp"))) dy -= 1;
+    if (keys.has("KeyS") || (!coopActive && keys.has("ArrowDown"))) dy += 1;
+    if (keys.has("KeyA") || (!coopActive && keys.has("ArrowLeft"))) dx -= 1;
+    if (keys.has("KeyD") || (!coopActive && keys.has("ArrowRight"))) dx += 1;
+  } else if (index === 1) {
+    if (keys.has("ArrowUp")) dy -= 1;
+    if (keys.has("ArrowDown")) dy += 1;
+    if (keys.has("ArrowLeft")) dx -= 1;
+    if (keys.has("ArrowRight")) dx += 1;
+  }
+  return { dx, dy };
+}
 
-  if (keys.has("KeyW") || keys.has("ArrowUp")) dy -= 1;
-  if (keys.has("KeyS") || keys.has("ArrowDown")) dy += 1;
-  if (keys.has("KeyA") || keys.has("ArrowLeft")) dx -= 1;
-  if (keys.has("KeyD") || keys.has("ArrowRight")) dx += 1;
-
-  const length = Math.hypot(dx, dy) || 1;
-  player.x = clamp(player.x + (dx / length) * player.speed * dt, player.radius + 8, W - player.radius - 8);
-  player.y = clamp(player.y + (dy / length) * player.speed * dt, player.radius + 8, H - player.radius - 8);
+// Loops over every player (was: a single state.player). A downed player (0 HP, phase-1 death
+// model -- see the game-over check in update()) ignores input entirely: it stops moving,
+// exactly like it stops firing/taking damage, until the run ends or the next wave revives it.
+function movePlayer(dt) {
+  for (const player of state.players) {
+    if (player.downed) continue;
+    const { dx, dy } = getPlayerInput(player.index);
+    const length = Math.hypot(dx, dy) || 1;
+    player.x = clamp(player.x + (dx / length) * player.speed * dt, player.radius + 8, W - player.radius - 8);
+    player.y = clamp(player.y + (dy / length) * player.speed * dt, player.radius + 8, H - player.radius - 8);
+  }
 }
 
 function spawnWaveEnemies() {
@@ -421,17 +522,23 @@ function spawnWaveEnemies() {
 // TURRET_MIN_PLAYER_DIST from the player so it can't plant itself on top of them.
 const TURRET_MIN_PLAYER_DIST = 260;
 function rollTurretSpawnPos() {
-  const player = state.player;
   const margin = 70;
+  // PHASE 1 CO-OP: must clear EVERY player, not just P1 -- otherwise a Thistle could roll a
+  // spot that's far from P1 but lands right on top of P2.
   for (let attempt = 0; attempt < 12; attempt += 1) {
     const x = rand(margin, W - margin);
     const y = rand(margin, H - margin);
-    if (distSq({ x, y }, player) >= TURRET_MIN_PLAYER_DIST * TURRET_MIN_PLAYER_DIST) {
+    const clearOfEveryone = state.players.every(
+      (player) => distSq({ x, y }, player) >= TURRET_MIN_PLAYER_DIST * TURRET_MIN_PLAYER_DIST
+    );
+    if (clearOfEveryone) {
       return { x, y };
     }
   }
   // Fallback if every attempt landed too close (small arena / player near centre): push the
-  // last roll directly away from the player instead of giving up and spawning on top of them.
+  // last roll directly away from the (nearest) player instead of giving up and spawning on
+  // top of them.
+  const player = nearestPlayerTo(W / 2, H / 2);
   const angle = rand(0, Math.PI * 2);
   return {
     x: clamp(player.x + Math.cos(angle) * TURRET_MIN_PLAYER_DIST, margin, W - margin),
@@ -759,10 +866,34 @@ function destructiblesTargetable(player, weapons, count, weapon) {
   return !findNearestEnemyFrom(player.x, player.y, reach);
 }
 
+// PHASE 1 CO-OP: gives player index `index` (1+, i.e. every player after P1) its own weapon
+// runtime object per slot -- fireCooldown/recoil/fireAnim/airborne -- kept OFF the shared
+// state.weapons[slotIndex] object so P2 firing the SAME shared loadout never blocks or
+// double-fires against P1's cooldown (the two most obvious bugs if they shared one clock).
+// P1 (index 0) deliberately does NOT go through this: it keeps writing directly to
+// state.weapons[slotIndex] exactly as before, so single-player is byte-for-byte unchanged.
+function weaponRuntimeFor(player, slotIndex) {
+  player.weaponRuntime[slotIndex] ??= { fireCooldown: 0, recoil: 0, recoilAngle: 0, fireAnim: 0, fireAnimMax: 0, airborne: false };
+  return player.weaponRuntime[slotIndex];
+}
+
 function fireEquippedWeapons(dt) {
-  const player = state.player;
   const now = performance.now();
   const count = Math.min(maxWeaponSlots(), state.weapons.length);
+  for (const player of state.players) {
+    if (player.downed) continue;
+    if (player.index === 0) {
+      fireEquippedWeaponsForP1(player, dt, now, count);
+    } else {
+      fireEquippedWeaponsForOther(player, dt, now, count);
+    }
+  }
+}
+
+// Original single-player firing loop, UNCHANGED: reads/writes state.weapons[index] directly
+// (fireCooldown/recoil/fireAnim/airborne live on the shared weapon object, exactly as before
+// this refactor). This is what keeps single-player's weapon feel byte-for-byte identical.
+function fireEquippedWeaponsForP1(player, dt, now, count) {
   for (let index = 0; index < count; index += 1) {
     const weapon = state.weapons[index];
     const allowDestructibles = destructiblesTargetable(player, state.weapons, count, weapon);
@@ -790,8 +921,43 @@ function fireEquippedWeapons(dt) {
       continue;
     }
 
-    fireWeaponAttack(weapon, slot, target);
+    fireWeaponAttack(weapon, slot, target, weapon, player.index);
     weapon.fireCooldown = weaponCooldown(weapon);
+  }
+}
+
+// P2+ firing loop: same targeting/cooldown/fire logic as P1's above, but every piece of
+// per-shot ANIMATION/COOLDOWN state (fireCooldown/recoil/fireAnim/airborne) reads and writes
+// this player's own weaponRuntime slot instead of the shared state.weapons[index] object --
+// see weaponRuntimeFor(). The weapon's STATS (damage/tier/cooldown length/etc, via
+// getWeaponStatProfile/weaponTierValue) are still read from the shared state.weapons[index],
+// same shared-loadout design as P1.
+function fireEquippedWeaponsForOther(player, dt, now, count) {
+  for (let index = 0; index < count; index += 1) {
+    const weapon = state.weapons[index];
+    const runtime = weaponRuntimeFor(player, index);
+    const allowDestructibles = destructiblesTargetable(player, state.weapons, count, weapon);
+    runtime.fireCooldown = Math.max(0, (runtime.fireCooldown ?? 0) - dt);
+    if (runtime.recoil > 0) runtime.recoil = Math.max(0, runtime.recoil - dt * 55);
+    if (runtime.fireAnim > 0) runtime.fireAnim = Math.max(0, runtime.fireAnim - dt);
+    if (runtime.fireCooldown > 0) {
+      continue;
+    }
+    if (runtime.airborne) {
+      continue;
+    }
+
+    const slot = getWeaponSlotPosition(player, index, count, now);
+    const range = weaponRange(weapon);
+    const target = allowDestructibles
+      ? findNearestEnemyFrom(slot.x, slot.y, range) ?? findNearestDestructibleFrom(slot.x, slot.y, range)
+      : findNearestEnemyFrom(slot.x, slot.y, range);
+    if (!target) {
+      continue;
+    }
+
+    fireWeaponAttack(weapon, slot, target, runtime, player.index);
+    runtime.fireCooldown = weaponCooldown(weapon);
   }
 }
 
@@ -816,13 +982,18 @@ function weaponFireAnimTime(name) {
   return WEAPON_FIRE_ANIM_TIME[name] ?? 0.18;
 }
 
-function fireWeaponAttack(weapon, slot, target) {
+// PHASE 1 CO-OP: `runtime` is where per-shot animation/cooldown state (recoil/fireAnim/
+// airborne) is written -- P1 passes its own weapon object (unchanged behavior), P2+ pass
+// their own weaponRuntimeFor() slot (see fireEquippedWeaponsForOther). `playerIndex` tags any
+// spawned swing so its origin can be re-resolved against the CORRECT player every frame (see
+// weaponSwingOrigin) instead of always assuming state.player.
+function fireWeaponAttack(weapon, slot, target, runtime, playerIndex) {
   const profile = getWeaponStatProfile(weapon);
   if (profile.attackType === "swing") {
-    fireSwingWeapon(weapon, slot, target);
+    fireSwingWeapon(weapon, slot, target, playerIndex);
     return;
   }
-  fireWeaponFromSlot(weapon, slot, target);
+  fireWeaponFromSlot(weapon, slot, target, runtime);
 }
 
 // fireEquippedWeapons (owned by another agent) doesn't pass the weapon's slot index down,
@@ -834,8 +1005,7 @@ function resolveWeaponSlotIndex(weapon) {
   return { index: index >= 0 ? index : 0, count };
 }
 
-function fireWeaponFromSlot(weapon, slot, target) {
-  const player = state.player;
+function fireWeaponFromSlot(weapon, slot, target, runtime = weapon) {
   const profile = getWeaponStatProfile(weapon);
   const count = Math.min(maxWeaponSlots(), state.weapons.length);
   const scale = weaponArenaScale(count);
@@ -849,13 +1019,13 @@ function fireWeaponFromSlot(weapon, slot, target) {
     : weapon.name === "Tin Dragon Flamethrower" ? "#ffb04a"
     : profile.impactColor ?? "#ffe6a0";
   spawnMuzzleFlash(muzzle.x, muzzle.y, angle, flashColor, heavy ? 1.5 : 1);
-  weapon.recoil = heavy ? 7 : 4.5;          // px kickback, decays in updateWeapons
-  weapon.recoilAngle = angle;
+  runtime.recoil = heavy ? 7 : 4.5;          // px kickback, decays in updateWeapons
+  runtime.recoilAngle = angle;
   // Per-weapon fire animation clock. Counts DOWN from fireAnimMax and drives a distinct
   // motion per weapon in drawArenaWeapon (draw-band stretch, reload dip, spin-up), so each
   // weapon reads as its own object instead of every gun sharing one generic kickback.
-  weapon.fireAnim = weaponFireAnimTime(weapon.name);
-  weapon.fireAnimMax = weapon.fireAnim;
+  runtime.fireAnim = weaponFireAnimTime(weapon.name);
+  runtime.fireAnimMax = runtime.fireAnim;
   playSfx(
     weapon.name === "Tin Dragon Flamethrower"
       ? "flame"
@@ -869,7 +1039,7 @@ function fireWeaponFromSlot(weapon, slot, target) {
   // without cloning the weapon itself out of thin air.
   const thrown = Boolean(profile.returns);
   if (thrown) {
-    weapon.airborne = true;
+    runtime.airborne = true;
   }
   const shots = thrown ? 1 : weaponProjectileCount(weapon);
   const spread = shots === 1 ? 0 : profile.spread;
@@ -916,14 +1086,16 @@ function fireWeaponFromSlot(weapon, slot, target) {
       maxTravel: profile.returns ? weaponRange(weapon) : undefined,
       travelled: 0,
       returning: false,
-      // Back-reference to the weapon that threw it, so catching the star can put it back in
-      // the player's hand (clears weapon.airborne). Only set for thrown weapons.
-      thrownBy: profile.returns ? weapon : undefined
+      // Back-reference to whichever runtime threw it (the shared weapon object for P1, or a
+      // per-player weaponRuntime slot for P2+ -- see fireWeaponFromSlot's `runtime` param),
+      // so catching the star clears the CORRECT owner's airborne flag. Only set for thrown
+      // weapons.
+      thrownBy: profile.returns ? runtime : undefined
     });
   }
 }
 
-function fireSwingWeapon(weapon, slot, target) {
+function fireSwingWeapon(weapon, slot, target, playerIndex = 0) {
   const profile = getWeaponStatProfile(weapon);
   const angle = Math.atan2(target.y - slot.y, target.x - slot.x);
   const range = weaponRange(weapon);
@@ -934,12 +1106,19 @@ function fireSwingWeapon(weapon, slot, target) {
   const { index: weaponIndex, count: slotCount } = resolveWeaponSlotIndex(weapon);
 
   state.swings.push({
-    // Origin is re-resolved every frame from the player's CURRENT position via
-    // weaponIndex/slotCount (see weaponSwingOrigin), so the club stays anchored to its
-    // orbiting slot instead of detaching mid-swing if the player moves. x/y below are
-    // only a same-frame fallback for anything reading them before the first update tick.
+    // Origin is re-resolved every frame from the OWNING player's (see playerIndex below)
+    // CURRENT position via weaponIndex/slotCount (see weaponSwingOrigin), so the club stays
+    // anchored to its orbiting slot instead of detaching mid-swing if the player moves. x/y
+    // below are only a same-frame fallback for anything reading them before the first update
+    // tick.
     x: slot.x,
     y: slot.y,
+    // PHASE 1 CO-OP: which player this swing belongs to, so weaponSwingOrigin (07-combat.js)
+    // and isWeaponSlotSwinging (08-render.js) resolve against the CORRECT player instead of
+    // always state.player -- otherwise P2's club would visually snap back to P1's position
+    // every frame, and P1's idle weapon slot would wrongly hide itself while P2 is swinging
+    // the same-index weapon.
+    playerIndex,
     weaponIndex,
     slotCount,
     angle,
@@ -1524,7 +1703,11 @@ function processWeaponSwingHits(swing) {
 // direction stays locked at spawn; only the pivot point tracks the player.
 function weaponSwingOrigin(swing) {
   if (swing.slotCount > 0) {
-    const slot = getWeaponSlotPosition(state.player, swing.weaponIndex, swing.slotCount);
+    // PHASE 1 CO-OP: resolve against the swing's OWNING player (see fireSwingWeapon), falling
+    // back to state.player for any pre-existing swing object that predates this field (should
+    // never happen in practice -- swings are short-lived -- but keeps this defensive).
+    const owner = state.players[swing.playerIndex ?? 0] ?? state.player;
+    const slot = getWeaponSlotPosition(owner, swing.weaponIndex, swing.slotCount);
     return slot;
   }
   return swing;
@@ -1715,7 +1898,6 @@ function applyArmedEnemyPoke(enemy, dt, player) {
 }
 
 function updateEnemies(dt) {
-  const player = state.player;
   // One pass up front instead of a full array scan per lookup - see refreshDrummerBuffs.
   refreshDrummerBuffs();
   applyEnemySeparation(dt);
@@ -1740,7 +1922,7 @@ function updateEnemies(dt) {
     }
 
     updateEnemyBehavior(enemy, dt);
-    if (armedEnemiesActive) applyArmedEnemyPoke(enemy, dt, player);
+    if (armedEnemiesActive) applyArmedEnemyPoke(enemy, dt, nearestPlayerTo(enemy.x, enemy.y));
 
     // Natural, slime-like motion: instead of snapping straight at the player every frame,
     // ease the actual movement velocity (mvx/mvy) toward the behavior's desired velocity
@@ -1777,21 +1959,37 @@ function updateEnemies(dt) {
     enemy.y = clamp(enemy.y, enemy.radius, H - enemy.radius);
     enemy.bob += dt * 5;
 
-    const overlap = playerHitRadius() + enemy.radius;
-    if (distSq(player, enemy) < overlap * overlap) {
-      if (enemy.contactCooldown <= 0) {
+    // PHASE 1 CO-OP: contact damage now checks every non-downed player, not just state.player.
+    // One enemy can still only land ONE contact hit per ENEMY_CONTACT_COOLDOWN window (the
+    // shared cooldown lives on the enemy, unchanged) -- with two players standing in the same
+    // crowd, whichever one it's currently overlapping (the nearest, if it overlaps both, since
+    // that's the only one within a small hitbox radius in practice) takes that hit, same as a
+    // single player would. This does NOT let one enemy hit both players in the same window.
+    if (enemy.contactCooldown <= 0) {
+      const overlap = playerHitRadius() + enemy.radius;
+      let target = null;
+      let bestDist = overlap * overlap;
+      for (const player of state.players) {
+        if (player.downed) continue;
+        const d = distSq(player, enemy);
+        if (d < bestDist) {
+          bestDist = d;
+          target = player;
+        }
+      }
+      if (target) {
         // NOTE: this deliberately keeps damagePlayer's player-wide hit cooldown rather than
         // bypassing it. Brotato can let every toucher land its own hit because its enemies
         // physically push each other apart, so only a handful reach you at once. Here they
         // stack on the same point -- measured 62 enemies touching at wave 3 and ~290 by wave
         // 15 -- so removing the shared window multiplies contact DPS by 23-110x and kills a
         // full-HP player in about three frames. The shared cooldown IS the balance.
-        const connected = damagePlayer(enemyContactDamage(enemy), enemy.x, enemy.y, enemy.name);
+        const connected = damagePlayer(target, enemyContactDamage(enemy), enemy.x, enemy.y, enemy.name);
         // Blight Sac is poisonous to the touch, not just on death. Only applied when the hit
         // actually lands -- damagePlayer returns false on a dodge or during i-frames, and a
         // blow that never connected should not poison you.
         if (connected && enemy.name === "Blight Sac") {
-          applyPlayerBurn(BLIGHT_TOUCH_TICKS, blightTouchTickDamage(), "Blight Sac", "poison");
+          applyPlayerBurn(target, BLIGHT_TOUCH_TICKS, blightTouchTickDamage(), "Blight Sac", "poison");
         }
         enemy.contactCooldown = ENEMY_CONTACT_COOLDOWN;
       }
@@ -1800,7 +1998,10 @@ function updateEnemies(dt) {
 }
 
 function updateEnemyBehavior(enemy, dt) {
-  const player = state.player;
+  // PHASE 1 CO-OP ENEMY TARGETING: every enemy behavior below chases/aims at the NEAREST
+  // living player (see nearestPlayerTo) instead of always state.player. With one player this
+  // is exactly the same player every time, so single-player behavior is unaffected.
+  const player = nearestPlayerTo(enemy.x, enemy.y);
   const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
   const distance = Math.hypot(player.x - enemy.x, player.y - enemy.y);
   const bufferBoost = isEnemyDrummerBuffed(enemy) ? DRUMMER_SPEED_MULTIPLIER : 1;
@@ -2098,7 +2299,6 @@ function shootEnemyFireball(enemy, angle) {
 }
 
 function updateEnemyBullets(dt) {
-  const player = state.player;
   for (let i = state.enemyBullets.length - 1; i >= 0; i -= 1) {
     const bullet = state.enemyBullets[i];
     bullet.x += bullet.vx * dt;
@@ -2122,16 +2322,21 @@ function updateEnemyBullets(dt) {
       }
     }
 
+    // PHASE 1 CO-OP: a bullet can hit ANY non-downed player it physically overlaps, not just
+    // state.player. Only the nearest overlapping player is tested per bullet per frame (a
+    // bullet is small; overlapping two players' hit circles at once is a rare edge case, and
+    // "the nearest one gets hit" is the least surprising resolution if it ever happens).
     const radius = bullet.radius + playerHitRadius();
-    if (distSq(bullet, player) <= radius * radius) {
+    const victim = nearestPlayerTo(bullet.x, bullet.y);
+    if (victim && !victim.downed && distSq(bullet, victim) <= radius * radius) {
       // Only apply the burn if the hit actually lands — damagePlayer returns false on
       // dodge/i-frames, and a "hit" that didn't connect shouldn't still set you on fire.
-      const landed = damagePlayer(bullet.damage, bullet.x, bullet.y, bullet.sourceName);
+      const landed = damagePlayer(victim, bullet.damage, bullet.x, bullet.y, bullet.sourceName);
       if (landed && bullet.burnTicks) {
         // Pass the flavour explicitly: applyPlayerBurn defaults to "burn", but relying on
         // the default would leave a previously-applied poison's colour/label in place if a
         // projectile ever forgot to set it.
-        applyPlayerBurn(bullet.burnTicks, bullet.burnTickDamage, bullet.sourceName, bullet.burnKind ?? "burn");
+        applyPlayerBurn(victim, bullet.burnTicks, bullet.burnTickDamage, bullet.sourceName, bullet.burnKind ?? "burn");
       }
       if (landed) {
         burst(bullet.x, bullet.y, bullet.kind === "fireball" ? "#ff9c5b" : "#66c7d8", bullet.kind === "fireball" ? 8 : 5);
@@ -2149,10 +2354,15 @@ function updateEnemyBullets(dt) {
   }
 }
 
+// PHASE 1 CO-OP: magnetism/pickup now pulls toward the NEAREST non-downed player instead of
+// always P1, so scrap on P2's side of the arena actually gets pulled toward P2. Scrap is
+// still a single shared pool (state.scrap), matching the "shared decisions" design -- only
+// WHO physically collects it changed.
 function updateCoins(dt) {
-  const player = state.player;
   for (let i = state.coins.length - 1; i >= 0; i -= 1) {
     const coin = state.coins[i];
+    const player = nearestPlayerTo(coin.x, coin.y);
+    if (!player || player.downed) continue;
     const dx = player.x - coin.x;
     const dy = player.y - coin.y;
     const distance = Math.hypot(dx, dy);
@@ -2174,12 +2384,17 @@ function updateCoins(dt) {
 }
 
 function updateBulbs() {
-  const player = state.player;
   for (let i = state.bulbs.length - 1; i >= 0; i -= 1) {
     const bulb = state.bulbs[i];
-    const radius = player.radius + bulb.radius;
-    if (distSq(player, bulb) <= radius * radius) {
-      breakBulb(i);
+    // PHASE 1 CO-OP: any non-downed player touching a bulb pops it (and gets healed by it),
+    // not just P1.
+    for (const player of state.players) {
+      if (player.downed) continue;
+      const radius = player.radius + bulb.radius;
+      if (distSq(player, bulb) <= radius * radius) {
+        breakBulb(i, player);
+        break;
+      }
     }
   }
 }
@@ -2325,8 +2540,9 @@ function breakCrate(index) {
 // Broken crates linger a moment (showing the open sprite), then are removed; their drop
 // becomes collectible. Drops magnet toward the player and, on contact, hand the reward to
 // the crate-reward flow so the player picks the item up mid-run.
+// PHASE 1 CO-OP: crate drops (like coins) magnet toward whichever player is nearest to them,
+// not always P1.
 function updateCrates(dt) {
-  const player = state.player;
   for (let i = state.crates.length - 1; i >= 0; i -= 1) {
     const crate = state.crates[i];
     crate.bob += dt * 2.2;
@@ -2348,6 +2564,8 @@ function updateCrates(dt) {
     drop.bob += dt * 3;
     drop.life += dt;
     if (!drop.ready) continue;
+    const player = nearestPlayerTo(drop.x, drop.y);
+    if (!player || player.downed) continue;
     const dx = player.x - drop.x;
     const dy = player.y - drop.y;
     const distance = Math.hypot(dx, dy);
@@ -2373,11 +2591,11 @@ function collectCrateDrop(drop) {
   addFloater(drop.x, drop.y - 12, "CRATE");
 }
 
-function breakBulb(index) {
+function breakBulb(index, player = state.player) {
   const bulb = state.bulbs[index];
-  const wasFull = state.player.hp >= state.player.maxHp;
+  const wasFull = player.hp >= player.maxHp;
   state.bulbs.splice(index, 1);
-  heal(bulb.heal);
+  heal(bulb.heal, player);
   playSfx("heal");
   burst(bulb.x, bulb.y, "#ff8fa3", 15);
   addFloater(bulb.x, bulb.y - bulb.radius, `+${bulb.heal} HP`);
@@ -2491,12 +2709,14 @@ function spawnPoisonPool(enemy) {
 
 // Magnet-collected like a coin. Kept in its own array rather than reusing state.coins so
 // the cookie can grow a real effect later without entangling it with the scrap economy.
+// PHASE 1 CO-OP: fortune cookies magnet toward whichever player is nearest, same as coins.
 function updateFortuneCookies(dt) {
-  const player = state.player;
   for (let i = state.fortuneCookies.length - 1; i >= 0; i -= 1) {
     const cookie = state.fortuneCookies[i];
     cookie.bob += dt * 2.4;
     cookie.life += dt;
+    const player = nearestPlayerTo(cookie.x, cookie.y);
+    if (!player || player.downed) continue;
     const dx = player.x - cookie.x;
     const dy = player.y - cookie.y;
     const distance = Math.hypot(dx, dy) || 1;
@@ -2528,7 +2748,6 @@ function updateFortuneCookies(dt) {
 // stand in the pool. Mirrors updateFortuneCookies' structure/array ownership pattern.
 function updatePoisonPools(dt) {
   if (!state.poisonPools) return;
-  const player = state.player;
   for (let i = state.poisonPools.length - 1; i >= 0; i -= 1) {
     const pool = state.poisonPools[i];
     pool.bob += dt * 2;
@@ -2538,18 +2757,24 @@ function updatePoisonPools(dt) {
       state.poisonPools.splice(i, 1);
       continue;
     }
-    const radius = pool.radius + playerHitRadius();
-    if (pool.tickTimer <= 0 && distSq(pool, player) <= radius * radius) {
-      // damagePlayer already raises its own "-N" floater on a successful hit, so no need
-      // to duplicate it here.
-      //
-      // ignoreCooldown is essential here: while you are standing in a pool you are almost
-      // always being touched by something too, and the shared 0.22s i-frame window meant
-      // whichever landed first ate the other. The pool has its OWN 0.55s tick timer, so it
-      // is already rate-limited -- the shared window was double-limiting it down to near
-      // nothing, which is why it felt like standing in poison barely mattered.
-      const tickDamage = Math.max(1, Math.round(POISON_POOL_BASE + state.wave * POISON_POOL_SCALE));
-      damagePlayer(tickDamage, pool.x, pool.y, "Poison Pool", { ignoreCooldown: true });
+    // PHASE 1 CO-OP: ticks EVERY non-downed player standing in the pool, not just P1 -- a
+    // shared hazard should hurt whoever is actually stood in it. The pool's own tickTimer is
+    // still a single shared clock (not per-player), same cadence as before.
+    if (pool.tickTimer <= 0) {
+      const radius = pool.radius + playerHitRadius();
+      for (const player of state.players) {
+        if (player.downed || distSq(pool, player) > radius * radius) continue;
+        // damagePlayer already raises its own "-N" floater on a successful hit, so no need
+        // to duplicate it here.
+        //
+        // ignoreCooldown is essential here: while you are standing in a pool you are almost
+        // always being touched by something too, and the shared 0.22s i-frame window meant
+        // whichever landed first ate the other. The pool has its OWN 0.55s tick timer, so it
+        // is already rate-limited -- the shared window was double-limiting it down to near
+        // nothing, which is why it felt like standing in poison barely mattered.
+        const tickDamage = Math.max(1, Math.round(POISON_POOL_BASE + state.wave * POISON_POOL_SCALE));
+        damagePlayer(player, tickDamage, pool.x, pool.y, "Poison Pool", { ignoreCooldown: true });
+      }
       pool.tickTimer = POISON_POOL_TICK;
     }
   }
@@ -2940,7 +3165,7 @@ function pickBossAttack(boss) {
 // template speed already adjusted by any Drummer buff (unused here since bosses don't buff,
 // but kept for signature symmetry with the other behavior branches).
 function updateNibblerKingBehavior(boss, dt, angleToPlayer, distanceToPlayer, speed) {
-  const player = state.player;
+  const player = nearestPlayerTo(boss.x, boss.y);
 
   // v0.19.1 club-angle-sync fix: cache ONE timestamp for this whole frame/tick that
   // nibblerKingClubAngle (js/08-render.js) reads instead of each caller independently calling
@@ -3155,7 +3380,7 @@ function updateNibblerKingBehavior(boss, dt, angleToPlayer, distanceToPlayer, sp
 // reads boss.bossTelegraph to draw the actual warning shape (arc/cone, ground circle(s), or a
 // path line) -- this only records WHAT to warn about and WHERE, not how it looks.
 function startBossTelegraph(boss) {
-  const player = state.player;
+  const player = nearestPlayerTo(boss.x, boss.y);
   if (boss.bossAttack === "weaponSwing") {
     // v0.19.0 club-hit rework: range now reads the ACTUAL club reach (pivotReach + clubLength)
     // from the shared nibblerKingClubGeometry helper (js/08-render.js) when available, instead
@@ -3353,7 +3578,7 @@ function startBossTelegraph(boss) {
 // each branch. All damage numbers are boss contact-scale multiples, not the flat contact
 // damage itself, so each attack reads as clearly more dangerous than just touching the boss.
 function executeBossStrike(boss) {
-  const player = state.player;
+  const player = nearestPlayerTo(boss.x, boss.y);
   const phase2 = boss.bossPhase >= 2;
 
   if (boss.bossAttack === "weaponSwing") {
@@ -3434,7 +3659,7 @@ function executeBossStrike(boss) {
     const dist = Math.hypot(player.x - cx, player.y - cy);
     if (dist <= slamRadius + playerHitRadius()) {
       const damage = Math.round(boss.damage * (phase2 ? 2.2 : 1.7));
-      damagePlayer(damage, cx, cy, "Nibbler King");
+      damagePlayer(player, damage, cx, cy, "Nibbler King");
     }
     addShake(9, true);
     playSfx("explosion");
@@ -3455,7 +3680,7 @@ function executeBossStrike(boss) {
     const dist = Math.hypot(player.x - boss.x, player.y - boss.y);
     if (dist <= boss.radius + playerHitRadius() + 40) {
       const damage = Math.round(boss.damage * (phase2 ? 2.4 : 1.8));
-      damagePlayer(damage, boss.x, boss.y, "Nibbler King");
+      damagePlayer(player, damage, boss.x, boss.y, "Nibbler King");
     }
     burst(boss.x, boss.y, "#ffd15f", 16);
     playSfx("hit");
@@ -3497,7 +3722,7 @@ function executeBossStrike(boss) {
       // no-armor wave-10 build. This keeps it the hardest-hitting punish attack in the kit
       // while still leaving real margin to survive a missed dodge.
       const damage = Math.round(boss.damage * (phase2 ? 1.9 : 1.6));
-      damagePlayer(damage, cx, cy, "Nibbler King");
+      damagePlayer(player, damage, cx, cy, "Nibbler King");
     }
     addShake(10, true);
     playSfx("explosion");
@@ -3612,7 +3837,7 @@ function executeBossStrike(boss) {
 // the boss's CURRENT position (each ring re-centres, unlike groundSlam's single fixed spot),
 // dealing damage once via a simple distance check, same convention as groundSlam.
 function fireGroundPoundRing(boss, index) {
-  const player = state.player;
+  const player = nearestPlayerTo(boss.x, boss.y);
   const phase2 = boss.bossPhase >= 2;
   const ringRadius = boss.radius * (phase2 ? BOSS_POUND_REACH_MULT.p2 : BOSS_POUND_REACH_MULT.p1);
   boss.bossPoundRings = boss.bossPoundRings ?? [];
@@ -3620,7 +3845,7 @@ function fireGroundPoundRing(boss, index) {
   const dist = Math.hypot(player.x - boss.x, player.y - boss.y);
   if (dist <= ringRadius + playerHitRadius()) {
     const damage = Math.round(boss.damage * (phase2 ? 0.85 : 0.6));
-    damagePlayer(damage, boss.x, boss.y, "Nibbler King");
+    damagePlayer(player, damage, boss.x, boss.y, "Nibbler King");
   }
   addShake(5, true);
   playSfx("explosion");
@@ -3651,7 +3876,7 @@ function runGroundPoundTick(boss, dt) {
 // (roughly 90% through), matching the documented "simplify to 1-2 discrete hit-check points"
 // fallback for this attack.
 function runCrownTossTick(boss, dt) {
-  const player = state.player;
+  const player = nearestPlayerTo(boss.x, boss.y);
   const phase2 = boss.bossPhase >= 2;
   const timing = bossAttackTiming("crownToss", boss.bossPhase);
   const elapsedInStrike = timing.strike - boss.bossTimer;
@@ -3669,7 +3894,7 @@ function runCrownTossTick(boss, dt) {
     const dist = Math.hypot(player.x - hitX, player.y - hitY);
     if (dist <= 40 + playerHitRadius()) {
       const damage = Math.round(boss.damage * (phase2 ? 1.3 : 0.9));
-      damagePlayer(damage, hitX, hitY, "Nibbler King");
+      damagePlayer(player, damage, hitX, hitY, "Nibbler King");
     }
     burst(hitX, hitY, "#f2c45f", 10);
   } else if (boss._crownHitsLanded < 2 && elapsedInStrike >= backAt) {
@@ -3678,7 +3903,7 @@ function runCrownTossTick(boss, dt) {
     const dist = Math.hypot(player.x - boss.x, player.y - boss.y);
     if (dist <= 40 + playerHitRadius()) {
       const damage = Math.round(boss.damage * (phase2 ? 1.3 : 0.9));
-      damagePlayer(damage, boss.x, boss.y, "Nibbler King");
+      damagePlayer(player, damage, boss.x, boss.y, "Nibbler King");
     }
     burst(boss.x, boss.y, "#f2c45f", 10);
   } else if (elapsedInStrike < outAt) {
@@ -3698,7 +3923,7 @@ function runCrownTossTick(boss, dt) {
 // same distance-check convention as spinSweep but much shorter range and lower per-hit damage
 // since it fires several times in quick succession.
 function fireStompQuakePulse(boss, index) {
-  const player = state.player;
+  const player = nearestPlayerTo(boss.x, boss.y);
   const phase2 = boss.bossPhase >= 2;
   const quakeRadius = boss.radius * BOSS_QUAKE_REACH_MULT;
   const dist = Math.hypot(player.x - boss.x, player.y - boss.y);
@@ -3707,7 +3932,7 @@ function fireStompQuakePulse(boss, index) {
     // and at 0.7x the phase-2 chain totalled 96 damage -- over a lean ~90 HP build's entire
     // health bar. At 0.65x the full 4-pulse chain is 88 phase-2 / 61 phase-1, safely under.
     const damage = Math.round(boss.damage * (phase2 ? 0.65 : 0.45));
-    damagePlayer(damage, boss.x, boss.y, "Nibbler King");
+    damagePlayer(player, damage, boss.x, boss.y, "Nibbler King");
   }
   boss.bossQuakeRing = { x: boss.x, y: boss.y, radius: quakeRadius, life: 0.25, maxLife: 0.25 };
   addShake(4, true);
@@ -3741,7 +3966,7 @@ function runStompQuakeTick(boss, dt) {
 // instead of a hit counter: touching the beam at any point during the sweep lands exactly one
 // hit, same one-hit-per-strike contract as every other melee attack in the kit.
 function runLaserSweepTick(boss, dt) {
-  const player = state.player;
+  const player = nearestPlayerTo(boss.x, boss.y);
   const phase2 = boss.bossPhase >= 2;
   const timing = bossAttackTiming("laserSweep", boss.bossPhase);
   const telegraph = boss.bossTelegraph;
@@ -3768,7 +3993,7 @@ function runLaserSweepTick(boss, dt) {
     if (dist <= beamThickness + playerHitRadius()) {
       boss._laserHitLanded = true;
       const damage = Math.round(boss.damage * (phase2 ? 1.4 : 1.1));
-      damagePlayer(damage, closestX, closestY, "Nibbler King");
+      damagePlayer(player, damage, closestX, closestY, "Nibbler King");
       burst(closestX, closestY, "#7ef2ff", 12);
     }
   }
@@ -3777,7 +4002,7 @@ function runLaserSweepTick(boss, dt) {
 // Fires round N (0-2) of the triple volley: a single fast aimed shot at the player's position
 // AT THE MOMENT OF FIRING (not homing), same convention as shootBossPellet.
 function fireTripleVolleyRound(boss, index) {
-  const player = state.player;
+  const player = nearestPlayerTo(boss.x, boss.y);
   const phase2 = boss.bossPhase >= 2;
   const angle = Math.atan2(player.y - boss.y, player.x - boss.x);
   shootBossPellet(boss, angle, phase2);
@@ -3840,7 +4065,7 @@ function runSlamComboTick(boss, dt) {
 // instant -- instead of the raw, un-eased angles[index] telegraph value, so the checkpoint hit
 // test matches what's on screen at the moment it fires rather than the combo's final rest angle.
 function landSlamComboHit(boss, index) {
-  const player = state.player;
+  const player = nearestPlayerTo(boss.x, boss.y);
   const phase2 = boss.bossPhase >= 2;
   const angle = (typeof nibblerKingClubAngle === "function" ? nibblerKingClubAngle(boss) : null)
     ?? boss.bossTelegraph?.angles?.[index] ?? Math.atan2(player.y - boss.y, player.x - boss.x);
@@ -3872,7 +4097,7 @@ function landSlamComboHit(boss, index) {
     // near-death mistake for the leanest build, but no longer a guaranteed kill, and each
     // individual swing still hurts enough to demand real movement.
     const damage = Math.round(boss.damage * (phase2 ? 0.85 : 0.68));
-    damagePlayer(damage, boss.x, boss.y, "Nibbler King");
+    damagePlayer(player, damage, boss.x, boss.y, "Nibbler King");
   }
   const range = boss.bossTelegraph?.range ?? boss.radius * BOSS_COMBO_REACH_MULT;
   playSfx("swing");
@@ -3891,7 +4116,7 @@ function landSlamComboHit(boss, index) {
 // single latch (boss._swingHitLanded, reset in executeBossStrike's caller/strike-end cleanup)
 // means only the first frame the sweeping club touches the player deals damage.
 function runWeaponSwingTick(boss) {
-  const player = state.player;
+  const player = nearestPlayerTo(boss.x, boss.y);
   const phase2 = boss.bossPhase >= 2;
   const angle = (typeof nibblerKingClubAngle === "function" ? nibblerKingClubAngle(boss) : null)
     ?? boss.bossTelegraph?.angle ?? Math.atan2(player.y - boss.y, player.x - boss.x);
@@ -3915,7 +4140,7 @@ function runWeaponSwingTick(boss) {
   if (hit && !boss._swingHitLanded) {
     boss._swingHitLanded = true; // latch: this strike can only land once, same pattern as boss._laserHitLanded
     const damage = Math.round(boss.damage * (phase2 ? 2.6 : 2.0));
-    damagePlayer(damage, boss.x, boss.y, "Nibbler King");
+    damagePlayer(player, damage, boss.x, boss.y, "Nibbler King");
   }
 }
 
@@ -3931,7 +4156,7 @@ function runWeaponSwingTick(boss) {
 // damage -- without it, the player could take damage every single frame the club overlaps them
 // (a continuous circle-based tick), which would erase any benefit of dodging out mid-spin.
 function runSpinSweepTick(boss) {
-  const player = state.player;
+  const player = nearestPlayerTo(boss.x, boss.y);
   const phase2 = boss.bossPhase >= 2;
   const angle = (typeof nibblerKingClubAngle === "function" ? nibblerKingClubAngle(boss) : null)
     ?? (performance.now() / 1000) * (boss.bossState === "strike" ? 14 : 4);
@@ -3949,7 +4174,7 @@ function runSpinSweepTick(boss) {
   if (hit && !boss._spinHitLanded) {
     boss._spinHitLanded = true;
     const damage = Math.round(boss.damage * (phase2 ? 2.0 : 1.5));
-    damagePlayer(damage, boss.x, boss.y, "Nibbler King");
+    damagePlayer(player, damage, boss.x, boss.y, "Nibbler King");
   }
 }
 

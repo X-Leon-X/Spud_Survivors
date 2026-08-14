@@ -12,6 +12,10 @@ const ui = {
   bag: document.getElementById("bagText"),
   hpFill: document.getElementById("hpFill"),
   hpText: document.getElementById("hpText"),
+  // PHASE 1 CO-OP: P2's health bar, hidden unless P2 is active -- see updateHud() (js/06-shop.js).
+  hpStat2: document.getElementById("hpStat2"),
+  hpFill2: document.getElementById("hpFill2"),
+  hpText2: document.getElementById("hpText2"),
   // Boss health bar (BOSS SYSTEM). Only shown during a boss fight -- see updateHud().
   bossBar: document.getElementById("bossBar"),
   bossBarFill: document.getElementById("bossBarFill"),

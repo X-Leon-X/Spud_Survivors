@@ -161,6 +161,13 @@ window.addEventListener("keydown", (event) => {
   if (event.code === "KeyR" && state.mode === "gameover") {
     showStartMenu();
   }
+  // PHASE 1 CO-OP: KeyP toggles Player 2 in/out. Works at the title screen and mid-run;
+  // deliberately excluded while a text input might have focus (none exist in this game, but
+  // guarding on state.mode keeps it from firing during, say, the pause/shop/reward overlays
+  // where a stray P shouldn't silently add a second player behind a menu).
+  if (event.code === "KeyP" && (state.mode === "playing" || state.mode === "menu")) {
+    togglePlayerTwo();
+  }
 });
 
 window.addEventListener("keyup", (event) => {

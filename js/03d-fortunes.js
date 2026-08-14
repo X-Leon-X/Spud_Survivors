@@ -117,8 +117,15 @@ const FORTUNE_EFFECTS = [
       const amount = magnitudeFor(rarity.key, { common: 8, uncommon: 14, rare: 22, epic: 32, legendary: 45, unique: 65 });
       if (typeof grantTempStat === "function") grantTempStat("maxHp", amount);
       // Heal by the same amount so the buff is felt immediately, not just as a raised cap.
-      if (typeof state !== "undefined" && state.player && typeof state.player.hp === "number") {
-        state.player.hp += amount;
+      // PHASE 1 CO-OP: applies to every player, not just P1 -- falls back to state.player if
+      // state.players is unavailable so this stays safe even loaded standalone/out of order.
+      if (typeof state !== "undefined") {
+        const targets = Array.isArray(state.players) ? state.players : (state.player ? [state.player] : []);
+        for (const player of targets) {
+          if (!player || typeof player.hp !== "number") continue;
+          const cap = typeof player.maxHp === "number" ? player.maxHp : Infinity;
+          player.hp = Math.min(cap, player.hp + amount);
+        }
       }
     },
   },

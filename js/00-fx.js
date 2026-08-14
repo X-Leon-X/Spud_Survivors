@@ -109,8 +109,12 @@ function spawnEnemyDeath(enemy) {
     color: enemy.color,
     bob: enemy.bob,
     // Same orientation correction the live sprite uses, so left-facing art (the Darter)
-    // doesn't snap around the moment it dies.
-    facing: (state.player && state.player.x < enemy.x ? -1 : 1) * enemyArtFacingSign(enemy.name),
+    // doesn't snap around the moment it dies. PHASE 1 CO-OP: faces the nearest player, same
+    // as the live sprite's own facing logic in js/08-render.js.
+    facing: (() => {
+      const target = typeof nearestPlayerTo === "function" ? nearestPlayerTo(enemy.x, enemy.y) : state.player;
+      return (target && target.x < enemy.x ? -1 : 1) * enemyArtFacingSign(enemy.name);
+    })(),
     life: 0.28,
     maxLife: 0.28
   });

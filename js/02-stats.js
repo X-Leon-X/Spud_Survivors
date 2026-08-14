@@ -307,7 +307,12 @@ function clearTempModifiers() {
 function applyImmediatePurchaseEffect(item) {
   const effects = upgradeEffectsFor(item.id, item.tier ?? 1);
   if (effects.heal > 0) {
-    heal(effects.heal);
+    // PHASE 1 CO-OP: the shop/build is shared (one mouse, one purchase), so an immediate-heal
+    // item heals every player, not just P1.
+    const targets = Array.isArray(state.players) ? state.players : [state.player];
+    for (const player of targets) {
+      if (player) heal(effects.heal, player);
+    }
   }
 }
 
@@ -386,8 +391,11 @@ function slotMachineThrowAwayCost() {
   return Math.max(220, Math.round(calculateShopCost(70, UNIQUE_TIER)));
 }
 
-function heal(amount) {
-  state.player.hp = Math.min(state.player.maxHp, state.player.hp + amount);
+// PHASE 1 CO-OP: `player` defaults to state.player (P1) so every pre-existing no-arg call
+// (regeneratePlayer, lifesteal in applyBulletHit, etc.) keeps healing exactly who it always
+// did. Callers that now loop per-player (see regeneratePlayer below) pass the specific player.
+function heal(amount, player = state.player) {
+  player.hp = Math.min(player.maxHp, player.hp + amount);
 }
 
 function brotatoPercentMultiplier(value) {
@@ -432,8 +440,15 @@ function hpRegenHealDelay(regen) {
 // shared i-frame window as well double-limits them into irrelevance: whichever of "an enemy
 // touched you" or "the pool ticked" landed first silently ate the other. It must NOT be used
 // for contact or projectile damage, where the shared window is the actual crowd balance.
-function damagePlayer(rawDamage, sourceX, sourceY, sourceName, opts = {}) {
-  const player = state.player;
+//
+// PHASE 1 CO-OP: takes an explicit `player` target as the new first argument (every call site
+// across the codebase was updated to pass one -- grepped for every damagePlayer( call). A
+// downed player can't be damaged further (already at 0 HP and out of the fight), so that's
+// checked right alongside the existing peashooterOnly/cooldown early-returns.
+function damagePlayer(player, rawDamage, sourceX, sourceY, sourceName, opts = {}) {
+  if (player.downed) {
+    return false;
+  }
   // CLOWN fortune peashooterOnly: the trade for being stripped to a single default weapon is
   // that the player literally cannot die this wave. Checked first, before the hit-cooldown
   // early-return above it, so it applies to every damage source (contact, projectiles, burn
@@ -489,8 +504,12 @@ function damagePlayer(rawDamage, sourceX, sourceY, sourceName, opts = {}) {
 // burn ticks during normal i-frames and steal i-frames from a real follow-up hit. Reapplying
 // while already burning refreshes the ticks rather than stacking them indefinitely.
 // `kind` selects the flavour shown on each tick ("burn" or "poison"); see tickPlayerBurn.
-function applyPlayerBurn(ticks, tickDamage, sourceName, kind = "burn") {
-  const player = state.player;
+// PHASE 1 CO-OP: `player` defaults to state.player (P1) so the many existing no-arg call sites
+// (Ember Glob fireball impact, etc. -- all still single-player-shaped call paths) keep burning
+// whoever they always burned. The one NEW multi-player call site (Blight Sac contact poison, in
+// updateEnemies) passes the specific player who got touched.
+function applyPlayerBurn(player, ticks, tickDamage, sourceName, kind = "burn") {
+  if (player.downed) return;
   player.burnTicksLeft = ticks;
   player.burnTickTimer = 1;
   player.burnTickDamage = tickDamage;
@@ -498,8 +517,20 @@ function applyPlayerBurn(ticks, tickDamage, sourceName, kind = "burn") {
   player.burnKind = kind;
 }
 
+// PHASE 1 CO-OP: loops every player instead of ticking a single state.player -- each player's
+// burn/poison state (burnTicksLeft/burnTickTimer/etc.) already lives on their own player
+// object, so this only needed to stop assuming there is exactly one.
 function tickPlayerBurn(dt) {
-  const player = state.player;
+  for (const player of state.players) {
+    tickPlayerBurnFor(player, dt);
+  }
+}
+
+function tickPlayerBurnFor(player, dt) {
+  if (player.downed) {
+    player.burnTicksLeft = 0;
+    return;
+  }
   if (!player.burnTicksLeft || player.burnTicksLeft <= 0) {
     return;
   }

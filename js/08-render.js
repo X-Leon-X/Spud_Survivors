@@ -38,8 +38,19 @@ function draw() {
     }
   }
   for (const enemy of state.enemies) drawEnemy(enemy);
-  drawPlayer(state.player);
-  drawArenaWeapon(state.player);
+  // PHASE 1 CO-OP: draws every player. P1 (index 0) calls drawArenaWeapon exactly as before
+  // (no runtimeFor argument -- defaults to reading state.weapons[index] directly), so
+  // single-player rendering is unchanged. Any additional player passes a lookup into their
+  // own weaponRuntimeFor() slots (js/07-combat.js) so their recoil/fire-animation never reads
+  // or collides with P1's.
+  for (const player of state.players) {
+    drawPlayer(player);
+    if (player.index === 0) {
+      drawArenaWeapon(player);
+    } else {
+      drawArenaWeapon(player, (weapon, index) => weaponRuntimeFor(player, index));
+    }
+  }
   for (const swing of state.swings) drawWeaponSwing(swing);
   for (const zap of state.zaps) drawEngineeringZap(zap);
   for (const p of state.particles) drawParticle(p);
@@ -66,7 +77,12 @@ function drawScreenFeedback() {
   }
 
   if (state.mode === "playing" || state.mode === "gameover") {
-    const ratio = clamp(state.player.hp / Math.max(1, state.player.maxHp), 0, 1);
+    // PHASE 1 CO-OP: the low-HP vignette reacts to whichever LIVING player is in the worst
+    // shape, not just P1 -- with two players, P1 sitting safely at full HP shouldn't hide the
+    // warning while P2 is one hit from downed. Falls back to state.player if every player is
+    // downed (matches nearestPlayerTo's own fallback convention).
+    const worst = state.players.reduce((min, p) => (p.downed ? min : Math.min(min, p.hp / Math.max(1, p.maxHp))), Infinity);
+    const ratio = clamp(worst === Infinity ? state.player.hp / Math.max(1, state.player.maxHp) : worst, 0, 1);
     if (ratio < 0.35) {
       const pulse = 0.6 + Math.sin(performance.now() / 240) * 0.4;
       const strength = (0.35 - ratio) / 0.35;
@@ -122,13 +138,21 @@ function drawArena() {
 function drawPlayer(player) {
   // Once the run is over the spud is replaced in-place by a little headstone, so the arena
   // still shows where you fell. The big centre-screen gravestone card is separate (see
-  // js/00-gravestone.js) and plays over the top of this.
+  // js/00-gravestone.js) and plays over the top of this. state.mode "gameover" only happens
+  // once EVERY player is downed (see update(), js/07-combat.js), so this still applies to
+  // every player at once, same as single-player.
   if (state.mode === "gameover") {
     drawPlayerGrave(player);
     return;
   }
   ctx.save();
-  const moving = keys.has("KeyW") || keys.has("ArrowUp") || keys.has("KeyS") || keys.has("ArrowDown") || keys.has("KeyA") || keys.has("ArrowLeft") || keys.has("KeyD") || keys.has("ArrowRight");
+  // PHASE 1 CO-OP: bob/lean now reads THIS player's own input (getPlayerInput), not a single
+  // hardcoded WASD-or-Arrows check -- previously that check doubled as "is P1 moving" even
+  // though it also matched Arrow keys, which is harmless in single-player (nobody else reads
+  // Arrows) but would have made P1 and P2 bob in lockstep whenever EITHER moved. A downed
+  // player never bobs (no input is read for them in movePlayer either).
+  const input = player.downed ? { dx: 0, dy: 0 } : getPlayerInput(player.index);
+  const moving = input.dx !== 0 || input.dy !== 0;
   const time = performance.now();
   const bob = moving ? Math.sin(time / 92) * 2.6 : Math.sin(time / 420) * 0.8;
   const lean = moving ? Math.sin(time / 150) * 0.035 : 0;
@@ -137,8 +161,42 @@ function drawPlayer(player) {
   const charScale = state.character?.scale ?? 1;
   const stepSquash = moving ? Math.sin(time / 92) * 0.025 : 0;
   ctx.scale((player.hurtTimer > 0 ? 1.07 : 1 + stepSquash) * charScale, (player.hurtTimer > 0 ? 0.94 : 1 - stepSquash) * charScale);
+  // A downed player (0 HP, still mid-run because a teammate is alive -- see the phase-1
+  // "downed" model in update()) renders greyed/faded instead of vanishing, so it's obvious at
+  // a glance who's still standing.
+  if (player.downed) {
+    ctx.globalAlpha = 0.4;
+    ctx.filter = "grayscale(1)";
+  }
   drawShadow(0, 18, 25, 9);
   drawSpudBody(ctx, state.character ?? characters[0], player.hurtTimer > 0);
+  ctx.restore();
+  if (!player.downed && player.index > 0) {
+    drawPlayerTwoMarker(player, time);
+  }
+}
+
+// PHASE 1 CO-OP: P2 (and any future additional player) needs to be obvious at a glance --
+// a small numbered ring floating above the head, in a colour that reads clearly against the
+// arena and against P1's own hurt-flash red. Kept as a tiny separate draw call (not baked
+// into drawSpudBody) so it never has to touch the shared character-art rendering path P1 also
+// uses, which is exactly what "single-player unchanged" requires.
+function drawPlayerTwoMarker(player, time) {
+  ctx.save();
+  const bob = Math.sin(time / 260) * 2;
+  ctx.translate(player.x, player.y - player.radius - 26 + bob);
+  ctx.beginPath();
+  ctx.arc(0, 0, 11, 0, Math.PI * 2);
+  ctx.fillStyle = "#58aaff";
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "#0d2f4f";
+  ctx.stroke();
+  ctx.fillStyle = "#f7fbff";
+  ctx.font = "bold 13px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("2", 0, 1);
   ctx.restore();
 }
 
@@ -178,7 +236,13 @@ function getPrimaryWeapon() {
   }, null);
 }
 
-function drawArenaWeapon(player) {
+// PHASE 1 CO-OP: `player` picks whose orbit/position the loadout is drawn around (called once
+// per player from draw() below). `runtimeFor(weapon, index)` resolves whichever object holds
+// that weapon's per-shot animation state for THIS player -- defaults to the weapon itself
+// (state.weapons[index]) so P1's call site is completely unchanged; P2's call site passes a
+// lookup into their own weaponRuntimeFor() slots (see js/07-combat.js) so P2's recoil/fire
+// animation never reads or fights over P1's shared weapon object.
+function drawArenaWeapon(player, runtimeFor = (weapon) => weapon) {
   if (!state.weapons.length) return;
 
   const time = performance.now();
@@ -190,17 +254,18 @@ function drawArenaWeapon(player) {
 
   for (let index = 0; index < count; index += 1) {
     const weapon = state.weapons[index];
+    const runtime = runtimeFor(weapon, index);
     // Per-weapon, matching fireEquippedWeapons exactly: a short-reach melee weapon may
     // swing at a crate while the long-range guns stay locked on a distant fight.
     const allowDestructibles = destructiblesTargetable(player, state.weapons, count, weapon);
     const slot = getWeaponSlotPosition(player, index, count, time);
-    if (isWeaponSlotSwinging(weapon, index)) {
+    if (isWeaponSlotSwinging(weapon, index, player.index)) {
       continue;
     }
     // A thrown weapon is literally not in your hand while it's in the air -- the star you
     // can see flying IS this weapon, so drawing it orbiting the player too would show the
     // same object twice. The slot stays empty until it's caught (see updateReturningBullet).
-    if (weapon.airborne) {
+    if (runtime.airborne) {
       continue;
     }
     const target = allowDestructibles
@@ -227,14 +292,14 @@ function drawArenaWeapon(player) {
     // Per-weapon fire animation, layered on top of the shared recoil. `fire` runs 0 -> 1
     // across the shot (0 at the instant of firing), so each weapon can shape its own motion
     // curve rather than every gun sharing one generic kick.
-    const anim = weaponFireAnimation(weapon, time, index);
+    const anim = weaponFireAnimation(weapon, time, index, runtime);
 
     ctx.save();
     ctx.globalAlpha = overlapEnemy ? 0.54 : 0.94;
     ctx.translate(slot.x, slot.y);
     ctx.rotate(angle + anim.rotate);
     // Recoil kick: shove the weapon back along its aim (local -x) right after firing.
-    if (weapon.recoil > 0) ctx.translate(-weapon.recoil, 0);
+    if (runtime.recoil > 0) ctx.translate(-runtime.recoil, 0);
     if (anim.pushX || anim.pushY) ctx.translate(anim.pushX, anim.pushY);
     ctx.scale(scale * breathe * anim.scaleX, scale * breathe * anim.scaleY);
     if (arenaArt) {
@@ -265,11 +330,11 @@ function drawArenaWeapon(player) {
 // The point is that each weapon should read as its own physical object. A slingshot's band
 // snaps forward; a crossbow dips to re-cock; a shotgun lurches. Weapons with no entry fall
 // through to a small shared settle, plus a permanent idle drift so nothing is ever static.
-function weaponFireAnimation(weapon, time, index) {
+function weaponFireAnimation(weapon, time, index, runtime = weapon) {
   const none = { rotate: 0, pushX: 0, pushY: 0, scaleX: 1, scaleY: 1 };
   const name = weapon.name;
-  const max = weapon.fireAnimMax ?? 0;
-  const remaining = weapon.fireAnim ?? 0;
+  const max = runtime.fireAnimMax ?? 0;
+  const remaining = runtime.fireAnim ?? 0;
 
   // Idle life: a slow drift so an unfired weapon still breathes. Deliberately tiny -- it
   // should be felt, not noticed, and must not fight the aim direction.
@@ -373,8 +438,13 @@ function weaponFireAnimation(weapon, time, index) {
 // tracks the same orbiting slot every frame (see weaponSwingOrigin in 07-combat.js), the
 // old "within 12px" distance test could fail on a fast orbit and let the idle PNG and the
 // swinging weapon render on the same frame. An index match can never miss.
-function isWeaponSlotSwinging(weapon, index) {
-  return state.swings.some((swing) => swing.weaponIndex === index && swing.weaponName === weapon.name);
+// PHASE 1 CO-OP: also matched on playerIndex (defaulted to 0 so the single-player call site
+// -- which never passes a third argument -- is unaffected) so P1's idle weapon slot doesn't
+// wrongly hide itself while P2 is swinging the same-index weapon, and vice versa.
+function isWeaponSlotSwinging(weapon, index, playerIndex = 0) {
+  return state.swings.some((swing) =>
+    swing.weaponIndex === index && swing.weaponName === weapon.name && (swing.playerIndex ?? 0) === playerIndex
+  );
 }
 
 function drawWeaponSwing(swing) {
@@ -1987,9 +2057,11 @@ function drawEnemyArtBody(enemy, art) {
   // Face the player: flip only, never rotate, so faces stay upright. Front-facing symmetric
   // sprites (the Bruiser looks straight at the camera) must NOT flip — mirroring them just
   // makes them snap sides for no visual gain and reads as "facing the wrong way".
+  // PHASE 1 CO-OP: faces whichever player it's actually targeting (nearest), not always P1.
+  const facingTarget = nearestPlayerTo(enemy.x, enemy.y);
   const facing = ENEMY_NO_FLIP.has(enemy.name)
     ? 1
-    : (state.player && state.player.x < enemy.x ? -1 : 1) * enemyArtFacingSign(enemy.name);
+    : (facingTarget && facingTarget.x < enemy.x ? -1 : 1) * enemyArtFacingSign(enemy.name);
 
   // Idle wobble: gentle breathing plus a slight lean, unique per enemy.
   const breathe = 1 + Math.sin(time / 300 + enemy.bob) * 0.035;

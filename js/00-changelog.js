@@ -20,6 +20,18 @@
 
 const CHANGELOG = [
   {
+    version: "0.22.0",
+    date: "2026-08-14",
+    title: "Local Two Player Co-op",
+    notes: [
+      "Local two player co-op is in. Press P to bring in a second player.",
+      "Player one uses WASD, player two uses the arrow keys.",
+      "Both players share one scrap pool and one shop, since there is only one mouse.",
+      "The run only ends once both players are down.",
+      "This is early. Single player is unaffected if you never press P."
+    ]
+  },
+  {
     version: "0.21.0",
     date: "2026-08-13",
     title: "The King Digs In",

@@ -209,6 +209,13 @@ canvas {
   height: 14px;
 }
 
+/* PHASE 1 CO-OP: P2's HP bar reuses the same .hp-stat/.bar structure as P1's (so it inherits
+   sizing/layout for free) but tints blue instead of red, matching the P2 marker drawn above
+   P2's head in js/08-render.js, so the two bars are never confused for each other at a glance. */
+.hp-stat-2 #hpFill2 {
+  background: linear-gradient(90deg, #2f6fb0, #58aaff);
+}
+
 .hp-readout {
   color: #ffcf5d;
   font-size: 15px;
