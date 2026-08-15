@@ -2245,18 +2245,29 @@ function isDrummerBuffingEnemy(drummer, target) {
   return distSq(drummer, target) < DRUMMER_BUFF_RADIUS * DRUMMER_BUFF_RADIUS;
 }
 
-function shootEnemyProjectile(enemy, angle) {
+// v0.24.0: optional `speedOverride` parameter added so the Nibbler King's own projectile
+// attacks (seedSpray/radialBurst/gapWall/tripleVolley, all routed through shootBossPellet ->
+// this function) can be raised to ~250 WITHOUT touching every other enemy's shots (Spitter's
+// glob, Thistle's thorn, etc.), which all keep the base 200 by simply omitting the argument.
+// Life is rescaled proportionally when an override is given so the shot's travel DISTANCE
+// stays consistent with the base-speed convention documented below (same reasoning as the
+// original 235->200 nerf comment: changing speed alone would quietly also change reach).
+function shootEnemyProjectile(enemy, angle, speedOverride) {
+  // Speed 235 -> 200 so the shot is readable and sidesteppable at range. Life raised
+  // 2.8 -> 3.3 to preserve the old ~660 travel distance (235*2.8 ~= 200*3.3), otherwise
+  // the nerf would quietly cut the Spitter's effective reach as well as its speed.
+  const baseSpeed = 200;
+  const baseLife = 3.3;
+  const speed = speedOverride ?? baseSpeed;
+  const life = speedOverride ? (baseSpeed * baseLife) / speedOverride : baseLife;
   state.enemyBullets.push({
     x: enemy.x + Math.cos(angle) * (enemy.radius + 8),
     y: enemy.y + Math.sin(angle) * (enemy.radius + 8),
-    // Speed 235 -> 200 so the shot is readable and sidesteppable at range. Life raised
-    // 2.8 -> 3.3 to preserve the old ~660 travel distance (235*2.8 ~= 200*3.3), otherwise
-    // the nerf would quietly cut the Spitter's effective reach as well as its speed.
-    vx: Math.cos(angle) * 200,
-    vy: Math.sin(angle) * 200,
+    vx: Math.cos(angle) * speed,
+    vy: Math.sin(angle) * speed,
     radius: 7,
     damage: Math.max(1, Math.round(enemyContactDamage(enemy) * 0.8)),
-    life: 3.3,
+    life,
     sourceName: enemy.name,
     // Spitter and Thistle both shoot through this function, but they must not look alike:
     // the Spitter lobs a wet cyan glob, the Thistle fires a barbed green thorn. `kind`
@@ -2266,6 +2277,11 @@ function shootEnemyProjectile(enemy, angle) {
   });
   burst(enemy.x, enemy.y, enemy.behavior === "turret" ? "#7fae5c" : "#66c7d8", 4);
 }
+
+// v0.24.0: shared speed override for every one of the Nibbler King's own projectile attacks
+// (seedSpray/radialBurst/gapWall/tripleVolley) -- 200 -> 250 (~+25%), passed explicitly at each
+// boss call site below so no other enemy's shots are affected.
+const BOSS_PROJECTILE_SPEED = 250;
 
 function shootEnemyFireball(enemy, angle) {
   // Fireballs should hit harder than a Spitter shot (~8) despite Ember Glob's lower base
@@ -3064,51 +3080,62 @@ const BOSS_CROWN_THROW_MULT = 3.0; // crownToss throw range = boss.radius * this
 // warnings you can actually react to -- see js/00-changelog.js 0.18.0 entry. p2 telegraphs stay
 // strictly shorter than p1 for the same attack. Strike/recover values are UNCHANGED except
 // charge's strike (see the "charge" entry) and the brand new attacks at the bottom.
+// v0.24.0 cadence buff: every RECOVER value below (both phases, all attacks) cut by ~30% so the
+// King spends far less of each attack cycle standing idle after a strike. Telegraph and strike
+// durations are UNCHANGED -- warnings stay exactly as fair/readable as before, only the dead
+// time after the hit lands is shorter. See js/00-changelog.js 0.24.0 entry and the recover
+// before/after table in that entry's accompanying balance notes.
 const BOSS_ATTACK_TIMING = {
-  weaponSwing: { p1: { telegraph: 1.15, strike: 0.22, recover: 0.9 }, p2: { telegraph: 0.72, strike: 0.18, recover: 0.55 } },
-  summonNibblers: { p1: { telegraph: 1.5, strike: 0.05, recover: 0.7 }, p2: { telegraph: 1.05, strike: 0.05, recover: 0.45 } },
-  nibblerLaunch: { p1: { telegraph: 1.2, strike: 0.05, recover: 1.1 }, p2: { telegraph: 0.78, strike: 0.05, recover: 0.75 } },
-  groundSlam: { p1: { telegraph: 1.35, strike: 0.25, recover: 1.0 }, p2: { telegraph: 0.85, strike: 0.2, recover: 0.6 } },
+  weaponSwing: { p1: { telegraph: 1.15, strike: 0.22, recover: 0.63 }, p2: { telegraph: 0.72, strike: 0.18, recover: 0.39 } },
+  summonNibblers: { p1: { telegraph: 1.5, strike: 0.05, recover: 0.49 }, p2: { telegraph: 1.05, strike: 0.05, recover: 0.32 } },
+  nibblerLaunch: { p1: { telegraph: 1.2, strike: 0.05, recover: 0.77 }, p2: { telegraph: 0.78, strike: 0.05, recover: 0.52 } },
+  groundSlam: { p1: { telegraph: 1.35, strike: 0.25, recover: 0.7 }, p2: { telegraph: 0.85, strike: 0.2, recover: 0.42 } },
   // CHARGE: telegraph lengthened like everything else, AND strike duration raised (0.55->0.65 /
   // 0.4->0.48) as part of the v0.18.0 lunge buff (see BOSS_CHARGE_SPEED_MULT below) so the
   // faster dash also travels further, not just hits harder per frame.
-  charge: { p1: { telegraph: 1.25, strike: 0.65, recover: 1.1 }, p2: { telegraph: 0.85, strike: 0.48, recover: 0.7 } },
+  charge: { p1: { telegraph: 1.25, strike: 0.65, recover: 0.77 }, p2: { telegraph: 0.85, strike: 0.48, recover: 0.49 } },
   // ---- New attacks below (v0.16.0) ----
   // SLAM COMBO (melee): 3 chained swings. "strike" here covers all 3 hits back to back (each
   // hit has its own short internal telegraph blip handled inside executeBossStrike/the combo
   // ticker), so the strike duration is roughly 3x a single swing's telegraph+strike.
-  slamCombo: { p1: { telegraph: 0.68, strike: 1.5, recover: 1.0 }, p2: { telegraph: 0.46, strike: 1.05, recover: 0.65 } },
+  slamCombo: { p1: { telegraph: 0.68, strike: 1.5, recover: 0.7 }, p2: { telegraph: 0.46, strike: 1.05, recover: 0.45 } },
   // SPIN SWEEP (melee): full 360 whirl, punishes hugging. Longer telegraph (expanding ring
   // needs time to read clearly) so a close player has a real chance to back off.
-  spinSweep: { p1: { telegraph: 1.5, strike: 0.4, recover: 1.0 }, p2: { telegraph: 1.05, strike: 0.32, recover: 0.65 } },
+  spinSweep: { p1: { telegraph: 1.5, strike: 0.4, recover: 0.7 }, p2: { telegraph: 1.05, strike: 0.32, recover: 0.45 } },
   // OVERHEAD SMASH (melee): long telegraph, precise small circle on the player's CURRENT spot.
   // Rewards reading the tell and simply walking away.
-  overheadSmash: { p1: { telegraph: 1.8, strike: 0.3, recover: 1.0 }, p2: { telegraph: 1.3, strike: 0.24, recover: 0.65 } },
+  overheadSmash: { p1: { telegraph: 1.8, strike: 0.3, recover: 0.7 }, p2: { telegraph: 1.3, strike: 0.24, recover: 0.45 } },
   // SEED SPRAY (ranged): fan of projectiles, cone telegraph.
-  seedSpray: { p1: { telegraph: 1.08, strike: 0.12, recover: 0.9 }, p2: { telegraph: 0.72, strike: 0.1, recover: 0.55 } },
+  seedSpray: { p1: { telegraph: 1.08, strike: 0.12, recover: 0.63 }, p2: { telegraph: 0.72, strike: 0.1, recover: 0.39 } },
   // SPIT VOLLEY (ranged): several lobbed shots with individual ground markers.
-  spitVolley: { p1: { telegraph: 1.35, strike: 0.1, recover: 1.0 }, p2: { telegraph: 0.92, strike: 0.1, recover: 0.65 } },
+  spitVolley: { p1: { telegraph: 1.35, strike: 0.1, recover: 0.7 }, p2: { telegraph: 0.92, strike: 0.1, recover: 0.45 } },
   // RADIAL BURST (ranged): full-circle projectile ring with gaps.
-  radialBurst: { p1: { telegraph: 1.22, strike: 0.08, recover: 0.95 }, p2: { telegraph: 0.78, strike: 0.08, recover: 0.6 } },
+  radialBurst: { p1: { telegraph: 1.22, strike: 0.08, recover: 0.66 }, p2: { telegraph: 0.78, strike: 0.08, recover: 0.42 } },
   // ---- New attacks below (v0.17.0) ----
   // GROUND POUND SHOCKWAVE: 3 sequential expanding rings, each independently dodgeable. Strike
   // duration covers all 3 rings fired staggered (see the "groundPoundShockwave" branch of
   // executeBossStrike / runGroundPoundTick).
-  groundPoundShockwave: { p1: { telegraph: 1.35, strike: 0.9, recover: 1.0 }, p2: { telegraph: 0.85, strike: 0.7, recover: 0.65 } },
+  groundPoundShockwave: { p1: { telegraph: 1.35, strike: 0.9, recover: 0.7 }, p2: { telegraph: 0.85, strike: 0.7, recover: 0.45 } },
   // CROWN TOSS: the crown is thrown out toward the player then arcs back, boomerang-style, with
   // two discrete hit-check points (out-peak, return-peak).
-  crownToss: { p1: { telegraph: 0.95, strike: 1.2, recover: 0.8 }, p2: { telegraph: 0.65, strike: 0.9, recover: 0.5 } },
+  crownToss: { p1: { telegraph: 0.95, strike: 1.2, recover: 0.56 }, p2: { telegraph: 0.65, strike: 0.9, recover: 0.35 } },
   // STOMP QUAKE (melee): a short flurry of tight tremor pulses right around the boss, punishing
   // players standing in melee range who don't react.
-  stompQuake: { p1: { telegraph: 0.81, strike: 0.8, recover: 0.7 }, p2: { telegraph: 0.52, strike: 0.6, recover: 0.5 } },
+  stompQuake: { p1: { telegraph: 0.81, strike: 0.8, recover: 0.49 }, p2: { telegraph: 0.52, strike: 0.6, recover: 0.35 } },
   // ---- New attacks below (v0.18.0) ----
   // LASER SWEEP (melee/line): a rotating line hazard that sweeps across an arc, multi-tick like
   // slamCombo. See runLaserSweepTick.
-  laserSweep: { p1: { telegraph: 1.2, strike: 0.9, recover: 1.0 }, p2: { telegraph: 0.8, strike: 0.7, recover: 0.65 } },
+  laserSweep: { p1: { telegraph: 1.2, strike: 0.9, recover: 0.7 }, p2: { telegraph: 0.8, strike: 0.7, recover: 0.45 } },
   // GAP WALL (ranged): a line of projectiles fired across the arena with one safe gap.
-  gapWall: { p1: { telegraph: 1.15, strike: 0.1, recover: 1.0 }, p2: { telegraph: 0.78, strike: 0.1, recover: 0.65 } },
+  gapWall: { p1: { telegraph: 1.15, strike: 0.1, recover: 0.7 }, p2: { telegraph: 0.78, strike: 0.1, recover: 0.45 } },
   // TRIPLE VOLLEY (ranged): 3 fast rounds at the player, tighter interval than spitVolley.
-  tripleVolley: { p1: { telegraph: 0.95, strike: 0.55, recover: 0.85 }, p2: { telegraph: 0.65, strike: 0.4, recover: 0.55 } }
+  tripleVolley: { p1: { telegraph: 0.95, strike: 0.55, recover: 0.6 }, p2: { telegraph: 0.65, strike: 0.4, recover: 0.39 } },
+  // ---- New attacks below (v0.24.0) ----
+  // SWARM RUSH (PHASE 2 ONLY, ranged-adjacent minion attack): a pack of Nibblers spawns at the
+  // arena edges and dashes at the player, using the same forced-charge trick as nibblerLaunch.
+  // Big generous telegraph (it's a major threat) even though it's phase 2, matching the
+  // reasoning behind overheadSmash's long telegraph -- see startBossTelegraph/executeBossStrike.
+  swarmRush: { p1: { telegraph: 1.3, strike: 0.1, recover: 0.7 }, p2: { telegraph: 0.9, strike: 0.1, recover: 0.45 } }
 };
 
 function bossAttackTiming(name, phase) {
@@ -3144,12 +3171,18 @@ function pickBossAttack(boss) {
     { name: "tripleVolley", weight: 2 },
     { name: "groundPoundShockwave", weight: 2 },
     // -- neither ranged-damage nor melee-damage (summon utility) --
-    { name: "summonNibblers", weight: 2 },
+    // v0.24.0: weight raised 2 -> 4 alongside the count buff (4-5/p1, 9/p2) so summons show up
+    // noticeably more often, not just hit harder when they do.
+    { name: "summonNibblers", weight: 4 },
     // -- melee/multi-tick --
     { name: "laserSweep", weight: 3 }
   ];
   if (boss.bossPhase >= 2) {
     pool.push({ name: "nibblerLaunch", weight: 2 });
+    // v0.24.0: SWARM RUSH is PHASE 2 ONLY, gated the exact same way nibblerLaunch is above --
+    // only pushed into the pool once bossPhase >= 2, so it never appears in the phase-1 rolls
+    // at all (not just weighted low).
+    pool.push({ name: "swarmRush", weight: 3 });
   }
   const total = pool.reduce((sum, entry) => sum + entry.weight, 0);
   let roll = Math.random() * total;
@@ -3370,7 +3403,9 @@ function updateNibblerKingBehavior(boss, dt, angleToPlayer, distanceToPlayer, sp
     if (boss.bossTimer <= 0) {
       boss.bossState = "idle";
       boss.bossAttack = null;
-      boss.bossTimer = boss.bossPhase >= 2 ? rand(0.4, 0.9) : rand(0.8, 1.6);
+      // v0.24.0 cadence buff: cut roughly in half both phases (was 0.8-1.6 / 0.4-0.9) so the
+      // King spends far less of every attack cycle standing idle -- see js/00-changelog.js.
+      boss.bossTimer = boss.bossPhase >= 2 ? rand(0.22, 0.5) : rand(0.45, 0.95);
     }
     return;
   }
@@ -3402,7 +3437,7 @@ function startBossTelegraph(boss) {
       elapsed: 0
     };
   } else if (boss.bossAttack === "summonNibblers") {
-    const count = boss.bossPhase >= 2 ? 7 : 2 + Math.floor(rand(0, 2)); // p1: 2-3, p2: 7 (v0.18.0 flood, was 4)
+    const count = boss.bossPhase >= 2 ? 9 : 4 + Math.floor(rand(0, 2)); // p1: 4-5, p2: 9 (v0.24.0 flood, was 2-3/7)
     const spots = [];
     for (let i = 0; i < count; i += 1) {
       const angle = rand(0, Math.PI * 2);
@@ -3415,6 +3450,31 @@ function startBossTelegraph(boss) {
     boss.bossTelegraph = { kind: "summonSpots", spots, elapsed: 0 };
   } else if (boss.bossAttack === "nibblerLaunch") {
     boss.bossTelegraph = { kind: "flash", elapsed: 0 };
+  } else if (boss.bossAttack === "swarmRush") {
+    // SWARM RUSH (v0.24.0, PHASE 2 ONLY): a pack of real Nibblers spawns at the arena EDGE and
+    // dashes in at the player, using the exact same knockX/knockY forced-dash trick nibblerLaunch
+    // uses (see executeBossStrike below) rather than the Darter's full windup/charge state
+    // machine, so the launch lands the instant the telegraph ends with zero extra windup delay.
+    // Telegraph reuses the "summonSpots" kind (a warning ring at each spot) since it already does
+    // exactly what's needed here: show WHERE each Nibbler is about to appear before it does.
+    // Spots are placed on the arena border (ray from the arena centre out to whichever wall it
+    // hits first) rather than around the boss, so they read as an outside threat converging in,
+    // distinct from summonNibblers/nibblerLaunch which both materialize adds near the boss.
+    const count = boss.bossPhase >= 2 ? 7 : 5; // p1 value kept for safety even though this is phase-2-only
+    const cx = W / 2;
+    const cy = H / 2;
+    const spots = [];
+    for (let i = 0; i < count; i += 1) {
+      const angle = (i / count) * Math.PI * 2 + rand(-0.2, 0.2);
+      const dx = Math.cos(angle);
+      const dy = Math.sin(angle);
+      // Ray-box intersection from the arena centre to the W x H canvas border along `angle`.
+      const tX = dx !== 0 ? (dx > 0 ? (W - 30 - cx) / dx : (30 - cx) / dx) : Infinity;
+      const tY = dy !== 0 ? (dy > 0 ? (H - 30 - cy) / dy : (30 - cy) / dy) : Infinity;
+      const t = Math.min(tX, tY);
+      spots.push({ x: clamp(cx + dx * t, 20, W - 20), y: clamp(cy + dy * t, 20, H - 20), angle });
+    }
+    boss.bossTelegraph = { kind: "summonSpots", spots, elapsed: 0 };
   } else if (boss.bossAttack === "groundSlam") {
     // v0.18.0: radius written into the payload itself so the telegraph in js/08-render.js draws
     // EXACTLY the shockwave radius computed at strike time (BOSS_SLAM_REACH_MULT), instead of
@@ -3487,7 +3547,7 @@ function startBossTelegraph(boss) {
   } else if (boss.bossAttack === "spitVolley") {
     // RANGED: several lobbed shots landing near (not exactly on) the player, each with its
     // own small ground marker rolled now so the warning matches where they will actually land.
-    const count = boss.bossPhase >= 2 ? 5 : 4;
+    const count = boss.bossPhase >= 2 ? 7 : 5; // v0.24.0 ranged pressure: raised from 4/5
     const spots = [];
     for (let i = 0; i < count; i += 1) {
       const angle = rand(0, Math.PI * 2);
@@ -3552,7 +3612,7 @@ function startBossTelegraph(boss) {
     // RANGED (v0.18.0): a line of projectiles fired across the arena perpendicular to the
     // boss->player axis, with one safe gap slot the player must find and stand in during the
     // telegraph. The gap slot is rolled now so the warning honestly shows where it will be.
-    const count = boss.bossPhase >= 2 ? 9 : 7;
+    const count = boss.bossPhase >= 2 ? 11 : 9; // v0.24.0 ranged pressure: raised from 7/9
     const gapIndex = Math.floor(rand(0, count));
     boss.bossTelegraph = {
       kind: "gapWallWarn",
@@ -3571,6 +3631,29 @@ function startBossTelegraph(boss) {
       halfArc: 0.18,
       elapsed: 0
     };
+  } else if (boss.bossAttack === "swarmRush") {
+    // v0.24.0 (PHASE 2 ONLY): SWARM RUSH. A pack of Nibblers spawns at the arena EDGE (not near
+    // the boss, unlike summonNibblers/nibblerLaunch) and dashes straight at the player -- see
+    // executeBossStrike for the spawn+forced-charge fields. Reuses the "summonSpots" telegraph
+    // kind (js/08-render.js) since the visual need is identical: a red warning ring at each spot
+    // a Nibbler is about to appear. The only difference from summonNibblers is WHERE the spots
+    // are rolled (arena edge, not a ring around the boss), which this kind already draws
+    // generically from telegraph.spots regardless of where those points are.
+    const count = boss.bossPhase >= 2 ? 7 : 5; // p1 value unused in practice (phase-2 gated in pickBossAttack) but kept valid
+    const spots = [];
+    for (let i = 0; i < count; i += 1) {
+      // Pick a random point on the arena's rectangular border so the pack visibly rushes in
+      // from outside the play space rather than materializing near the boss.
+      const edge = Math.floor(rand(0, 4));
+      let x;
+      let y;
+      if (edge === 0) { x = rand(20, W - 20); y = 20; } // top
+      else if (edge === 1) { x = rand(20, W - 20); y = H - 20; } // bottom
+      else if (edge === 2) { x = 20; y = rand(20, H - 20); } // left
+      else { x = W - 20; y = rand(20, H - 20); } // right
+      spots.push({ x, y });
+    }
+    boss.bossTelegraph = { kind: "summonSpots", spots, elapsed: 0 };
   }
 }
 
@@ -3622,7 +3705,7 @@ function executeBossStrike(boss) {
     // against the player AND a spawn-on-landing path, which is strictly more new surface
     // area for the same visual result.
     const nibblerTemplate = enemyTypes.find((type) => type.name === "Nibbler");
-    const count = 15; // v0.18.0 phase-2 flood: raised from 8 (enemyActiveCap() still gates total)
+    const count = 18; // v0.24.0 phase-2 flood: raised from 15 (enemyActiveCap() still gates total)
     if (nibblerTemplate) {
       for (let i = 0; i < count; i += 1) {
         if (state.enemies.length >= enemyActiveCap()) break;
@@ -3646,6 +3729,30 @@ function executeBossStrike(boss) {
     burst(boss.x, boss.y, "#fff2a8", 40);
     spawnRing(boss.x, boss.y, "#ffe28a", boss.radius * 1.2, 0.35); // v0.18.0: halved, cosmetic nibblerLaunch flash (radius doubled to 132, this keeps the visual proportionate)
     addShake(9, true);
+    playSfx("explosion");
+  } else if (boss.bossAttack === "swarmRush") {
+    // ATTACK (v0.24.0, PHASE 2 ONLY): SWARM RUSH. Real Nibblers materialize at the telegraphed
+    // arena-edge spots and immediately dash straight at the player -- same knockX/knockY forced-
+    // dash trick as nibblerLaunch above (decaying impulse summed into position every frame in
+    // updateEnemies), just aimed INWARD toward the player instead of radiating outward from the
+    // boss. Each spot's `angle` (set in startBossTelegraph) is the direction FROM the arena
+    // centre OUT to that edge point, so the dash direction is simply that angle reversed --
+    // an honest payoff of the telegraph, since the warning ring is exactly where each Nibbler
+    // appears and the dash direction is exactly what the "converging inward" telegraph implied.
+    const nibblerTemplate = enemyTypes.find((type) => type.name === "Nibbler");
+    const spots = boss.bossTelegraph?.spots ?? [];
+    if (nibblerTemplate) {
+      for (const spot of spots) {
+        if (state.enemies.length >= enemyActiveCap()) break;
+        spawnEnemy(nibblerTemplate, spot);
+        const launched = state.enemies[state.enemies.length - 1];
+        const inwardAngle = (spot.angle ?? Math.atan2(boss.y - spot.y, boss.x - spot.x)) + Math.PI;
+        launched.knockX = Math.cos(inwardAngle) * 620;
+        launched.knockY = Math.sin(inwardAngle) * 620;
+        spawnRing(spot.x, spot.y, "#ff9c5b", 30, 0.3);
+        burst(spot.x, spot.y, "#ffd15f", 12);
+      }
+    }
     playSfx("explosion");
   } else if (boss.bossAttack === "groundSlam") {
     // ATTACK 4: GROUND SLAM. Telegraphed circle already shown during telegraph; the shockwave
@@ -3737,7 +3844,7 @@ function executeBossStrike(boss) {
     // across the telegraphed cone. Count/speed tuned so sidestepping clears the fan easily.
     const angle = boss.bossTelegraph?.angle ?? Math.atan2(player.y - boss.y, player.x - boss.x);
     const halfArc = boss.bossTelegraph?.halfArc ?? 0.42;
-    const count = phase2 ? 7 : 5;
+    const count = phase2 ? 9 : 7; // v0.24.0 ranged pressure: raised from 5/7
     for (let i = 0; i < count; i += 1) {
       const offset = count === 1 ? 0 : -halfArc + (halfArc * 2 * i) / (count - 1);
       shootBossPellet(boss, angle + offset, phase2);
@@ -3758,7 +3865,7 @@ function executeBossStrike(boss) {
   } else if (boss.bossAttack === "radialBurst") {
     // ATTACK 11 (RANGED): RADIAL BURST. Full ring of projectiles fired outward with gaps a
     // player can slip through -- distinct from nibblerLaunch (phase 2's real-Nibbler burst).
-    const count = phase2 ? 14 : 10;
+    const count = phase2 ? 17 : 13; // v0.24.0 ranged pressure: raised from 10/14
     const gapEvery = 4; // skip one shot every 4th slot to leave a slip-through lane
     for (let i = 0; i < count; i += 1) {
       if (i % gapEvery === gapEvery - 1) continue;
@@ -3805,7 +3912,7 @@ function executeBossStrike(boss) {
     // straight along the wall line instead of radially outward.
     const angle = boss.bossTelegraph?.angle ?? Math.atan2(player.y - boss.y, player.x - boss.x);
     const perp = angle + Math.PI / 2;
-    const count = boss.bossTelegraph?.count ?? (phase2 ? 9 : 7);
+    const count = boss.bossTelegraph?.count ?? (phase2 ? 11 : 9); // v0.24.0: fallback kept in sync with the telegraph's own count
     const gapIndex = boss.bossTelegraph?.gapIndex ?? 0;
     const spacing = 60;
     const wallDist = 40; // spawn offset so the wall starts just past the boss's own body
@@ -3814,13 +3921,17 @@ function executeBossStrike(boss) {
       const offset = (i - (count - 1) / 2) * spacing;
       const originX = boss.x + Math.cos(angle) * wallDist + Math.cos(perp) * offset;
       const originY = boss.y + Math.sin(angle) * wallDist + Math.sin(perp) * offset;
-      shootEnemyProjectile(boss, angle);
+      // v0.24.0: passes BOSS_PROJECTILE_SPEED as the override too, even though vx/vy get
+      // overwritten below anyway (this wall's bullets travel PERPENDICULAR to the boss->player
+      // angle passed in here, not along it) -- keeps shootEnemyProjectile's own life scaling
+      // consistent with the explicit 210 -> 250 bump on the next two lines.
+      shootEnemyProjectile(boss, angle, BOSS_PROJECTILE_SPEED);
       const bullet = state.enemyBullets[state.enemyBullets.length - 1];
       if (bullet) {
         bullet.x = originX;
         bullet.y = originY;
-        bullet.vx = Math.cos(angle) * 210;
-        bullet.vy = Math.sin(angle) * 210;
+        bullet.vx = Math.cos(angle) * 250; // v0.24.0 ranged pressure: raised from 210
+        bullet.vy = Math.sin(angle) * 250;
         // v0.23.0 boss damage pass: raised from 0.4/0.5 (both below the 1.4 floor for
         // low-end multipliers -- see the balance report in js/00-changelog.js).
         bullet.damage = Math.round(boss.damage * (phase2 ? 0.66 : 0.53));
@@ -3836,6 +3947,33 @@ function executeBossStrike(boss) {
     boss._volleyRoundsFired = 0;
     boss._volleyNextRoundAt = undefined;
     fireTripleVolleyRound(boss, 0);
+  } else if (boss.bossAttack === "swarmRush") {
+    // ATTACK 18 (PHASE 2 ONLY): SWARM RUSH. Same trick as nibblerLaunch (ATTACK 3 above): spawn
+    // real Nibbler enemies then override their movement fields directly on the returned
+    // instance, rather than a projectile-that-becomes-an-enemy. Nibbler's behavior is "chase",
+    // not "charge" (that state machine -- windupTimer/chargeTimer/lungeAngle in
+    // updateEnemyBehavior -- belongs to the Darter template), so exactly like nibblerLaunch this
+    // drives the initial dash directly via knockX/knockY (already summed into position every
+    // frame in updateEnemies) instead of trying to force Darter-only charge fields onto a
+    // chase-behavior enemy. The dash aims at the PLAYER's position at spawn time (not homing,
+    // same "honest telegraph" convention as charge/crownToss), so a pack spawned at the edges
+    // visibly rushes inward at the player from every warned spot.
+    const nibblerTemplate = enemyTypes.find((type) => type.name === "Nibbler");
+    const spots = boss.bossTelegraph?.spots ?? [];
+    if (nibblerTemplate) {
+      for (const spot of spots) {
+        if (state.enemies.length >= enemyActiveCap()) break;
+        spawnEnemy(nibblerTemplate, spot);
+        const launched = state.enemies[state.enemies.length - 1];
+        const angle = Math.atan2(player.y - spot.y, player.x - spot.x);
+        launched.knockX = Math.cos(angle) * 620;
+        launched.knockY = Math.sin(angle) * 620;
+        spawnRing(spot.x, spot.y, "#ffe28a", 30, 0.3);
+        burst(spot.x, spot.y, "#fff2a8", 12);
+      }
+    }
+    addShake(8, true);
+    playSfx("explosion");
   }
 }
 
@@ -4203,7 +4341,10 @@ function runSpinSweepTick(boss) {
 // Damage is expressed as a multiple of the boss's own contact damage, same convention as every
 // melee boss attack above, so ranged and melee attacks stay comparable at a glance.
 function shootBossPellet(boss, angle, phase2) {
-  shootEnemyProjectile(boss, angle);
+  // v0.24.0: passes BOSS_PROJECTILE_SPEED (250) as the speed override so seedSpray/
+  // radialBurst/tripleVolley (all routed through here) fly faster than a normal enemy shot
+  // (200) without touching shootEnemyProjectile's shared default used by every other enemy.
+  shootEnemyProjectile(boss, angle, BOSS_PROJECTILE_SPEED);
   const bullet = state.enemyBullets[state.enemyBullets.length - 1];
   if (bullet) {
     // v0.23.0 boss damage pass: raised from 0.4/0.55 (both below the 1.4 floor for low-end
@@ -4224,7 +4365,7 @@ function shootBossLob(boss, angle, spot, phase2) {
   const bullet = state.enemyBullets[state.enemyBullets.length - 1];
   if (!bullet) return;
   const dist = Math.hypot(spot.x - boss.x, spot.y - boss.y);
-  const speed = 180;
+  const speed = 225; // v0.24.0 ranged pressure: raised from 180 (~+25%, matches BOSS_PROJECTILE_SPEED's bump)
   const travelTime = Math.max(0.35, dist / speed);
   bullet.vx = ((spot.x - boss.x) / travelTime);
   bullet.vy = ((spot.y - boss.y) / travelTime);

@@ -20,6 +20,18 @@
 
 const CHANGELOG = [
   {
+    version: "0.24.0",
+    date: "2026-08-15",
+    title: "The King Stays On You",
+    notes: [
+      "The King barely pauses between attacks now.",
+      "He throws far more nibblers at you.",
+      "A new phase two attack sends a pack of nibblers charging in from the edges.",
+      "His ranged attacks throw more and faster projectiles.",
+      "Warnings are unchanged so it's still fair."
+    ]
+  },
+  {
     version: "0.23.0",
     date: "2026-08-14",
     title: "The King Hits Harder",

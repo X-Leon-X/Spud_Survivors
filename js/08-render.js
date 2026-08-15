@@ -2823,6 +2823,9 @@ function drawNibblerKingTelegraphs(enemy) {
     // ART: the cracked-stone ring texture replaces the plain filled disc underneath; the
     // stroked rim on top (same strobe colour/timing as before) stays procedural so the warning
     // still reads as "red = danger" at a glance.
+    // v0.24.0: ALSO used by the new ATTACK 18 (swarmRush, phase 2 only) -- its spots are just
+    // rolled at the arena edge instead of around the boss (see startBossTelegraph), so this same
+    // generic "ring at each telegraph.spots point" draw already covers it with zero changes.
     for (const spot of telegraph.spots) {
       const spotRadius = 22 + progress * 10;
       ctx.save();
