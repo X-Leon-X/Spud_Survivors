@@ -3450,31 +3450,6 @@ function startBossTelegraph(boss) {
     boss.bossTelegraph = { kind: "summonSpots", spots, elapsed: 0 };
   } else if (boss.bossAttack === "nibblerLaunch") {
     boss.bossTelegraph = { kind: "flash", elapsed: 0 };
-  } else if (boss.bossAttack === "swarmRush") {
-    // SWARM RUSH (v0.24.0, PHASE 2 ONLY): a pack of real Nibblers spawns at the arena EDGE and
-    // dashes in at the player, using the exact same knockX/knockY forced-dash trick nibblerLaunch
-    // uses (see executeBossStrike below) rather than the Darter's full windup/charge state
-    // machine, so the launch lands the instant the telegraph ends with zero extra windup delay.
-    // Telegraph reuses the "summonSpots" kind (a warning ring at each spot) since it already does
-    // exactly what's needed here: show WHERE each Nibbler is about to appear before it does.
-    // Spots are placed on the arena border (ray from the arena centre out to whichever wall it
-    // hits first) rather than around the boss, so they read as an outside threat converging in,
-    // distinct from summonNibblers/nibblerLaunch which both materialize adds near the boss.
-    const count = boss.bossPhase >= 2 ? 7 : 5; // p1 value kept for safety even though this is phase-2-only
-    const cx = W / 2;
-    const cy = H / 2;
-    const spots = [];
-    for (let i = 0; i < count; i += 1) {
-      const angle = (i / count) * Math.PI * 2 + rand(-0.2, 0.2);
-      const dx = Math.cos(angle);
-      const dy = Math.sin(angle);
-      // Ray-box intersection from the arena centre to the W x H canvas border along `angle`.
-      const tX = dx !== 0 ? (dx > 0 ? (W - 30 - cx) / dx : (30 - cx) / dx) : Infinity;
-      const tY = dy !== 0 ? (dy > 0 ? (H - 30 - cy) / dy : (30 - cy) / dy) : Infinity;
-      const t = Math.min(tX, tY);
-      spots.push({ x: clamp(cx + dx * t, 20, W - 20), y: clamp(cy + dy * t, 20, H - 20), angle });
-    }
-    boss.bossTelegraph = { kind: "summonSpots", spots, elapsed: 0 };
   } else if (boss.bossAttack === "groundSlam") {
     // v0.18.0: radius written into the payload itself so the telegraph in js/08-render.js draws
     // EXACTLY the shockwave radius computed at strike time (BOSS_SLAM_REACH_MULT), instead of
@@ -3729,30 +3704,6 @@ function executeBossStrike(boss) {
     burst(boss.x, boss.y, "#fff2a8", 40);
     spawnRing(boss.x, boss.y, "#ffe28a", boss.radius * 1.2, 0.35); // v0.18.0: halved, cosmetic nibblerLaunch flash (radius doubled to 132, this keeps the visual proportionate)
     addShake(9, true);
-    playSfx("explosion");
-  } else if (boss.bossAttack === "swarmRush") {
-    // ATTACK (v0.24.0, PHASE 2 ONLY): SWARM RUSH. Real Nibblers materialize at the telegraphed
-    // arena-edge spots and immediately dash straight at the player -- same knockX/knockY forced-
-    // dash trick as nibblerLaunch above (decaying impulse summed into position every frame in
-    // updateEnemies), just aimed INWARD toward the player instead of radiating outward from the
-    // boss. Each spot's `angle` (set in startBossTelegraph) is the direction FROM the arena
-    // centre OUT to that edge point, so the dash direction is simply that angle reversed --
-    // an honest payoff of the telegraph, since the warning ring is exactly where each Nibbler
-    // appears and the dash direction is exactly what the "converging inward" telegraph implied.
-    const nibblerTemplate = enemyTypes.find((type) => type.name === "Nibbler");
-    const spots = boss.bossTelegraph?.spots ?? [];
-    if (nibblerTemplate) {
-      for (const spot of spots) {
-        if (state.enemies.length >= enemyActiveCap()) break;
-        spawnEnemy(nibblerTemplate, spot);
-        const launched = state.enemies[state.enemies.length - 1];
-        const inwardAngle = (spot.angle ?? Math.atan2(boss.y - spot.y, boss.x - spot.x)) + Math.PI;
-        launched.knockX = Math.cos(inwardAngle) * 620;
-        launched.knockY = Math.sin(inwardAngle) * 620;
-        spawnRing(spot.x, spot.y, "#ff9c5b", 30, 0.3);
-        burst(spot.x, spot.y, "#ffd15f", 12);
-      }
-    }
     playSfx("explosion");
   } else if (boss.bossAttack === "groundSlam") {
     // ATTACK 4: GROUND SLAM. Telegraphed circle already shown during telegraph; the shockwave
