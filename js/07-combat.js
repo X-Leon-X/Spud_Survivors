@@ -600,6 +600,18 @@ function enemySpawnInterval() {
   return Math.max(0.09, 1.30 / Math.min(15.5, wavePressure * lateWavePush * earlyPush));
 }
 
+// PLAYER-COUNT SCALING: confirmed nothing in the spawn path (enemyActiveCap/
+// enemySpawnBatchSize) previously referenced state.players.length at all, so solo and 2-player
+// co-op spawned the exact same enemy volume. The user wants solo to face FEWER enemies, so
+// 2-player is kept as the baseline (1.0x, unchanged behaviour) and solo is scaled down to
+// 0.7x -- one player has to handle the whole swarm alone with half the DPS/weapon slots of a
+// two-player team, so 70% of the co-op volume keeps solo readable without trivialising it.
+// Applied as a multiplier on BOTH the active-enemy cap and the per-tick batch size, so it
+// affects both how crowded the arena gets AND how fast it fills up.
+function playerCountEnemyFactor() {
+  return (state.players?.length ?? 1) > 1 ? 1.0 : 0.7;
+}
+
 function enemySpawnBatchSize() {
   const wave = Math.max(1, state.wave);
   // Bigger early batches (kicks in from wave 2 instead of 3, steeper exponent).
@@ -615,10 +627,11 @@ function enemySpawnBatchSize() {
   // total. An all-Clown wave at the normal batch size is a huge, unintended density spike --
   // roughly halving the batch here keeps the wave chaotic (still visibly "everything is a
   // Clown") without the implosion math turning it lethal instead of funny.
+  const factor = playerCountEnemyFactor();
   if (typeof tempFlag === "function" && tempFlag("clownWave")) {
-    return Math.max(1, Math.round(batch / 2));
+    return Math.max(1, Math.round((batch / 2) * factor));
   }
-  return Math.min(22, batch);
+  return Math.max(1, Math.round(Math.min(22, batch) * factor));
 }
 
 // Waves 2 and 3 ONLY: extra enemies per spawn batch. Wave 2 used to be the thinnest wave in
@@ -640,7 +653,7 @@ function enemyActiveCap() {
   const wave = Math.max(1, state.wave);
   // Higher concurrent-enemy cap earlier, so the screen gets crowded sooner.
   const curve = 40 + wave * 17 + Math.pow(Math.max(0, wave - 3), 1.45) * 3.6 + Math.max(0, wave - 10) * 6.5;
-  return Math.min(MAX_ENEMIES, Math.round(curve));
+  return Math.min(MAX_ENEMIES, Math.round(curve * playerCountEnemyFactor()));
 }
 
 function spawnEnemy(presetTemplate, presetPos) {
@@ -1444,7 +1457,57 @@ function releaseThrownWeapon(bullet) {
   if (bullet?.thrownBy) bullet.thrownBy.airborne = false;
 }
 
+// --- Bullet/enemy spatial grid -----------------------------------------------------------
+// Same numeric-integer-key bucketing as separationGrid (js/07-combat.js ~1796-1829), reused
+// here rather than reinvented. Can't reuse separationGrid ITSELF though: it's built inside
+// applyEnemySeparation, which is called from updateEnemies (js/07-combat.js:110 update()
+// order), and updateBullets runs BEFORE updateEnemies each frame (line ~107) -- reusing it
+// would mean testing bullets against last frame's enemy positions, one frame stale. Cheap
+// enough (~480 enemies, one bucket pass) to just build a fresh one here instead.
+const BULLET_GRID_CELL = 64; // a bit larger than SEPARATION_CELL: bullets are fast and this
+                              // keeps the average bullet's overlap to a small, fixed 3x3 scan
+                              // even for the larger swing/explosion hit radii.
+let bulletEnemyGrid = new Map();
+
+function buildBulletEnemyGrid() {
+  bulletEnemyGrid.clear();
+  const enemies = state.enemies;
+  for (let i = 0; i < enemies.length; i += 1) {
+    const e = enemies[i];
+    const key = (((e.y / BULLET_GRID_CELL) | 0) + 4096) * 8192 + (((e.x / BULLET_GRID_CELL) | 0) + 4096);
+    let cell = bulletEnemyGrid.get(key);
+    if (!cell) bulletEnemyGrid.set(key, (cell = []));
+    cell.push(e);
+  }
+}
+
+// Collects every enemy in the 3x3 neighbourhood of cells the given circle (x, y, radius)
+// overlaps, into `out` (cleared first). Enemy OBJECT REFERENCES are stored in the grid, not
+// array indices: killEnemy() splices state.enemies immediately on death (js/07-combat.js
+// ~2629), which would silently invalidate any indices cached earlier in the same pass. Object
+// references stay valid; the caller re-resolves the live index via indexOf only at the moment
+// it actually needs to splice (i.e. on a kill), which is far rarer than a distance check.
+function queryBulletEnemyGrid(x, y, radius, out) {
+  out.length = 0;
+  const minCx = ((x - radius) / BULLET_GRID_CELL) | 0;
+  const maxCx = ((x + radius) / BULLET_GRID_CELL) | 0;
+  const minCy = ((y - radius) / BULLET_GRID_CELL) | 0;
+  const maxCy = ((y + radius) / BULLET_GRID_CELL) | 0;
+  for (let cx = minCx; cx <= maxCx; cx += 1) {
+    for (let cy = minCy; cy <= maxCy; cy += 1) {
+      const cell = bulletEnemyGrid.get((cy + 4096) * 8192 + (cx + 4096));
+      if (!cell) continue;
+      for (let k = 0; k < cell.length; k += 1) out.push(cell[k]);
+    }
+  }
+  return out;
+}
+
+const _bulletGridCandidates = []; // scratch array reused across bullets/frames, avoids a
+                                   // fresh allocation per bullet on top of the grid itself
+
 function updateBullets(dt) {
+  buildBulletEnemyGrid();
   for (let i = state.bullets.length - 1; i >= 0; i -= 1) {
     const bullet = state.bullets[i];
     bullet.x += bullet.vx * dt;
@@ -1501,8 +1564,25 @@ function updateBullets(dt) {
       continue;
     }
 
-    for (let j = state.enemies.length - 1; j >= 0; j -= 1) {
-      const enemy = state.enemies[j];
+    // Grid version of the old "for every enemy" scan: only test enemies in cells the
+    // bullet's own radius overlaps (bullet radius is small, so this is normally a single
+    // cell, at most a 3x3 neighbourhood). Preserves the original semantics exactly:
+    //  - hitEnemies is still a Set of enemy OBJECTS, checked/added the same way, so piercing
+    //    (a bullet may hit several different enemies, never the same one twice) is unchanged.
+    //  - explosion / pierce-exhausted `break` still stops checking further candidates this
+    //    frame, same as the old `break` out of the enemies loop.
+    //  - killEnemy needs the enemy's CURRENT index into state.enemies, which the grid does
+    //    not track (it holds object references so a kill mid-loop can't invalidate it -- see
+    //    buildBulletEnemyGrid's comment above). Re-resolved with indexOf only right at the
+    //    point of an actual hit, not per distance check, so the cost lands on hits (rare)
+    //    rather than on every candidate scanned (the thing we're trying to cut down).
+    // +140 covers the largest enemy radius in the game (Nibbler King boss, radius 132,
+    // js/01-core.js ~line 187) with a small margin, so the grid query can never miss a real
+    // overlap regardless of which enemy the bullet is actually near.
+    const bulletRadiusReach = bullet.radius + 140;
+    queryBulletEnemyGrid(bullet.x, bullet.y, bulletRadiusReach, _bulletGridCandidates);
+    for (let c = 0; c < _bulletGridCandidates.length; c += 1) {
+      const enemy = _bulletGridCandidates[c];
       if (bullet.hitEnemies?.has(enemy)) {
         continue;
       }
@@ -1514,6 +1594,8 @@ function updateBullets(dt) {
           explodeBullet(bullet);
           break;
         }
+        const j = state.enemies.indexOf(enemy);
+        if (j === -1) continue; // already removed by an earlier hit this same frame
         applyBulletHit(bullet, enemy, j);
         if (shouldRemoveBulletAfterHit(bullet)) {
           break;
@@ -2326,7 +2408,7 @@ function updateEnemyBullets(dt) {
       // slightly larger embers) so the fireball reads as visibly more dangerous than the
       // Spitter's plain glob at a glance, matching its ~3x higher damage.
       if (Math.random() < 0.6) {
-        state.particles.push({
+        pushParticle({
           x: bullet.x - bullet.vx * 0.035 + rand(-4, 4),
           y: bullet.y - bullet.vy * 0.035 + rand(-4, 4),
           vx: rand(-22, 22),
@@ -2797,10 +2879,18 @@ function updatePoisonPools(dt) {
 }
 
 function burst(x, y, color, count) {
-  for (let i = 0; i < count; i += 1) {
+  // Scale the request down once particles are already busy (past 60% of MAX_PARTICLES):
+  // a kill-heavy late wave fires dozens of bursts a frame, and letting every one of them
+  // keep demanding its full count just means pushParticle immediately shifts an equal
+  // number of barely-born particles back out the front -- pure churn with no visual gain.
+  // Halving the request under load cuts that churn while a single burst is still never
+  // reduced when the buffer has room, so normal play is unaffected.
+  const busy = state.particles.length > MAX_PARTICLES * 0.6;
+  const spawnCount = busy ? Math.max(1, Math.round(count / 2)) : count;
+  for (let i = 0; i < spawnCount; i += 1) {
     const angle = rand(0, Math.PI * 2);
     const speed = rand(45, 150);
-    state.particles.push({
+    pushParticle({
       x,
       y,
       vx: Math.cos(angle) * speed,

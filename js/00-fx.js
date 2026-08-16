@@ -47,8 +47,21 @@ function decayFx(dt) {
   fx.playerFlash = Math.max(0, fx.playerFlash - dt * 3.2);
 }
 
+// Shared push point for every particle spawn (burst/spawnRing/muzzle flash/sparks), so
+// MAX_PARTICLES (js/01-core.js) is enforced in exactly one place. Chose DROP-OLDEST (shift)
+// over skip-new: skipping would mean a big explosion landing while already at the cap draws
+// nothing at all, which is the one moment a player most needs the feedback. Dropping the
+// oldest particle keeps that budget spent on whatever just happened, which is always the
+// most relevant thing on screen, at the cost of slightly shortening some earlier effect's
+// tail -- a trade that is basically invisible since particles fade over a fraction of a
+// second anyway.
+function pushParticle(particle) {
+  if (state.particles.length >= MAX_PARTICLES) state.particles.shift();
+  state.particles.push(particle);
+}
+
 function spawnRing(x, y, color, maxRadius, life = 0.3) {
-  state.particles.push({
+  pushParticle({
     type: "ring",
     x,
     y,
@@ -66,7 +79,7 @@ function spawnRing(x, y, color, maxRadius, life = 0.3) {
 // bright star/cone pointing along the shot so shooting reads with a snappy pop of light,
 // plus a couple of spark streaks. `angle` is the shot direction (radians).
 function spawnMuzzleFlash(x, y, angle, color = "#ffe6a0", size = 1) {
-  state.particles.push({
+  pushParticle({
     type: "muzzle",
     x,
     y,
@@ -82,7 +95,7 @@ function spawnMuzzleFlash(x, y, angle, color = "#ffe6a0", size = 1) {
   for (let i = 0; i < 3; i += 1) {
     const spread = (Math.sin(x * 0.7 + i * 2.3) * 0.5) * 0.5;   // deterministic jitter
     const spd = 120 + i * 40;
-    state.particles.push({
+    pushParticle({
       type: "spark",
       x,
       y,

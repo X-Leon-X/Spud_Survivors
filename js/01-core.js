@@ -103,6 +103,13 @@ const distSq = (a, b) => {
 };
 
 const MAX_ENEMIES = 480;   // raised with the faster spawn curve so late waves stay dense
+// state.particles had no ceiling at all. At the documented late-wave rate of ~150 kills/sec,
+// kill bursts alone (10 particles/kill, js/07-combat.js killEnemy) push ~1500/sec, plus impact
+// bursts, muzzle sparks and rings on top -- each one allocated, updated every frame and drawn
+// with its OWN canvas call (js/08-render.js). 260 is comfortably above what a single big
+// moment (an explosion + several nearby kills landing the same frame) needs to read clearly,
+// while staying far below the point where the per-particle draw calls start costing a frame.
+const MAX_PARTICLES = 260;
 const BASE_WEAPON_SLOTS = 6;
 const MAX_WEAPON_RANK = 5;
 const DRUMMER_BUFF_RADIUS = 260;

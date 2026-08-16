@@ -23,6 +23,16 @@
 
 const CHANGELOG = [
   {
+    version: "0.16.3",
+    date: "2026-08-16",
+    title: "Smoother Late Waves",
+    notes: [
+      "Late waves run much smoother, especially once the kills start piling up.",
+      "Effects like hit sparks and rings no longer build up without limit.",
+      "Single player now faces a smaller swarm than two player co-op."
+    ]
+  },
+  {
     version: "0.16.2",
     date: "2026-08-15",
     title: "The King Stays On You",
