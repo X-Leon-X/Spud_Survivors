@@ -17,10 +17,13 @@
 // Versioning: 0.MINOR.PATCH while pre-1.0.
 //   PATCH - fixes, tuning, art swaps.
 //   MINOR - new systems, content or screens.
+//   In other words: a fix or tuning pass on an EXISTING feature is a PATCH under that
+//   feature's MINOR, not a MINOR of its own. A new MINOR is reserved for something
+//   genuinely new -- a new system, new content, or a new screen.
 
 const CHANGELOG = [
   {
-    version: "0.24.0",
+    version: "0.16.2",
     date: "2026-08-15",
     title: "The King Stays On You",
     notes: [
@@ -32,7 +35,7 @@ const CHANGELOG = [
     ]
   },
   {
-    version: "0.23.0",
+    version: "0.16.1",
     date: "2026-08-14",
     title: "The King Hits Harder",
     notes: [
@@ -42,7 +45,7 @@ const CHANGELOG = [
     ]
   },
   {
-    version: "0.22.0",
+    version: "0.16.0",
     date: "2026-08-14",
     title: "Local Two Player Co-op",
     notes: [
@@ -54,7 +57,7 @@ const CHANGELOG = [
     ]
   },
   {
-    version: "0.21.0",
+    version: "0.15.9",
     date: "2026-08-13",
     title: "The King Digs In",
     notes: [
@@ -63,7 +66,7 @@ const CHANGELOG = [
     ]
   },
   {
-    version: "0.20.0",
+    version: "0.15.8",
     date: "2026-08-12",
     title: "Tougher, and He Actually Swings",
     notes: [
@@ -74,7 +77,7 @@ const CHANGELOG = [
     ]
   },
   {
-    version: "0.19.1",
+    version: "0.15.7",
     date: "2026-08-12",
     title: "Club and Crown, Fixed",
     notes: [
@@ -83,7 +86,7 @@ const CHANGELOG = [
     ]
   },
   {
-    version: "0.19.0",
+    version: "0.15.6",
     date: "2026-08-12",
     title: "Crowned and Loaded",
     notes: [
@@ -97,7 +100,7 @@ const CHANGELOG = [
     ]
   },
   {
-    version: "0.18.0",
+    version: "0.15.5",
     date: "2026-08-12",
     title: "A Fair Fight",
     notes: [
@@ -114,7 +117,7 @@ const CHANGELOG = [
     ]
   },
   {
-    version: "0.17.0",
+    version: "0.15.4",
     date: "2026-08-11",
     title: "Stand Your Ground",
     notes: [
@@ -125,7 +128,7 @@ const CHANGELOG = [
     ]
   },
   {
-    version: "0.16.1",
+    version: "0.15.3",
     date: "2026-08-11",
     title: "Long Live the King",
     notes: [
@@ -136,7 +139,7 @@ const CHANGELOG = [
     ]
   },
   {
-    version: "0.16.0",
+    version: "0.15.2",
     date: "2026-08-11",
     title: "The King's Court",
     notes: [
