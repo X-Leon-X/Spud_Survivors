@@ -23,6 +23,15 @@
 
 const CHANGELOG = [
   {
+    version: "0.16.4",
+    date: "2026-08-16",
+    title: "One Fewer Fortune",
+    notes: [
+      "The fortune that stripped you down to a single peashooter is gone.",
+      "Fewer surprises, one less way a wave could go sideways."
+    ]
+  },
+  {
     version: "0.16.3",
     date: "2026-08-16",
     title: "Smoother Late Waves",

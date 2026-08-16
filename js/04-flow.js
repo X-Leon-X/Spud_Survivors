@@ -323,7 +323,6 @@ function startWave() {
   playSfx("wave");
   showMessage(`Wave ${state.wave}`, "More scrap. Meaner shapes.", 1100);
   applyArmedFortunes();
-  applyPeashooterOnlyIfArmed();
 }
 
 // BOSS SYSTEM -- begins an interstitial boss fight. `bossIndex` is 1 for the first fight
@@ -382,7 +381,6 @@ function startBossFight(bossIndex) {
   // Title reads EXACTLY "Boss Fight N" -- no wave number anywhere in it (spec requirement).
   showMessage(`Boss Fight ${bossIndex}`, "The Nibbler King rises.", 1400);
   applyArmedFortunes();
-  applyPeashooterOnlyIfArmed();
 }
 
 // BOSS SYSTEM -- called from js/07-combat.js the instant the Nibbler King dies (or, as a
@@ -463,21 +461,6 @@ function resolveBossFightEnding() {
     return;
   }
   finishWaveTransition();
-}
-
-// CLOWN consumer: peashooterOnly. Runs AFTER applyArmedFortunes() so the flag it sets (via
-// applyFortune -> FORTUNE_CLOWN_EFFECTS.peashooterOnly.apply, js/03d-fortunes.js) is already on
-// state.temp.flags by the time this checks it. Non-destructive by construction: the real
-// loadout is stashed (never mutated in place) and restored in clearTempModifiers()
-// (js/02-stats.js), which already runs at the top of every endWave() before the temp bucket is
-// wiped -- so even a run that ends mid-wave still gets its weapons back the next time
-// clearTempModifiers() runs (defensive: also guarded so a second consecutive call is a no-op).
-function applyPeashooterOnlyIfArmed() {
-  if (!(typeof tempFlag === "function" && tempFlag("peashooterOnly"))) return;
-  if (state.temp.stashedWeapons) return; // already stashed this wave, don't stash the peashooter itself
-  state.temp.stashedWeapons = state.weapons.slice();
-  state.weapons = [{ name: "Spark Peashooter", tier: 1, fireCooldown: rand(0.05, 0.35) }];
-  syncDerivedStats();
 }
 
 // Fires every fortune the player cracked open last reward screen (state.armedFortunes, filled

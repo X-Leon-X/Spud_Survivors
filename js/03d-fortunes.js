@@ -267,10 +267,10 @@ function resolveFreeWeapon(rarity, fortune) {
 }
 
 // --- CLOWN pool ------------------------------------------------------------------------------
-// All three are wave-scoped FLAGS ONLY here. The behaviour each flag triggers (spawning clowns,
-// stripping weapons, arming enemies) is implemented by a LATER pass that reads these flags at
-// the relevant hook (chooseEnemyType(), the weapon-slot resolver, enemy attack logic). Keeping
-// apply() flag-only means this file cannot accidentally destroy permanent state on its own.
+// Both are wave-scoped FLAGS ONLY here. The behaviour each flag triggers (spawning clowns,
+// arming enemies) is implemented by a LATER pass that reads these flags at the relevant hook
+// (chooseEnemyType(), enemy attack logic). Keeping apply() flag-only means this file cannot
+// accidentally destroy permanent state on its own.
 const FORTUNE_CLOWN_EFFECTS = [
   {
     id: "clownWave",
@@ -282,22 +282,6 @@ const FORTUNE_CLOWN_EFFECTS = [
       // Consumer: chooseEnemyType() (js/07-combat.js:600) should early-return the Clown
       // template while this flag is set. Flag-only here -- see file header.
       if (typeof setTempFlag === "function") setTempFlag("clownWave", true);
-    },
-  },
-  {
-    id: "peashooterOnly",
-    valence: "bad",
-    rarities: ["clown"],
-    paper: () => "CHAOS!!!",
-    announce: () => "Your arsenal is confiscated for a peashooter... but you cannot die. This wave only!",
-    apply() {
-      // Flag-only, NON-destructive by design (spec + user instruction: "Restores after the
-      // wave"). A later pass must, on seeing this flag at wave start: stash state.weapons into
-      // e.g. state.temp.stashedWeapons, swap in a single default peashooter, and grant
-      // effectively infinite HP for the wave -- then restore the stash inside
-      // clearTempModifiers()/endWave. This function must NEVER mutate state.weapons itself,
-      // so the permanent loadout can't be lost if a later step throws.
-      if (typeof setTempFlag === "function") setTempFlag("peashooterOnly", true);
     },
   },
   {

@@ -286,17 +286,6 @@ function clearTempModifiers() {
     state.temp = { stats: {}, effects: {}, extraWeaponSlots: 0, weapons: [], flags: {} };
     return;
   }
-  // peashooterOnly (CLOWN fortune) restore: MUST happen before the temp bucket below is reset,
-  // and before the loop above would otherwise try to splice temp weapons out of a loadout that
-  // isn't the real one. Restored by reference replacement, never by mutating the stash in
-  // place, so a stray write to state.weapons elsewhere during the wave can't corrupt the saved
-  // copy. Guarded so a wave that never armed peashooterOnly (stashedWeapons undefined) is a
-  // no-op, and a stray double-call (e.g. run ends mid-wave and endWave's clearTempModifiers
-  // fires again on the way to the menu) can't restore twice or clobber a since-changed loadout.
-  if (state.temp.stashedWeapons) {
-    state.weapons = state.temp.stashedWeapons;
-    state.temp.stashedWeapons = null;
-  }
   for (const entry of state.temp.weapons) {
     const index = state.weapons.indexOf(entry);
     if (index !== -1) state.weapons.splice(index, 1);
@@ -444,17 +433,9 @@ function hpRegenHealDelay(regen) {
 // PHASE 1 CO-OP: takes an explicit `player` target as the new first argument (every call site
 // across the codebase was updated to pass one -- grepped for every damagePlayer( call). A
 // downed player can't be damaged further (already at 0 HP and out of the fight), so that's
-// checked right alongside the existing peashooterOnly/cooldown early-returns.
+// checked right alongside the existing cooldown early-return.
 function damagePlayer(player, rawDamage, sourceX, sourceY, sourceName, opts = {}) {
   if (player.downed) {
-    return false;
-  }
-  // CLOWN fortune peashooterOnly: the trade for being stripped to a single default weapon is
-  // that the player literally cannot die this wave. Checked first, before the hit-cooldown
-  // early-return above it, so it applies to every damage source (contact, projectiles, burn
-  // ticks that route through here) rather than just the ones that would normally pass the
-  // cooldown gate.
-  if (typeof tempFlag === "function" && tempFlag("peashooterOnly")) {
     return false;
   }
   if (!opts.ignoreCooldown && player.damageCooldown > 0) {
@@ -532,13 +513,6 @@ function tickPlayerBurnFor(player, dt) {
     return;
   }
   if (!player.burnTicksLeft || player.burnTicksLeft <= 0) {
-    return;
-  }
-  // Burn/poison DoT bypasses damagePlayer entirely (see the comment above applyPlayerBurn), so
-  // the peashooterOnly "cannot die" guarantee has to be re-checked here too, or a Blight Sac
-  // poison tick could still kill a player who was told they were unkillable this wave.
-  if (typeof tempFlag === "function" && tempFlag("peashooterOnly")) {
-    player.burnTicksLeft = 0;
     return;
   }
   player.burnTickTimer -= dt;
