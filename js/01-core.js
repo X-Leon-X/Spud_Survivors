@@ -41,6 +41,13 @@ const ui = {
   // TASK 2: "2 Players" checkbox on character select -- see coopRequested (above) and its
   // listener/sync in renderCharacterSelect() (js/04-flow.js).
   coopToggle: document.getElementById("coopToggle"),
+  // v0.17.0: P1/P2 character-slot picker (only shown while coopToggle is checked) and the
+  // standalone "Start Run" button used in that mode -- see renderCharacterSelect()
+  // (js/04-flow.js). Single player keeps starting a run straight from a card's own button.
+  characterSelectSlots: document.getElementById("characterSelectSlots"),
+  characterSlotP1Button: document.getElementById("characterSlotP1Button"),
+  characterSlotP2Button: document.getElementById("characterSlotP2Button"),
+  characterStartRunButton: document.getElementById("characterStartRunButton"),
   classBonusList: document.getElementById("classBonusList"),
   compendiumButton: document.getElementById("compendiumButton"),
   achievementsButton: document.getElementById("achievementsButton"),
@@ -299,6 +306,13 @@ const characters = [
 ];
 
 let selectedCharacter = characters[0];
+// v0.17.0: P2's own character pick, made on the same character-select screen when co-op is
+// checked (see renderCharacterSelect()/#characterCards in js/04-flow.js). Defaults to
+// characters[0] (Sprout) so a co-op run started without ever opening the P2 tab still gets a
+// sensible, well-defined character instead of undefined stats. Module-level like
+// selectedCharacter so it survives state.reset and persists across repeated visits to this
+// screen in the same session.
+let selectedCharacterP2 = characters[0];
 // TASK 2: set by the "2 Players" checkbox on the character select screen (#coopToggle,
 // index.html) -- see renderCharacterSelect()/its listener in js/04-flow.js. Read once by
 // startGame() to decide whether to spawn P2 from wave 1. Module-level (like selectedCharacter

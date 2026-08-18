@@ -2244,6 +2244,14 @@ button:active:not(:disabled) {
   transform: translateY(-4px);
 }
 
+/* v0.17.0: marks the card currently picked for the ACTIVE slot (P1 or P2) while co-op's
+   picker is open -- see renderCharacterSelect() (js/04-flow.js). Two different cards can be
+   marked "picked" at once (one per player); this class just tracks whichever slot is being
+   looked at right now. */
+.character-card.picked-active {
+  box-shadow: 0 0 0 3px var(--mint), 0 16px 34px rgba(0, 0, 0, 0.36);
+}
+
 .character-card button {
   font-size: 16px;
   text-transform: uppercase;
@@ -2344,6 +2352,39 @@ button:active:not(:disabled) {
 .start-menu-coop {
   flex: 0 0 auto;
   gap: 8px;
+}
+
+/* v0.17.0: P1/P2 character-slot picker shown on the character select screen only while
+   "2 Players" is checked -- see characterSelectSlots/renderCharacterSelect() (js/04-flow.js).
+   Sits as its own full-width row directly above the card grid, matching the coop toggle's
+   .setting-row styling so it reads as part of the same settings cluster. */
+.character-select-slots {
+  margin-top: 10px;
+}
+
+.character-slot-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.character-slot-btn {
+  font-size: 14px;
+  padding: 6px 16px;
+  box-shadow: 0 3px 0 rgba(17, 23, 34, 0.55);
+}
+
+.character-slot-btn.active {
+  background: linear-gradient(180deg, #ffd873 0%, #f2b73f 100%);
+  color: #3a2708;
+}
+
+/* Shown instead of each card's own "Start Run" button while co-op is active, since a card
+   click in that mode only PICKS the character for the active slot -- it must not launch the
+   run until both P1 and P2 have a pick. Hidden entirely in single-player, where each card's
+   own button still starts the run immediately (unchanged legacy behavior). */
+.character-start-run {
+  margin-top: 14px;
+  width: 100%;
 }
 
 .setting-row {

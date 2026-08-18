@@ -442,7 +442,7 @@ function damagePlayer(player, rawDamage, sourceX, sourceY, sourceName, opts = {}
     return false;
   }
 
-  const dodgeChance = Math.min(60, Math.max(0, effectiveStat("dodge")));
+  const dodgeChance = Math.min(60, Math.max(0, effectiveStatForPlayer(player, "dodge")));
   if (Math.random() * 100 < dodgeChance) {
     player.damageCooldown = 0.18;
     player.hurtTimer = 0.08;
@@ -459,7 +459,7 @@ function damagePlayer(player, rawDamage, sourceX, sourceY, sourceName, opts = {}
     return false;
   }
 
-  const damage = Math.max(1, Math.ceil(rawDamage * armorDamageMultiplier(effectiveStat("armor"))));
+  const damage = Math.max(1, Math.ceil(rawDamage * armorDamageMultiplier(effectiveStatForPlayer(player, "armor"))));
   player.hp -= damage;
   trackDamageTaken(sourceName, damage);
   // 0.32 -> 0.22. Blocked enemy bullets are no longer eaten (see updateEnemyBullets), so a
@@ -524,7 +524,7 @@ function tickPlayerBurnFor(player, dt) {
   // Logged to damageTakenBySource, NOT trackDamage(): damageBySource is the player's
   // damage-DEALT breakdown, so recording harm they receive there would inflate their own
   // "Burn" total with damage done to them.
-  const damage = Math.max(1, Math.ceil(player.burnTickDamage * armorDamageMultiplier(effectiveStat("armor"))));
+  const damage = Math.max(1, Math.ceil(player.burnTickDamage * armorDamageMultiplier(effectiveStatForPlayer(player, "armor"))));
   player.hp -= damage;
   // The same DoT channel carries both fire (Ember Glob) and poison (Blight Sac), so the
   // label and colour follow the source instead of always saying "Burn" in orange -- being

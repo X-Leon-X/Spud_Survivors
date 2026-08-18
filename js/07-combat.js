@@ -1006,7 +1006,7 @@ function fireWeaponAttack(weapon, slot, target, runtime, playerIndex) {
     fireSwingWeapon(weapon, slot, target, playerIndex);
     return;
   }
-  fireWeaponFromSlot(weapon, slot, target, runtime);
+  fireWeaponFromSlot(weapon, slot, target, runtime, playerIndex);
 }
 
 // fireEquippedWeapons (owned by another agent) doesn't pass the weapon's slot index down,
@@ -1018,7 +1018,7 @@ function resolveWeaponSlotIndex(weapon) {
   return { index: index >= 0 ? index : 0, count };
 }
 
-function fireWeaponFromSlot(weapon, slot, target, runtime = weapon) {
+function fireWeaponFromSlot(weapon, slot, target, runtime = weapon, playerIndex = 0) {
   const profile = getWeaponStatProfile(weapon);
   const count = Math.min(maxWeaponSlots(), state.weapons.length);
   const scale = weaponArenaScale(count);
@@ -1080,6 +1080,12 @@ function fireWeaponFromSlot(weapon, slot, target, runtime = weapon) {
       radius: profile.projectileRadius,
       damage,
       crit,
+      // PHASE 1 CO-OP: which player fired this bullet, so per-body effects it triggers on
+      // hit (lifesteal heal/cooldown -- see applyBulletHit) credit the ACTUAL shooter
+      // instead of always state.player. Defaults to 0 so any bullet spawned without an
+      // explicit playerIndex (e.g. from code that predates this field) behaves exactly as
+      // before for single player.
+      playerIndex,
       burnDps: weaponBurnDps(weapon),
       burnDuration: profile.burnDuration ?? 0,
       knockback: weaponKnockback(weapon),
@@ -1344,9 +1350,15 @@ function applyBulletHit(bullet, enemy, enemyIndex) {
     size: bullet.crit ? 17 : 14
   });
 
-  if (state.player.lifeStealCooldown <= 0 && Math.random() * 100 < Math.min(60, effectiveStat("lifeSteal"))) {
-    heal(1);
-    state.player.lifeStealCooldown = 0.1;
+  // PHASE 1 CO-OP: lifesteal must heal and cooldown-gate whoever actually FIRED this bullet
+  // (bullet.playerIndex -- see fireWeaponFromSlot/spawnShurikenSplit), not always
+  // state.player/P1. lifeSteal% itself still reads the shared build via effectiveStat by
+  // design (one shop, one build). Falls back to state.player if playerIndex is ever missing
+  // (e.g. bullets from code that predates this field), so single player is unaffected.
+  const lifeStealOwner = state.players[bullet.playerIndex ?? 0] ?? state.player;
+  if (lifeStealOwner.lifeStealCooldown <= 0 && Math.random() * 100 < Math.min(60, effectiveStat("lifeSteal"))) {
+    heal(1, lifeStealOwner);
+    lifeStealOwner.lifeStealCooldown = 0.1;
   }
 
   if (enemy.hp <= 0) {
@@ -1674,6 +1686,9 @@ function spawnShurikenSplit(bullet) {
       radius: Math.max(2, bullet.radius * 0.6),
       damage: bullet.damage * 0.45,           // chip damage; the main star is the payload
       crit: false,
+      // Inherit the thrown star's owner so these mini shurikens also credit the correct
+      // player on lifesteal (see applyBulletHit).
+      playerIndex: bullet.playerIndex ?? 0,
       burnDps: 0,
       burnDuration: 0,
       knockback: (bullet.knockback ?? 0) * 0.5,
@@ -1730,7 +1745,10 @@ function processWeaponSwingHits(swing) {
         burnDps: swing.burnDps,
         burnDuration: swing.burnDuration,
         knockback: swing.knockback,
-        impactColor: swing.impactColor
+        impactColor: swing.impactColor,
+        // So melee lifesteal (applyBulletHit) also credits the swinging player, not just
+        // ranged bullets.
+        playerIndex: swing.playerIndex ?? 0
       }, enemy, i);
       if (swing.hits >= swing.maxHits) break;
     }

@@ -23,6 +23,15 @@
 
 const CHANGELOG = [
   {
+    version: "0.17.0",
+    date: "2026-08-18",
+    title: "Player Two Picks Their Own",
+    notes: [
+      "Player two now picks their own character.",
+      "Lifesteal now credits whoever actually landed the shot instead of always player one."
+    ]
+  },
+  {
     version: "0.16.4",
     date: "2026-08-16",
     title: "One Fewer Fortune",

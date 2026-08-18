@@ -5,6 +5,11 @@
 let state;
 let lastTime = performance.now();
 let messageToken = 0;
+// v0.17.0: which slot the character-select screen's cards currently pick for (1 or 2) while
+// co-op's picker is showing -- see renderCharacterSelect() below. Always 1 in single-player
+// (the slot picker is hidden and every card click both picks AND starts the run, unchanged).
+// Module-level so it survives repeated renderCharacterSelect() calls in the same session.
+let activeCharacterSlot = 1;
 
 function maxWeaponSlots() {
   return BASE_WEAPON_SLOTS + (state?.extraWeaponSlots ?? 0) + (state?.temp?.extraWeaponSlots ?? 0);
@@ -18,7 +23,14 @@ function maxWeaponSlots() {
 // original player object. `downed` is the phase-1 death model: a downed player stops moving/
 // firing/taking damage and renders greyed out, but the run only ends once every player is
 // downed (see the game-over check in update(), js/07-combat.js).
-function makePlayer(index) {
+// v0.17.0: `character` seeds this player's OWN character-stat deltas (characterStats) so P2
+// can pick a different character from P1 while the actual build (state.player.stats, weapons,
+// scrap) stays the single shared bag it always was -- see syncDerivedStats(), which is the
+// ONE place characterStats gets folded into a player's derived fields (maxHp/speed/attackSpeed/
+// damage/armor-driven survival), on top of the shared effectiveStat() result. This keeps
+// effectiveStat() and every one of its ~60 existing shop/UI/combat call sites reading exactly
+// the shared bag they always did, so single player and P1-facing numbers are unaffected.
+function makePlayer(index, character = selectedCharacter) {
   return {
     index,
     x: W / 2 + (index === 0 ? 0 : 60),
@@ -46,6 +58,13 @@ function makePlayer(index) {
     regenTimer: 0,
     downed: false,
     stats: { ...BASE_PLAYER_STATS },
+    // This player's own character identity + stat deltas (see makePlayer's doc comment
+    // above). P1 keeps folding its deltas into the shared stats bag too (applyCharacter),
+    // purely so all the existing shop/UI code that reads state.player.stats directly still
+    // shows P1's character bonuses like it always has; characterStats is what actually drives
+    // per-player derived stats for BOTH players in syncDerivedStats.
+    character,
+    characterStats: { ...character.stats },
     // Per-player weapon runtime state (cooldown/recoil/fire-anim/airborne), keyed by weapon
     // slot index -- see weaponRuntimeFor() in js/07-combat.js. Kept OFF the shared
     // state.weapons objects so P2 firing a shared loadout never blocks/duplicates P1's shots.
@@ -203,16 +222,46 @@ function syncDerivedStats() {
     : Math.max(1, effectiveStat("rangedDamage") * brotatoPercentMultiplier(effectiveStat("damagePercent")));
   const sharedProjectiles = 1 + ownedEffects.projectiles;
   for (const player of state.players) {
+    // v0.17.0: per-player character deltas (Sprout/Chunk/Zip -- see makePlayer) layer on TOP
+    // of the shared build here, so P2 can be a different character from P1 without splitting
+    // the shared stats bag effectiveStat() reads everywhere else. P1 (index 0) is deliberately
+    // EXCLUDED from this extra layer: applyCharacter() still bakes P1's own character deltas
+    // directly into the shared state.player.stats bag (unchanged pre-0.17.0 behavior, kept so
+    // every existing shop/UI display that reads state.player.stats/effectiveStat() for "your
+    // build" keeps showing P1's bonuses exactly like before) -- applying characterStats on top
+    // for P1 too would double-count those same deltas. Only P2+ need this layer since their
+    // character may differ from whatever's baked into the shared bag.
+    const delta = player.index === 0 ? null : player.characterStats;
+    const playerMaxHp = Math.max(1, sharedMaxHp + (delta?.maxHp ?? 0));
+    const playerSpeed = 210 * brotatoPercentMultiplier(effectiveStat("speed") + (delta?.speed ?? 0));
+    const playerFireRate = 1.7 * brotatoPercentMultiplier(effectiveStat("attackSpeed") + (delta?.attackSpeed ?? 0));
+    const playerDamage = equipped.length
+      ? sharedDamage * brotatoPercentMultiplier(delta?.damagePercent ?? 0)
+      : Math.max(1, effectiveStat("rangedDamage") * brotatoPercentMultiplier(effectiveStat("damagePercent") + (delta?.damagePercent ?? 0)));
     player.projectiles = sharedProjectiles;
-    player.maxHp = sharedMaxHp;
+    player.maxHp = playerMaxHp;
     player.hp = Math.min(player.hp, player.maxHp);
-    player.speed = sharedSpeed;
-    player.fireRate = sharedFireRate;
+    player.speed = playerSpeed;
+    player.fireRate = playerFireRate;
     player.range = sharedRange;
     player.pickupRange = sharedPickupRange;
     player.shotSpeed = sharedShotSpeed;
-    player.damage = sharedDamage;
+    player.damage = playerDamage;
   }
+}
+
+// v0.17.0: armor/dodge are body-defense stats, so a character's +armor/-dodge-style delta
+// (only Chunk grants armor right now) must apply to THAT player's own damage taken, not the
+// shared bag every player's damagePlayer()/burn-tick reads via effectiveStat(). This is the
+// one extra read point damagePlayer/tickPlayerBurnFor (js/02-stats.js) use instead of a bare
+// effectiveStat("armor")/effectiveStat("dodge") call, so Chunk's armor doesn't leak onto a
+// Zip P1/P2 standing next to them and vice versa. P1 is excluded from the extra layer for the
+// same double-counting reason as syncDerivedStats above: P1's character deltas already live in
+// the shared bag that effectiveStat() reads.
+function effectiveStatForPlayer(player, key) {
+  const base = effectiveStat(key);
+  if (!player || player.index === 0) return base;
+  return base + (player.characterStats?.[key] ?? 0);
 }
 
 function weaponPowerValue(weapon) {
@@ -231,14 +280,22 @@ function startGame() {
   // identically to joining mid-run.
   if (coopRequested) {
     const p1 = state.player;
-    const p2 = makePlayer(1);
+    // v0.17.0: P2 gets their OWN character pick (selectedCharacterP2, set on the character
+    // select screen -- see renderCharacterSelect()) instead of silently inheriting P1's.
+    // makePlayer seeds p2.characterStats from it; syncDerivedStats (called right below) is
+    // what actually folds those deltas into p2.maxHp/speed/fireRate/damage.
+    const p2 = makePlayer(1, selectedCharacterP2);
     p2.x = clamp((p1?.x ?? W / 2) + 60, p2.radius + 8, W - p2.radius - 8);
     p2.y = clamp(p1?.y ?? H / 2, p2.radius + 8, H - p2.radius - 8);
-    p2.hp = state.player.stats.maxHp;
-    p2.maxHp = state.player.stats.maxHp;
     state.players.push(p2);
   }
   syncDerivedStats();
+  // p2.maxHp only becomes correct (base + shop upgrades + P2's own character delta) once
+  // syncDerivedStats has run, so full-heal P2 for the fresh run AFTER that call rather than
+  // guessing at a pre-sync placeholder.
+  if (state.players[1]) {
+    state.players[1].hp = state.players[1].maxHp;
+  }
   spawnTrees();
   hideMessage();
   hideShop();
@@ -828,27 +885,89 @@ function hideReward() {
 if (ui.coopToggle) {
   ui.coopToggle.addEventListener("change", () => {
     coopRequested = ui.coopToggle.checked;
+    // Always land back on P1's tab when co-op is (re)toggled, so re-checking it never
+    // strands the picker on a P2 view of a screen that a moment ago was single-player.
+    activeCharacterSlot = 1;
+    renderCharacterSelect();
   });
 }
 
+// v0.17.0: P1/P2 slot-tab buttons, wired once at module load (see the coopToggle listener
+// above for why: renderCharacterSelect() runs every time this screen is shown, so wiring
+// inside it would stack duplicate listeners). Clicking a tab only changes which slot the
+// character cards below pick for -- it never starts the run by itself.
+if (ui.characterSlotP1Button) {
+  ui.characterSlotP1Button.addEventListener("click", () => {
+    activeCharacterSlot = 1;
+    renderCharacterSelect();
+  });
+}
+if (ui.characterSlotP2Button) {
+  ui.characterSlotP2Button.addEventListener("click", () => {
+    activeCharacterSlot = 2;
+    renderCharacterSelect();
+  });
+}
+// The standalone "Start Run" button used only in co-op mode (single-player still starts
+// straight from a card's own button, unchanged) -- see renderCharacterSelect().
+if (ui.characterStartRunButton) {
+  ui.characterStartRunButton.addEventListener("click", () => {
+    startGame();
+  });
+}
+
+// v0.17.0: renders the character-select screen. In single player (coopRequested false) this
+// is byte-for-byte the original behavior: one grid of cards, each with its own "Start Run"
+// button that sets selectedCharacter and launches immediately. In co-op, clicking a card only
+// PICKS that character for whichever of P1/P2 is the active tab (selectedCharacter or
+// selectedCharacterP2) -- launching the run instead happens from the standalone
+// #characterStartRunButton below the grid, so a P2 pick never gets skipped by an eager click
+// on a P1-only card button.
 function renderCharacterSelect() {
   ui.characterCards.innerHTML = "";
   characterPortraits.length = 0;   // old portrait canvases are gone; drop stale refs
   if (ui.coopToggle) {
     ui.coopToggle.checked = coopRequested;
   }
+  if (ui.characterSelectSlots) {
+    ui.characterSelectSlots.classList.toggle("hidden", !coopRequested);
+  }
+  if (ui.characterStartRunButton) {
+    ui.characterStartRunButton.classList.toggle("hidden", !coopRequested);
+  }
+  if (ui.characterSlotP1Button) {
+    ui.characterSlotP1Button.classList.toggle("active", activeCharacterSlot === 1);
+  }
+  if (ui.characterSlotP2Button) {
+    ui.characterSlotP2Button.classList.toggle("active", activeCharacterSlot === 2);
+  }
+  const pickedForActiveSlot = !coopRequested
+    ? null
+    : activeCharacterSlot === 1 ? selectedCharacter : selectedCharacterP2;
   for (const character of characters) {
     const card = document.createElement("article");
     card.className = "character-card";
+    if (pickedForActiveSlot === character) {
+      card.classList.add("picked-active");
+    }
     card.innerHTML = `
       <canvas width="180" height="180" aria-hidden="true"></canvas>
       <h2>${character.name}</h2>
       <div class="card-meta"><span>${character.role}</span></div>
       <p>${character.description}</p>
-      <button type="button">Start Run</button>
+      <button type="button">${coopRequested ? "Pick" : "Start Run"}</button>
     `;
     drawCharacterPortrait(card.querySelector("canvas"), character);
     card.querySelector("button").addEventListener("click", () => {
+      if (coopRequested) {
+        if (activeCharacterSlot === 2) {
+          selectedCharacterP2 = character;
+        } else {
+          selectedCharacter = character;
+        }
+        renderCharacterSelect();
+        return;
+      }
       selectedCharacter = character;
       startGame();
     });

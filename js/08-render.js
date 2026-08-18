@@ -158,7 +158,12 @@ function drawPlayer(player) {
   const lean = moving ? Math.sin(time / 150) * 0.035 : 0;
   ctx.translate(player.x, player.y + bob);
   ctx.rotate(lean);
-  const charScale = state.character?.scale ?? 1;
+  // v0.17.0: draw THIS player's own character (player.character, set on the character-select
+  // screen -- see makePlayer/renderCharacterSelect) instead of always state.character (P1's).
+  // P1's own `player.character` is always kept equal to state.character (see applyCharacter),
+  // so this is a no-op for P1/single-player and only changes P2's on-screen look.
+  const playerCharacter = player.character ?? state.character ?? characters[0];
+  const charScale = playerCharacter.scale ?? 1;
   const stepSquash = moving ? Math.sin(time / 92) * 0.025 : 0;
   ctx.scale((player.hurtTimer > 0 ? 1.07 : 1 + stepSquash) * charScale, (player.hurtTimer > 0 ? 0.94 : 1 - stepSquash) * charScale);
   // A downed player (0 HP, still mid-run because a teammate is alive -- see the phase-1
@@ -169,7 +174,7 @@ function drawPlayer(player) {
     ctx.filter = "grayscale(1)";
   }
   drawShadow(0, 18, 25, 9);
-  drawSpudBody(ctx, state.character ?? characters[0], player.hurtTimer > 0);
+  drawSpudBody(ctx, playerCharacter, player.hurtTimer > 0);
   ctx.restore();
   if (!player.downed && player.index > 0) {
     drawPlayerTwoMarker(player, time);
